@@ -192,12 +192,12 @@ test("triage keys ignore typing, modifiers, and the crop modal", () => {
   assert.equal(isTriageTypingTarget({ tagName: "BUTTON" }), false);
 });
 
-test("homepage privacy sentence and HD-key empty-state use the owner copy", () => {
+test("homepage privacy sentence scopes optional Google and logo requests", () => {
   assert.equal(
     PRIVACY_SENTENCE,
-    "Your address book never leaves this device.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.",
+    "Imported vCards and CSVs are reviewed in this browser.  Google Contacts import and selected-photo sync connect to Google when you choose them.  Logo lookups request images using business domains.",
   );
-  assert.match(PRIVACY_SENTENCE, /\. {2}Crash/);
+  assert.match(PRIVACY_SENTENCE, /\. {2}Google/);
   assert.equal(
     HD_KEYS_EMPTY_COPY,
     "High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.",
@@ -297,14 +297,14 @@ test("trimViewCache bounds the cache without evicting mounted views", () => {
 test("review chrome copy is American and hides raw engine flags behind human phrases", () => {
   const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "app.ts"), "utf8");
   assert.doesNotMatch(source, /recognise/);
-  assert.match(source, /recognize instead of two letters/);
+  assert.match(source, /Review each result before you export or sync it/);
   assert.match(source, /Choose Your Own/);
   assert.match(source, /"Approve"/);
   for (const chrome of [
     "How It Works",
     "Every Business in Your Contacts, With Its Real Logo",
     "Nothing Changes Without Your Approval",
-    "Your Contacts Stay in This Browser",
+    "Review in Your Browser",
     "Try Another",
     "Import From This Phone",
     "Select All High-Confidence",

@@ -155,7 +155,7 @@ export const CREDENTIAL_STORAGE_FAILED_COPY =
   "This browser could not save the key.  It will be used until you close the tab.";
 
 export const PRIVACY_SENTENCE =
-  "Your address book never leaves this device.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.";
+  "Imported vCards and CSVs are reviewed in this browser.  Google Contacts import and selected-photo sync connect to Google when you choose them.  Logo lookups request images using business domains.";
 
 /** Locked CSS height of `.card`.  The virtualizer is uniform-row on purpose. */
 export const REVIEW_CARD_HEIGHT = 248;
@@ -1634,7 +1634,7 @@ function buildLanding(): HTMLElement {
     el(
       "p",
       {},
-      "Your address book is full of grey initial circles.  ContactLogo finds the official mark for each business card in it — the pharmacy, the bank, the school, the plumber — so calls, messages and mail arrive with a face you recognize instead of two letters.",
+      "Your address book is full of grey initial circles.  ContactLogo suggests brand marks for business cards, such as a pharmacy, bank, or school.  Review each result before you export or sync it.",
     ),
     el(
       "p",
@@ -1680,14 +1680,14 @@ function buildLanding(): HTMLElement {
     el(
       "p",
       {},
-      "There is no automatic apply.  A logo reaches your address book only after you tick its box and press the download or sync button — and one click saves an untouched copy of the original first, so you can always go back.",
+      "There is no automatic apply.  Review the selected logos before downloading an updated vCard or syncing approved photos to Google Contacts.  You can download a backup of the imported address book before applying changes.",
     ),
-    el("h2", {}, "Your Contacts Stay in This Browser"),
+    el("h2", {}, "Review in Your Browser"),
     el("p", {}, PRIVACY_SENTENCE),
     el(
       "p",
       {},
-      "Logo images are fetched from public brand sources by domain name only, and closing the tab leaves the imported book behind.",
+      "Imported files are not uploaded as an address book.  Logo lookups can contact the site's domain-based cache and external image services; optional Google Contacts actions send requests to Google.  Closing the tab clears the imported book from this session.",
     ),
     el(
       "p",
@@ -1764,7 +1764,7 @@ function mountShell(root: HTMLElement): Shell {
   const drop = el(
     "div",
     { class: "drop" },
-    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Your address book never leaves this device.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.")),
+    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Files are reviewed in this browser.  Logo lookups use business domains; Google import or sync contacts Google only when you choose it.")),
     ...importActions,
     file,
   );

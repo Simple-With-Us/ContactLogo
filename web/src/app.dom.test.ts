@@ -226,7 +226,7 @@ test("the landing page gives way to the review stage", () => {
   const headings = findAll(stubDocument.root, (n) => n.tagName === "H2" && visible(n)).map((n) => n.textContent);
   assert.ok(headings.includes("How It Works"), `landing headings: ${headings.join(" | ")}`);
   assert.ok(headings.includes("Nothing Changes Without Your Approval"));
-  assert.ok(headings.includes("Your Contacts Stay in This Browser"));
+  assert.ok(headings.includes("Review in Your Browser"));
   assert.ok(headings.includes("Every Business in Your Contacts, With Its Real Logo"));
 
   const copy = findAll(stubDocument.root, (n) => visible(n))
@@ -235,11 +235,11 @@ test("the landing page gives way to the review stage", () => {
   for (const jargon of ["ContactLogoKit", "backups/", "BadgeBook", "Crest"]) {
     assert.ok(!copy.includes(jargon), `customer copy leaked "${jargon}"`);
   }
-  assert.ok(copy.includes("recognize instead of two letters"), "British recognise leaked");
+  assert.ok(copy.includes("Review each result before you export or sync it."));
   assert.ok(!copy.includes("recognise"), "British recognise still present");
   assert.ok(
     copy.includes(
-      "Your address book never leaves this device.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.",
+      "Imported vCards and CSVs are reviewed in this browser.  Google Contacts import and selected-photo sync connect to Google when you choose them.  Logo lookups request images using business domains.",
     ),
     "homepage privacy sentence missing",
   );
