@@ -1764,7 +1764,7 @@ function mountShell(root: HTMLElement): Shell {
   const drop = el(
     "div",
     { class: "drop" },
-    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Files are reviewed in this browser.  Logo lookups use business domains; Google import or sync contacts Google only when you choose it.")),
+    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Files are reviewed in this browser.  Logo lookups use business domains; optional Google import or sync sends requests to Google when you choose it.")),
     ...importActions,
     file,
   );
