@@ -1,11 +1,12 @@
 # ContactLogo
 
-**Brand icons for your address book.** ContactLogo scans your contacts, finds
-the companies behind them, and puts a clean, recognizable logo on every
-business card — so "Walgreens" shows the red W, not a grey monogram.
+**Brand icons for your address book.**  ContactLogo looks for business contacts
+and suggests matching logos for you to review.  Approved updates can replace a
+grey monogram with a recognizable brand mark.
 
 **Site:** [ContactLogo.com](https://contactlogo.com)
 **Repo:** [jaywedgeworth22/ContactLogo](https://github.com/jaywedgeworth22/ContactLogo)
+**From:** [Simple With Us](https://simplewithus.com/)
 
 Three shells, one engine:
 
