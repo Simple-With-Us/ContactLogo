@@ -213,7 +213,30 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         await visibleContactCount() < Self.visibilityBound
     }
 
-    private static var keys: [CNKeyDescriptor] {
+    /// Enumeration keys for a full scan.
+    ///
+    /// 2026-09-27 — `CNContactImageDataKey` was here, and it is the reason a
+    /// large address book never produced a queue.  `identity(from:)` only
+    /// ever reads `imageDataAvailable` (a Bool), and `ContactIdentity`
+    /// carries no image bytes, so every byte of photo data the framework
+    /// materialized during enumeration was allocated and thrown away.
+    ///
+    /// With ~15,000 contacts that is 15,000 contact photos decoded in one
+    /// synchronous pass.  The framework does not stream them and the
+    /// provider accumulates identities in an array, so the run burns
+    /// enormous memory and wall-clock inside a single `enumerateContacts`
+    /// call.  iOS terminates the app for memory pressure (jetsam) or the
+    /// background task expires, so `scanAndMatch` never reaches its
+    /// `persistReviewQueue` call.  The app relaunches, `loadFresh` finds an
+    /// unchanged change token, and restores the *previous* queue — which is
+    /// why the number was stuck at the same small value on every run
+    /// instead of growing.
+    ///
+    /// `CNContactImageDataAvailableKey` answers the only question the scan
+    /// asks ("does this contact already have a photo?"), at a fraction of
+    /// the cost.  The bytes are still fetched per contact in
+    /// `mutableContact(id:)` for the actual get/set operations.
+    internal static var keys: [CNKeyDescriptor] {
         [
             CNContactIdentifierKey as CNKeyDescriptor,
             CNContactGivenNameKey as CNKeyDescriptor,
@@ -222,8 +245,7 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
             CNContactEmailAddressesKey as CNKeyDescriptor,
             CNContactUrlAddressesKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
-            CNContactImageDataAvailableKey as CNKeyDescriptor,
-            CNContactImageDataKey as CNKeyDescriptor
+            CNContactImageDataAvailableKey as CNKeyDescriptor
         ]
     }
 

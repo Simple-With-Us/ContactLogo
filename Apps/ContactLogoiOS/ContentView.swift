@@ -71,7 +71,8 @@ struct ContentView: View {
                     scanned: model.totalScannedCount,
                     business: model.businessTargetsCount,
                     affiliated: model.affiliatedTargetsCount,
-                    protected: model.protectedPersonCount
+                    protected: model.protectedPersonCount,
+                    scannedAt: model.lastScanDate
                 )
             }
             Button("Scan contacts") { Task { await model.scanAndMatch() } }
@@ -221,6 +222,16 @@ struct ScanBreakdownRow: View {
     let business: Int
     let affiliated: Int
     let protected: Int
+    /// 2026-09-27 — a run that dies before persisting leaves the previous
+    /// queue in place, and it is restored on the next launch looking exactly
+    /// like a fresh scan.  Stamping the date is what makes that visible.
+    let scannedAt: Date?
+
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, h:mm a"
+        return f
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -230,6 +241,11 @@ struct ScanBreakdownRow: View {
             Text("\(scanned.formatted()) contacts scanned · \(business.formatted()) business · \(affiliated.formatted()) affiliated · \(protected.formatted()) personal protected")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let scannedAt {
+                Text("Scanned \(Self.stamp.string(from: scannedAt)) — if this looks stale, the scan did not finish.  Tap Scan contacts to run it again.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.top, 8)
     }
