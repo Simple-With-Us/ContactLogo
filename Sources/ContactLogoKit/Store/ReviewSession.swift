@@ -59,6 +59,19 @@ public final class ReviewSession: ObservableObject {
     /// from `limitedAccessGranted` (Bool, iOS-18-only signal) to
     /// `LimitedAccessState` (definite | heuristic | denied | restricted).
     @Published public internal(set) var limitedAccessState: LimitedAccessState = .open
+    /// 2026-09-27 — how many contacts the app could actually see in the
+    /// device Contacts database during the last scan.
+    ///
+    /// `totalScannedCount` is the subset that became identities; this is
+    /// the raw size of what the Contacts framework handed back.  When the
+    /// two agree, the address book really is that small and the problem is
+    /// upstream of the app (Contacts Sync off for the account holding the
+    /// business contacts).  When `limitedAccessState` is `.definite` and
+    /// this is small, it is a limited-access grant.
+    @Published public internal(set) var visibleContactCount: Int = 0
+    /// False when the enumeration bound fired, so `visibleContactCount` is a
+    /// lower bound rather than the true total.
+    @Published public internal(set) var visibleContactCountIsExact: Bool = true
     /// 2026-09-21 — sample of dropped contacts (people with no business
     /// signals) so a Settings → Diagnostic screen can explain "your other
     /// 14,975 contacts are personal entries with no business signals —
@@ -150,11 +163,21 @@ public final class ReviewSession: ObservableObject {
             let provider = self.contactsProviderForTesting ?? CNContactsProvider()
             // Use the granular state, not just the bool.
             let state = await provider.limitedAccessDiagnosis()
+            // 2026-09-27 — refresh the raw database size too, but never
+            // clobber a known-good value with 0: at cold launch the
+            // Contacts authorization prompt may still be outstanding, and
+            // enumeration would return nothing.
+            let visible = await provider.visibleContactCount()
+            let visibleExact = await provider.visibleContactCountIsExact()
             await MainActor.run {
                 self.limitedAccessState = state
                 switch state {
                 case .definite, .heuristic: self.limitedAccessGranted = true
                 case .open, .denied, .restricted: self.limitedAccessGranted = false
+                }
+                if visible > 0 {
+                    self.visibleContactCount = visible
+                    self.visibleContactCountIsExact = visibleExact
                 }
             }
         }
@@ -358,6 +381,13 @@ public final class ReviewSession: ObservableObject {
             case .definite, .heuristic: limitedAccessGranted = true
             case .open, .denied, .restricted: limitedAccessGranted = false
             }
+            // 2026-09-27 — the raw size of the device Contacts database.
+            // Enumerating identifiers is cheap and this is the number that
+            // tells "access is limited" apart from "the contacts are not on
+            // this device", which have different fixes.
+            let visible = await provider.visibleContactCount()
+            visibleContactCount = visible
+            visibleContactCountIsExact = await provider.visibleContactCountIsExact()
             let contacts = try await provider.fetchCandidates()
             totalScannedCount = contacts.count
             names = Dictionary(uniqueKeysWithValues: contacts.map { ($0.id, $0.displayName) })
