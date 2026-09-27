@@ -119,6 +119,16 @@ public final class ReviewSession: ObservableObject {
     var scanChangeToken: Data?
     var scanDate: Date?
 
+    /// 2026-09-27 — when the queue currently on screen was actually scanned.
+    ///
+    /// A run that dies before `persistReviewQueue` leaves the previous file
+    /// in place, and `loadFresh` only discards it when the Contacts change
+    /// token moved.  When the address book has not changed, that token still
+    /// matches, so an old queue is restored and looks exactly like a fresh
+    /// scan.  That is how a stuck count survives relaunches without anyone
+    /// noticing it is days old, so the shell shows this stamp.
+    public var lastScanDate: Date? { scanDate }
+
     /// `settings` is injected by the shell; when it carries Brandfetch
     /// credentials the scan uses them, otherwise the process environment is
     /// used exactly as before (CLI and CI behaviour unchanged).
