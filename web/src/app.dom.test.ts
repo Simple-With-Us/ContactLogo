@@ -243,7 +243,9 @@ test("the landing page gives way to the review stage", () => {
     ),
     "homepage privacy sentence missing",
   );
-  assert.ok(findAll(stubDocument.root, (n) => hasClass(n, "phone-only")).length >= 2, "phone-only copy missing");
+  assert.ok(!copy.includes("from this phone"), "unsupported phone import promise shown");
+  assert.ok(!findAll(stubDocument.root, (n) => hasClass(n, "phone-only")).length, "phone import shown without capability");
+  assert.ok(findAll(stubDocument.root, (n) => hasClass(n, "landing-help")).length === 1, "photo review guidance must wrap");
   assert.ok(copy.includes("Import an Address Book"), "drop-zone heading missing");
   const landingButtons = findAll(stubDocument.root, (n) => n.tagName === "BUTTON" && visible(n)).map((n) => n.textContent);
   assert.ok(landingButtons.includes("Import vCard or CSV"), `landing buttons: ${landingButtons.join(" | ")}`);

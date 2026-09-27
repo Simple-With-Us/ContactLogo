@@ -1626,7 +1626,7 @@ function buildSettingsPanel(): {
   return { node, input, brandfetchInput, logodevInput, hdEmpty, storageWarn };
 }
 
-function buildLanding(): HTMLElement {
+function buildLanding(deviceContactsAvailable: boolean): HTMLElement {
   const what = el(
     "section",
     { class: "section" },
@@ -1638,7 +1638,7 @@ function buildLanding(): HTMLElement {
     ),
     el(
       "p",
-      { class: "meta" },
+      { class: "meta landing-help" },
       "Contacts identified as people are excluded from logo suggestions.  Business cards with existing photos wait in Needs Review, with replacement left to your choice.",
     ),
   );
@@ -1655,7 +1655,7 @@ function buildLanding(): HTMLElement {
         {},
         el("strong", {}, "Import. "),
         "Drop in a vCard or Google CSV export, or connect Google Contacts",
-        el("span", { class: "phone-only" }, ", or pick straight from this phone"),
+        ...(deviceContactsAvailable ? [el("span", { class: "phone-only" }, ", or pick straight from this phone")] : []),
         ".",
       ),
       el(
@@ -1697,6 +1697,7 @@ function buildLanding(): HTMLElement {
 function mountShell(root: HTMLElement): Shell {
   if (shell && shell.root === root && root.firstChild) return shell;
 
+  const deviceContactsAvailable = canPickDeviceContacts();
   root.replaceChildren();
   const app = el("div", { class: "app" });
 
@@ -1730,7 +1731,7 @@ function mountShell(root: HTMLElement): Shell {
         "p",
         {},
         "Brand icons for your address book.  Import a vCard or Google CSV, or connect Google Contacts",
-        el("span", { class: "phone-only" }, ", or choose contacts from this phone"),
+        ...(deviceContactsAvailable ? [el("span", { class: "phone-only" }, ", or choose contacts from this phone")] : []),
         ".  Review suggested logos, then download approved updates or sync selected photos to Google.  Existing photos wait for explicit review before replacement.",
       ),
     ),
@@ -1750,7 +1751,7 @@ function mountShell(root: HTMLElement): Shell {
   const google = el("button", { class: "btn secondary", type: "button" }, "Import Google Contacts");
   google.addEventListener("click", () => void importFromGoogle());
   const importActions: HTMLElement[] = [pick, google];
-  if (canPickDeviceContacts()) {
+  if (deviceContactsAvailable) {
     const device = el("button", { class: "btn secondary phone-only", type: "button" }, "Import From This Phone");
     device.addEventListener("click", () => void importFromDevice());
     importActions.push(device);
@@ -1779,7 +1780,7 @@ function mountShell(root: HTMLElement): Shell {
   });
   app.append(notice);
 
-  const landing = buildLanding();
+  const landing = buildLanding(deviceContactsAvailable);
   app.append(landing);
 
   // ---- review stage ------------------------------------------------
