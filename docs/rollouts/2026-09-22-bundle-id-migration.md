@@ -88,11 +88,15 @@ The macOS app already carried `com.contactlogo.macos` and the Kit-macOS already 
 ## Owner action items
 
 1. **Apple Developer Portal** — register the new explicit App IDs: `com.contactlogo.ios`, `com.contactlogo.kit.ios`, `com.contactlogo.macos` (the macOS one already exists, verify it), `com.contactlogo.kit.macos`, and the new App Group capability `group.com.contactlogo` on **all three** App IDs (it must be registered per-App-ID for `UserDefaults` sharing + shared-container participation).  Add the Associated Domain capability `contactlogo.com` (`applinks` + `webcredentials`) on `com.contactlogo.ios`.  This PR does not have the credentials to do so.
-2. **`contactlogo.com` DNS + AASA** — host the Apple App Site Association at `https://contactlogo.com/.well-known/apple-app-site-association` on the verified `contactlogo.com` zone (Universal Links for `com.contactlogo.ios` and webcredentials for the shared Safari password flow).  The associated-domains entitlement values `applinks:contactlogo.com` and `webcredentials:contactlogo.com` are already wired in `Apps/ContactLogoiOS/ContactLogoiOS.entitlements`; they will validate once the AASA is reachable.
+2. **`contactlogo.com` DNS + AASA** — host the Apple App Site Association at `https://contactlogo.com/.well-known/apple-app-site-association` on the verified `contactlogo.com` zone.  The associated-domains entitlement values `applinks:contactlogo.com` and `webcredentials:contactlogo.com` are wired in `Apps/ContactLogoiOS/ContactLogoiOS.entitlements`; see the scoped hosting follow-up below before claiming either service works.
 3. **Code-signing** — the certificate refresh is vendor-driven and out of scope.  After the cert swap, the build picks up the new bundle ID without any further source change (it reads `PRODUCT_BUNDLE_IDENTIFIER = "com.contactlogo.ios"` from `project.yml`).
 4. **TestFlight re-upload** — vendor (hosted `testflight.yml` or equivalent).  No source change required beyond this PR's `project.yml`; `xcodegen generate` regenerates `ContactLogo.xcodeproj` with the new `PRODUCT_BUNDLE_IDENTIFIER`.
 5. **macOS keychain access group** — if the owner wants existing macOS Keychain items to remain shared with the renamed iOS app beyond the existing service-name namespace, no action is needed for the lane itself (the Keychain service `com.contactlogo.credentials` is unchanged).  If a clean cut is desired on the App Group side, the owner signs the new App Group separately — out of scope for this PR.
 6. **Android bundle** — separate lane (see the `out-of-scope` section above).  Owner decides whether to align Android with the fleet's `.<platform>` suffix convention or leave as `com.contactlogo` and re-scope later.
+
+### 2026-09-26 AASA hosting follow-up
+
+The web AASA file serves the single declared iOS App ID `CC8UTF7ATG.com.contactlogo.ios`, using the current distribution team and the bundle ID in `project.yml`.  Its `paths` array is empty because the iOS app has no verified Universal Link URL handler; publishing the file does not make any website URL open the app.  The AASA omits `webcredentials` until a shared-credential flow is verified, even though that service remains in the iOS entitlement.  Apple Developer Portal capability registration, Apple CDN uptake, and on-device routing still need separate verification.
 
 ## Verification
 
