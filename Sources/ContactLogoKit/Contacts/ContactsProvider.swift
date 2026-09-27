@@ -19,12 +19,34 @@ public protocol ContactsProvider: Sendable {
     /// state so the UI can show a blocking banner on pre-iOS-18 too.
     /// See `LimitedAccessState` for the cases.
     func limitedAccessDiagnosis() async -> LimitedAccessState
+    /// 2026-09-27 — how many contacts the app can currently see in the
+    /// device Contacts database, independent of authorization state.
+    ///
+    /// This is the number that separates the two causes of a "tiny scan",
+    /// and they have completely different fixes:
+    ///
+    /// 1. **`.limited` access** — the address book is large but the app may
+    ///    only read a subset.  Fix is in Settings → ContactLogo → Contacts.
+    /// 2. **Contacts are not in the device database** — the user keeps
+    ///    their business contacts in Google / Exchange and that account's
+    ///    Contacts Sync is off, so the device only holds a handful of
+    ///    local entries.  Fix is in Settings → [account] → Contacts.
+    ///
+    /// The two are indistinguishable from `limitedAccessState` alone when
+    /// the OS reports `.open` (full access) but the database is small, which
+    /// is exactly the case that left the owner stuck on "still only 22".
+    func visibleContactCount() async -> Int
+    /// False when `visibleContactCount()` tripped an enumeration bound, so
+    /// the returned number is a lower bound rather than the true total.
+    func visibleContactCountIsExact() async -> Bool
 }
 
 extension ContactsProvider {
     public func requestAccess() async throws -> Bool { true }
     public func isLimitedAccess() async -> Bool { false }
     public func limitedAccessDiagnosis() async -> LimitedAccessState { .open }
+    public func visibleContactCount() async -> Int { 0 }
+    public func visibleContactCountIsExact() async -> Bool { true }
 }
 
 /// 2026-09-21 follow-up audit — the result of probing `.limited` Contacts
@@ -103,8 +125,15 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
 
     /// Cheap enumeration — counts contacts without building identities.
     /// Used by `limitedAccessDiagnosis` to detect the small-subset case on
-    /// iOS 17 and earlier where Apple's `.limited` status isn't exposed.
-    private func visibleContactCount() async -> Int {
+    /// iOS 17 and earlier where Apple's `.limited` status isn't exposed,
+    /// and by the iOS Diagnostic screen to separate "access is limited"
+    /// from "the device database is only this big".
+    ///
+    /// Only the identifier key is fetched, so this stays cheap; the early
+    /// `stop` is a safety bound, not a silent truncation.  The bound is
+    /// reported honestly to callers via `visibleContactCountIsExact`, which
+    /// is false when the stop fired and the true total may be larger.
+    public func visibleContactCount() async -> Int {
         #if canImport(Contacts)
         let keys: [CNKeyDescriptor] = [CNContactIdentifierKey as CNKeyDescriptor]
         let request = CNContactFetchRequest(keysToFetch: keys)
@@ -115,7 +144,7 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
                 // `stop.pointee = true` halts the entire enumeration, not just the
                 // current callback.  Without this the "1,000 contact bound" was a
                 // no-op — every contact still ran, doubling scan cost.
-                if count > 1_000 { stop.pointee = true }
+                if count > Self.visibilityBound { stop.pointee = true }
             }
         } catch {
             return 0
@@ -124,6 +153,17 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         #else
         return 0
         #endif
+    }
+
+    /// Enumeration ceiling.  Identifier-only enumeration is cheap, so this is
+    /// set well above any real address book (the owner's is ~1,000) while
+    /// still bounding a pathological case.
+    static let visibilityBound = 25_000
+
+    /// False when `visibleContactCount()` tripped the enumeration bound and
+    /// the device may hold more than the returned number.
+    public func visibleContactCountIsExact() async -> Bool {
+        await visibleContactCount() < Self.visibilityBound
     }
 
     private static var keys: [CNKeyDescriptor] {

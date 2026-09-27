@@ -588,6 +588,22 @@ public struct MatchPipeline: Sendable {
         // looksLikeBusinessName's ≥3-token branch.  The shape is the
         // same regardless of token count: every part is a short
         // alphabetic word, possibly with apostrophes or hyphens.
-        return parts.allSatisfy { $0.range(of: #"^[A-Za-z][A-Za-z'.-]{1,30}$"#, options: .regularExpression) != nil }
+        //
+        // 2026-09-27: an ALL-CAPS token is an acronym, not a given or
+        // family name.  Without this, "Northwest Harris County MUD"
+        // matched the person shape on all three name parts and the whole
+        // organization was dropped as a person — the exact failure the
+        // owner reported, where businesses were being treated as people.
+        let alphabetic = parts.filter { $0.range(of: #"^[A-Za-z][A-Za-z'.-]{1,30}$"#, options: .regularExpression) != nil }
+        guard alphabetic.count == parts.count else { return false }
+        return !parts.contains(where: Self.isAcronymToken)
+    }
+
+    /// A short all-caps token.  Single letters are initials and stay part
+    /// of a person name ("John Q Smith"); 2-5 uppercase letters read as an
+    /// organizational acronym (LLC, MUD, HVAC, PHD).
+    static func isAcronymToken(_ token: String) -> Bool {
+        guard token.count >= 2, token.count <= 5 else { return false }
+        return token.allSatisfy { $0.isUppercase }
     }
 }
