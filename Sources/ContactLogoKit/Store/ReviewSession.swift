@@ -57,7 +57,8 @@ public final class ReviewSession: ObservableObject {
     /// 2026-09-21 follow-up audit — finer-grained authorization view so the
     /// iOS UI can render a blocking banner on pre-iOS-18 too.  Promoted
     /// from `limitedAccessGranted` (Bool, iOS-18-only signal) to
-    /// `LimitedAccessState` (definite | heuristic | denied | restricted).
+    /// `LimitedAccessState` (definite | fullAccessSmallDatabase | heuristic
+    /// | denied | restricted).
     @Published public internal(set) var limitedAccessState: LimitedAccessState = .open
     /// 2026-09-27 — how many contacts the app could actually see in the
     /// device Contacts database during the last scan.
@@ -173,7 +174,10 @@ public final class ReviewSession: ObservableObject {
                 self.limitedAccessState = state
                 switch state {
                 case .definite, .heuristic: self.limitedAccessGranted = true
-                case .open, .denied, .restricted: self.limitedAccessGranted = false
+                // Full access with a small database is NOT a limited grant —
+                // saying so here is what sent the owner to a Settings toggle
+                // that could not change the number.
+                case .fullAccessSmallDatabase, .open, .denied, .restricted: self.limitedAccessGranted = false
                 }
                 if visible > 0 {
                     self.visibleContactCount = visible
@@ -379,7 +383,9 @@ public final class ReviewSession: ObservableObject {
             limitedAccessState = diag
             switch diag {
             case .definite, .heuristic: limitedAccessGranted = true
-            case .open, .denied, .restricted: limitedAccessGranted = false
+            // Access is full here; a small database means the contacts are
+            // not on the device, which the All Contacts fix cannot change.
+            case .fullAccessSmallDatabase, .open, .denied, .restricted: limitedAccessGranted = false
             }
             // 2026-09-27 — the raw size of the device Contacts database.
             // Enumerating identifiers is cheap and this is the number that
