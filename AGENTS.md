@@ -47,6 +47,10 @@ under `~/apps/` once fleet onboard lands.  Read `docs/CONTACTLOGO.md`,
 Do not commit scan dumps, AddressBook exports, or `.contactlogo/` / `.badgebook/`
 artifacts.
 
+## Visual verification
+
+UI changes must be covered by automated visual verification where feasible: Playwright screenshot assertions for web surfaces, `xcrun simctl io booted screenshot` for iOS simulator.  The owner never takes manual screenshots and does not run local UI preview sessions.  Native Mac app UI is verified through code review and CI.  Web visual specs live in `web/tests/e2e/` and run in the `E2E smoke` workflow.
+
 ## Bundle identifiers (canonical, post-2026-09-22 migration)
 
 | Surface | Bundle ID | Notes |
@@ -70,3 +74,4 @@ The Android Java package `com.contactlogo.*` is intentionally **out of scope**
 for this lane (matches the Autorotate Android handling); a separate future
 rename PR will need to decide whether to align Android with the `.ios` suffix
 convention.
+
