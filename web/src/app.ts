@@ -155,7 +155,7 @@ export const CREDENTIAL_STORAGE_FAILED_COPY =
   "This browser could not save the key.  It will be used until you close the tab.";
 
 export const PRIVACY_SENTENCE =
-  "Imported vCards and CSVs are reviewed in this browser.  Google Contacts import and selected-photo sync connect to Google when you choose them.  Logo lookups request images using business domains.";
+  "Imported vCards and CSVs are reviewed in this browser.  Logo lookups request images using business domains.  If you choose Google Contacts import or sync, this browser exchanges contacts or approved photos with Google.";
 
 /** Locked CSS height of `.card`.  The virtualizer is uniform-row on purpose. */
 export const REVIEW_CARD_HEIGHT = 248;
@@ -1630,16 +1630,16 @@ function buildLanding(): HTMLElement {
   const what = el(
     "section",
     { class: "section" },
-    el("h2", {}, "Every Business in Your Contacts, With Its Real Logo"),
+    el("h2", {}, "Suggested Logos for Business Contacts"),
     el(
       "p",
       {},
-      "Your address book is full of grey initial circles.  ContactLogo suggests brand marks for business cards, such as a pharmacy, bank, or school.  Review each result before you export or sync it.",
+      "ContactLogo suggests brand marks for business cards, such as a pharmacy, bank, or school.  Compare candidates before you export or sync approved updates.",
     ),
     el(
       "p",
       { class: "meta" },
-      "People are left alone.  Contacts with a first or last name are never given a company logo, and a photo you already chose is never overwritten without you ticking the box.",
+      "Contacts identified as people are excluded from logo suggestions.  Business cards with existing photos wait in Needs Review, with replacement left to your choice.",
     ),
   );
 
@@ -1662,13 +1662,13 @@ function buildLanding(): HTMLElement {
         "li",
         {},
         el("strong", {}, "Review. "),
-        "Every match is scored.  Clear, square, official marks come pre-checked; guesses, look-alike names and existing photos wait for your glance.  Each card offers other candidates, your own upload, a pasted image, and a crop tool.",
+        "Candidates are ranked by matching evidence.  High-confidence candidates may be pre-checked; guessed domains, look-alike names, and existing photos wait in Needs Review.  You can choose another image, upload your own, paste a URL, or crop.",
       ),
       el(
         "li",
         {},
         el("strong", {}, "Apply. "),
-        "Download a small file containing only the contacts you approved, export the whole address book, or push the approved photos straight to Google Contacts.",
+        "Download selected updated cards, export the whole address book with approved updates, or sync approved photos to Google Contacts.",
       ),
     ),
   );
@@ -1680,19 +1680,14 @@ function buildLanding(): HTMLElement {
     el(
       "p",
       {},
-      "There is no automatic apply.  Review the selected logos before downloading an updated vCard or syncing approved photos to Google Contacts.  You can download a backup of the imported address book before applying changes.",
+      "Nothing is applied automatically.  Review selected logos before downloading an updated vCard or syncing approved photos to Google Contacts.  You can download a backup of the imported address book first.",
     ),
     el("h2", {}, "Review in Your Browser"),
     el("p", {}, PRIVACY_SENTENCE),
     el(
       "p",
-      {},
-      "Imported files are not uploaded as an address book.  Logo lookups can contact the site's domain-based cache and external image services; optional Google Contacts actions send requests to Google.  Closing the tab clears the imported book from this session.",
-    ),
-    el(
-      "p",
       { class: "meta" },
-      "A wrong logo is worse than none.  Generic names like “Hospital” or “Gift Card”, and names that double as ordinary words, are never matched automatically.",
+      "A wrong logo is worse than none.  Generic names like “Hospital” or “Gift Card” stay out of automatic suggestions.",
     ),
   );
 
@@ -1734,9 +1729,9 @@ function mountShell(root: HTMLElement): Shell {
       el(
         "p",
         {},
-        "Brand icons for your address book.  Import a vCard, Google CSV, or Google Contacts",
-        el("span", { class: "phone-only" }, ", or this phone"),
-        ", review every match, then download an updated card or sync directly to Google.  Existing person photos are never replaced.",
+        "Brand icons for your address book.  Import a vCard or Google CSV, or connect Google Contacts",
+        el("span", { class: "phone-only" }, ", or choose contacts from this phone"),
+        ".  Review suggested logos, then download approved updates or sync selected photos to Google.  Existing photos wait for explicit review before replacement.",
       ),
     ),
   );
@@ -1764,7 +1759,7 @@ function mountShell(root: HTMLElement): Shell {
   const drop = el(
     "div",
     { class: "drop" },
-    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Files are reviewed in this browser.  Logo lookups use business domains; optional Google import or sync sends requests to Google when you choose it.")),
+    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Choose a local file or connect Google Contacts.  Review suggestions before exporting or syncing.")),
     ...importActions,
     file,
   );
@@ -1908,7 +1903,7 @@ function mountShell(root: HTMLElement): Shell {
     el(
       "p",
       { class: "footer" },
-      "Review-first: clear, official marks are pre-checked; guessed domains, favicons and photos you already have wait for your review.  Native Mac, iPhone, and Android apps follow the same rules.  ",
+      "Review-first: high-confidence candidates may be pre-checked; guessed domains, favicons, and cards with existing photos wait for your review.  ",
       el("a", { href: "/privacy" }, "Privacy"),
       " · ",
       el("a", { href: "/terms" }, "Terms"),

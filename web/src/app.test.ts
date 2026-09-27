@@ -195,9 +195,9 @@ test("triage keys ignore typing, modifiers, and the crop modal", () => {
 test("homepage privacy sentence scopes optional Google and logo requests", () => {
   assert.equal(
     PRIVACY_SENTENCE,
-    "Imported vCards and CSVs are reviewed in this browser.  Google Contacts import and selected-photo sync connect to Google when you choose them.  Logo lookups request images using business domains.",
+    "Imported vCards and CSVs are reviewed in this browser.  Logo lookups request images using business domains.  If you choose Google Contacts import or sync, this browser exchanges contacts or approved photos with Google.",
   );
-  assert.match(PRIVACY_SENTENCE, /\. {2}Google/);
+  assert.match(PRIVACY_SENTENCE, /\. {2}Logo/);
   assert.equal(
     HD_KEYS_EMPTY_COPY,
     "High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.",
@@ -297,12 +297,12 @@ test("trimViewCache bounds the cache without evicting mounted views", () => {
 test("review chrome copy is American and hides raw engine flags behind human phrases", () => {
   const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "app.ts"), "utf8");
   assert.doesNotMatch(source, /recognise/);
-  assert.match(source, /Review each result before you export or sync it/);
+  assert.match(source, /Compare candidates before you export or sync approved updates/);
   assert.match(source, /Choose Your Own/);
   assert.match(source, /"Approve"/);
   for (const chrome of [
     "How It Works",
-    "Every Business in Your Contacts, With Its Real Logo",
+    "Suggested Logos for Business Contacts",
     "Nothing Changes Without Your Approval",
     "Review in Your Browser",
     "Try Another",
