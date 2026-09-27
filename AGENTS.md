@@ -25,7 +25,7 @@ DNS credentials.  Do not treat Grok Publish (`contact-logo.grok.me`,
 `contactlogo.grok.me`, `bizlogo.grok.me`) as the product URL.  Do not attach
 App Store / Play badges until listings exist.
 
-Hosting and routing (apexes, hostnames, hosts, deploy paths): see [`Fleet-OPS/docs/DOMAINS-AND-ROUTING.md`](https://github.com/jaywedgeworth22/Fleet-OPS/blob/main/docs/DOMAINS-AND-ROUTING.md). Built from live Cloudflare, Vercel, Coolify, Namecheap/RDAP, and GitHub APIs by CLAUDE on 2026-09-25; refresh via `Fleet-OPS/scripts/domain-inventory/run-all.sh`.
+Consult the private operations inventory for hosting and routing details.
 
 Sibling names (other apps, not this repo): Autorotate public host is
 `autorotate.codes` (GitHub may still say TopSpin).  DealDex public host is
@@ -70,4 +70,3 @@ The Android Java package `com.contactlogo.*` is intentionally **out of scope**
 for this lane (matches the Autorotate Android handling); a separate future
 rename PR will need to decide whether to align Android with the `.ios` suffix
 convention.
-
