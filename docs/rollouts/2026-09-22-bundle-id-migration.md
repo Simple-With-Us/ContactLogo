@@ -96,7 +96,7 @@ The macOS app already carried `com.contactlogo.macos` and the Kit-macOS already 
 
 ### 2026-09-26 AASA hosting follow-up
 
-The web AASA file serves the single declared iOS App ID `CC8UTF7ATG.com.contactlogo.ios`, using the current distribution team and the bundle ID in `project.yml`.  Its `paths` array is empty because the iOS app has no verified Universal Link URL handler; publishing the file does not make any website URL open the app.  The AASA omits `webcredentials` until a shared-credential flow is verified, even though that service remains in the iOS entitlement.  Apple Developer Portal capability registration, Apple CDN uptake, and on-device routing still need separate verification.
+The web AASA file serves the single declared iOS App ID `CC8UTF7ATG.com.contactlogo.ios`, using the current distribution team and the bundle ID in `project.yml`.  Its only path rule is `NOT *`, Apple's explicit negative wildcard, because the iOS app has no verified Universal Link URL handler; publishing the file does not make any website URL open the app.  The AASA omits `webcredentials` until a shared-credential flow is verified, even though that service remains in the iOS entitlement.  Apple Developer Portal capability registration, Apple CDN uptake, and on-device routing still need separate verification.
 
 ## Verification
 
