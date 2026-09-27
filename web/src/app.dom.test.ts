@@ -226,24 +226,28 @@ test("the landing page gives way to the review stage", () => {
   const headings = findAll(stubDocument.root, (n) => n.tagName === "H2" && visible(n)).map((n) => n.textContent);
   assert.ok(headings.includes("How It Works"), `landing headings: ${headings.join(" | ")}`);
   assert.ok(headings.includes("Nothing Changes Without Your Approval"));
-  assert.ok(headings.includes("Your Contacts Stay in This Browser"));
-  assert.ok(headings.includes("Every Business in Your Contacts, With Its Real Logo"));
+  assert.ok(headings.includes("Review in Your Browser"));
+  assert.ok(headings.includes("Suggested Logos for Business Contacts"));
 
-  const copy = findAll(stubDocument.root, (n) => visible(n))
+  const renderedCopy = findAll(stubDocument.root, (n) => visible(n))
     .map((n) => n.textContent)
     .join(" ");
+  const copy = renderedCopy.replaceAll("\u00a0", " ");
+  assert.ok(renderedCopy.includes("address book.\u00a0 Import"), "landing sentence gap is not visible");
   for (const jargon of ["ContactLogoKit", "backups/", "BadgeBook", "Crest"]) {
     assert.ok(!copy.includes(jargon), `customer copy leaked "${jargon}"`);
   }
-  assert.ok(copy.includes("recognize instead of two letters"), "British recognise leaked");
+  assert.ok(copy.includes("Compare candidates before you export or sync approved updates."));
   assert.ok(!copy.includes("recognise"), "British recognise still present");
   assert.ok(
     copy.includes(
-      "Your address book never leaves this device.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.",
+      "Imported vCards and CSVs are reviewed in this browser.  Logo lookups request images using business domains.  If you choose Google Contacts import or sync, this browser exchanges contacts or approved photos with Google.",
     ),
     "homepage privacy sentence missing",
   );
-  assert.ok(findAll(stubDocument.root, (n) => hasClass(n, "phone-only")).length >= 2, "phone-only copy missing");
+  assert.ok(!copy.includes("from this phone"), "unsupported phone import promise shown");
+  assert.ok(!findAll(stubDocument.root, (n) => hasClass(n, "phone-only")).length, "phone import shown without capability");
+  assert.ok(findAll(stubDocument.root, (n) => hasClass(n, "landing-help")).length === 2, "landing help copy must wrap");
   assert.ok(copy.includes("Import an Address Book"), "drop-zone heading missing");
   const landingButtons = findAll(stubDocument.root, (n) => n.tagName === "BUTTON" && visible(n)).map((n) => n.textContent);
   assert.ok(landingButtons.includes("Import vCard or CSV"), `landing buttons: ${landingButtons.join(" | ")}`);

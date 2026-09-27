@@ -107,6 +107,10 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+function visibleSentenceGaps(copy: string): string {
+  return copy.replace(/([.!?])  (?=\S)/g, "$1\u00a0 ");
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 function noLogoIcon(): SVGElement {
@@ -155,7 +159,7 @@ export const CREDENTIAL_STORAGE_FAILED_COPY =
   "This browser could not save the key.  It will be used until you close the tab.";
 
 export const PRIVACY_SENTENCE =
-  "Your address book never leaves this device.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.";
+  "Imported vCards and CSVs are reviewed in this browser.  Logo lookups request images using business domains.  If you choose Google Contacts import or sync, this browser exchanges contacts or approved photos with Google.";
 
 /** Locked CSS height of `.card`.  The virtualizer is uniform-row on purpose. */
 export const REVIEW_CARD_HEIGHT = 248;
@@ -1626,20 +1630,20 @@ function buildSettingsPanel(): {
   return { node, input, brandfetchInput, logodevInput, hdEmpty, storageWarn };
 }
 
-function buildLanding(): HTMLElement {
+function buildLanding(deviceContactsAvailable: boolean): HTMLElement {
   const what = el(
     "section",
     { class: "section" },
-    el("h2", {}, "Every Business in Your Contacts, With Its Real Logo"),
+    el("h2", {}, "Suggested Logos for Business Contacts"),
     el(
       "p",
       {},
-      "Your address book is full of grey initial circles.  ContactLogo finds the official mark for each business card in it — the pharmacy, the bank, the school, the plumber — so calls, messages and mail arrive with a face you recognize instead of two letters.",
+      visibleSentenceGaps("ContactLogo suggests brand marks for business cards, such as a pharmacy, bank, or school.  Compare candidates before you export or sync approved updates."),
     ),
     el(
       "p",
-      { class: "meta" },
-      "People are left alone.  Contacts with a first or last name are never given a company logo, and a photo you already chose is never overwritten without you ticking the box.",
+      { class: "meta landing-help" },
+      visibleSentenceGaps("Contacts identified as people are excluded from logo suggestions.  Business cards with existing photos wait in Needs Review, with replacement left to your choice."),
     ),
   );
 
@@ -1655,20 +1659,20 @@ function buildLanding(): HTMLElement {
         {},
         el("strong", {}, "Import. "),
         "Drop in a vCard or Google CSV export, or connect Google Contacts",
-        el("span", { class: "phone-only" }, ", or pick straight from this phone"),
+        ...(deviceContactsAvailable ? [el("span", { class: "phone-only" }, ", or pick straight from this phone")] : []),
         ".",
       ),
       el(
         "li",
         {},
         el("strong", {}, "Review. "),
-        "Every match is scored.  Clear, square, official marks come pre-checked; guesses, look-alike names and existing photos wait for your glance.  Each card offers other candidates, your own upload, a pasted image, and a crop tool.",
+        visibleSentenceGaps("Candidates are ranked by matching evidence.  High-confidence candidates may be pre-checked; guessed domains, look-alike names, and existing photos wait in Needs Review.  You can choose another image, upload your own, paste a URL, or crop."),
       ),
       el(
         "li",
         {},
         el("strong", {}, "Apply. "),
-        "Download a small file containing only the contacts you approved, export the whole address book, or push the approved photos straight to Google Contacts.",
+        "Download selected updated cards, export the whole address book with approved updates, or sync approved photos to Google Contacts.",
       ),
     ),
   );
@@ -1680,19 +1684,14 @@ function buildLanding(): HTMLElement {
     el(
       "p",
       {},
-      "There is no automatic apply.  A logo reaches your address book only after you tick its box and press the download or sync button — and one click saves an untouched copy of the original first, so you can always go back.",
+      visibleSentenceGaps("Nothing is applied automatically.  Review selected logos before downloading an updated vCard or syncing approved photos to Google Contacts.  You can download a backup of the imported address book first."),
     ),
-    el("h2", {}, "Your Contacts Stay in This Browser"),
-    el("p", {}, PRIVACY_SENTENCE),
+    el("h2", {}, "Review in Your Browser"),
+    el("p", {}, visibleSentenceGaps(PRIVACY_SENTENCE)),
     el(
       "p",
-      {},
-      "Logo images are fetched from public brand sources by domain name only, and closing the tab leaves the imported book behind.",
-    ),
-    el(
-      "p",
-      { class: "meta" },
-      "A wrong logo is worse than none.  Generic names like “Hospital” or “Gift Card”, and names that double as ordinary words, are never matched automatically.",
+      { class: "meta landing-help" },
+      visibleSentenceGaps("A wrong logo is worse than none.  Generic names like “Hospital” or “Gift Card” stay out of automatic suggestions."),
     ),
   );
 
@@ -1702,6 +1701,7 @@ function buildLanding(): HTMLElement {
 function mountShell(root: HTMLElement): Shell {
   if (shell && shell.root === root && root.firstChild) return shell;
 
+  const deviceContactsAvailable = canPickDeviceContacts();
   root.replaceChildren();
   const app = el("div", { class: "app" });
 
@@ -1734,9 +1734,9 @@ function mountShell(root: HTMLElement): Shell {
       el(
         "p",
         {},
-        "Brand icons for your address book.  Import a vCard, Google CSV, or Google Contacts",
-        el("span", { class: "phone-only" }, ", or this phone"),
-        ", review every match, then download an updated card or sync directly to Google.  Existing person photos are never replaced.",
+        visibleSentenceGaps("Brand icons for your address book.  Import a vCard or Google CSV, or connect Google Contacts"),
+        ...(deviceContactsAvailable ? [el("span", { class: "phone-only" }, ", or choose contacts from this phone")] : []),
+        visibleSentenceGaps(".  Review suggested logos, then download approved updates or sync selected photos to Google.  Existing photos wait for explicit review before replacement."),
       ),
     ),
   );
@@ -1755,7 +1755,7 @@ function mountShell(root: HTMLElement): Shell {
   const google = el("button", { class: "btn secondary", type: "button" }, "Import Google Contacts");
   google.addEventListener("click", () => void importFromGoogle());
   const importActions: HTMLElement[] = [pick, google];
-  if (canPickDeviceContacts()) {
+  if (deviceContactsAvailable) {
     const device = el("button", { class: "btn secondary phone-only", type: "button" }, "Import From This Phone");
     device.addEventListener("click", () => void importFromDevice());
     importActions.push(device);
@@ -1764,7 +1764,7 @@ function mountShell(root: HTMLElement): Shell {
   const drop = el(
     "div",
     { class: "drop" },
-    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Your address book never leaves this device.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.")),
+    el("div", {}, el("strong", {}, "Import an Address Book"), el("span", {}, "Choose a local file or connect Google Contacts.  Review suggestions before exporting or syncing.")),
     ...importActions,
     file,
   );
@@ -1784,7 +1784,7 @@ function mountShell(root: HTMLElement): Shell {
   });
   app.append(notice);
 
-  const landing = buildLanding();
+  const landing = buildLanding(deviceContactsAvailable);
   app.append(landing);
 
   // ---- review stage ------------------------------------------------
@@ -1908,7 +1908,7 @@ function mountShell(root: HTMLElement): Shell {
     el(
       "p",
       { class: "footer" },
-      "Review-first: clear, official marks are pre-checked; guessed domains, favicons and photos you already have wait for your review.  Native Mac, iPhone, and Android apps follow the same rules.  ",
+      "Review-first: high-confidence candidates may be pre-checked; guessed domains, favicons, and cards with existing photos wait for your review.  ",
       el("a", { href: "/privacy" }, "Privacy"),
       " · ",
       el("a", { href: "/terms" }, "Terms"),

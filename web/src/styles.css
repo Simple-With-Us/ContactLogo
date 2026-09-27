@@ -359,6 +359,11 @@ input[type="checkbox"]:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.landing-help {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
 
 .alts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: nowrap; overflow-x: auto; max-height: 44px; }
 .alts-btn {

@@ -65,11 +65,11 @@
     <div class="container">
       <a class="header-link" href="/">&larr; Back to ContactLogo</a>
       <h1>Privacy Policy</h1>
-      <p class="date">Last updated: September 1, 2026</p>
+      <p class="date">Last updated: September 26, 2026</p>
 
       <h2>Overview</h2>
       <p>ContactLogo ("we", "our", or "us") matches business contacts to public brand marks so your address book shows a logo instead of grey initials.  This policy covers the web app at contactlogo.com, the iOS app, the macOS app, and the Android app.</p>
-      <p>Your address book never leaves this device unless you explicitly choose Google Contacts import or write-back.  Crash and performance telemetry, if enabled, never includes contact names, emails, or photos.</p>
+      <p>Imported vCards and CSVs are reviewed in the browser.&nbsp; Google Contacts import reads contacts from Google when you choose it; selected-photo sync sends approved updates back to Google.&nbsp; Logo requests use business domains and can reach external image services.</p>
 
       <h2>On-device processing</h2>
       <ul>
@@ -93,7 +93,7 @@
         <li>Wikimedia Commons, on native Apple apps</li>
         <li>Official company domains, when you paste an image URL</li>
       </ul>
-      <p>Those third parties receive the domain string and standard request metadata (IP address, user agent).  They do not receive your address book.</p>
+      <p>The first-party logo cache and external image services can receive the business domain and standard request metadata (such as IP address and user agent).&nbsp; ContactLogo does not send the imported address-book file as a logo request.</p>
 
       <h2>Google Contacts</h2>
       <p>If you tap Import Google Contacts or Apply to Google Contacts, the browser talks to Google using OAuth.  Scopes cover reading your Google Contacts and, when you choose write-back, updating contact photos you approved.  Google is the processor for that data.  ContactLogo never sees the OAuth refresh token on a ContactLogo server, because there is no ContactLogo account server.</p>
@@ -115,7 +115,7 @@
 
       <h2>Your choices</h2>
       <ul>
-        <li>Web: close the tab.  The imported book is gone.</li>
+        <li>Web: close the tab when you finish reviewing.&nbsp; This does not delete downloaded files or undo changes already synced to Google Contacts.</li>
         <li>iOS / macOS: Settings → Privacy &amp; Security → Contacts.</li>
         <li>Android: app permission for Contacts.</li>
         <li>Google: revoke ContactLogo in your Google Account security settings.</li>
