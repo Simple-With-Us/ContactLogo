@@ -59,8 +59,38 @@ public enum LimitedAccessState: Sendable, Equatable {
     case open
     case definite
     case heuristic(Int) // visible contact count
+    /// 2026-09-27 follow-up — the OS reports **full** access
+    /// (`.authorized`) while the Contacts database the app can read is
+    /// small.  This is deliberately its own case rather than a flavour of
+    /// `.heuristic`.
+    ///
+    /// It used to be reported as `.heuristic`, which the UI headlines as
+    /// "Limited contacts access" and fixes with "Settings → ContactLogo →
+    /// Contacts → All Contacts".  On a full-access grant that fix provably
+    /// cannot change anything, so the user does it, the number stays where
+    /// it was, and the app looks broken.  That is the loop the owner was
+    /// stuck in ("still only 22").
+    ///
+    /// The real cause is upstream of the app: the contacts are not in the
+    /// device database, almost always because the Google / Exchange account
+    /// that holds them has Contacts Sync switched off.
+    case fullAccessSmallDatabase(Int) // visible contact count
     case denied
     case restricted
+
+    /// A visible address book below this size is "suspiciously small" and
+    /// worth explaining.  Single source of truth so the kit's diagnosis and
+    /// the shells' copy cannot drift apart.
+    public static let smallAddressBookThreshold = 100
+
+    /// True when the app genuinely holds a limited-access grant, i.e. only
+    /// "Settings → … → Contacts → All Contacts" can widen what it sees.
+    /// `.heuristic` and `.fullAccessSmallDatabase` are both *not* this:
+    /// the first is unproven, the second is disproven.
+    public var isGenuineLimitedGrant: Bool {
+        if case .definite = self { return true }
+        return false
+    }
 }
 
 #if canImport(Contacts)
@@ -110,13 +140,30 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
             if status == .limited { return .definite }
             if status == .denied { return .denied }
             if status == .restricted { return .restricted }
+            if status == .authorized {
+                // FULL access.  This branch is the whole point: before it
+                // existed, `.authorized` fell through to the "is it
+                // suspiciously small?" heuristic below and came back as
+                // `.heuristic(22)`, which the UI renders as a limited grant
+                // and fixes with an All Contacts toggle that cannot help.
+                //
+                // With access already full, a small database is not a
+                // permissions problem at all — the contacts simply are not
+                // on this device.
+                let visible = await visibleContactCount()
+                let small = visible > 0 && visible < LimitedAccessState.smallAddressBookThreshold
+                return small ? .fullAccessSmallDatabase(visible) : .open
+            }
+            // `.notDetermined` — no grant yet, so there is nothing to
+            // diagnose.  Enumerating here would return 0 anyway.
+            return .open
         }
-        // Heuristic on every version: enumerate once and compare the
-        // container identifier to the system default.  A non-default
-        // container with a small visible subset (≪ what a typical
-        // user with iCloud sync would have) is treated as likely limited.
+        // Pre-iOS-18: Apple never exposes `.limited`, so a small subset is
+        // the only signal available.  It genuinely cannot tell the two
+        // causes apart, which is why `.heuristic` keeps the combined
+        // two-cause copy and `.fullAccessSmallDatabase` does not.
         let visibleCount = await visibleContactCount()
-        let likely = visibleCount < 100 && visibleCount > 0
+        let likely = visibleCount > 0 && visibleCount < LimitedAccessState.smallAddressBookThreshold
         return likely ? .heuristic(visibleCount) : .open
         #else
         return .open

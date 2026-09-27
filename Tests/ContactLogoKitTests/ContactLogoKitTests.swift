@@ -1323,5 +1323,88 @@ final class AffiliatedContactTests: XCTestCase {
         XCTAssertEqual(session.sampleDroppedContacts.map(\.contactID), ["h1"])
         XCTAssertTrue(session.sampleDroppedContacts.first?.reason.contains("non-brand") ?? false)
     }
+
+    // MARK: - 2026-09-27 full-access small address book
+
+    /// Reports a fixed diagnosis and visible count so the session's mapping
+    /// from authorization state to UI-facing flags can be exercised without
+    /// a real address book.
+    private struct DiagnosingProvider: ContactsProvider {
+        let state: LimitedAccessState
+        let visible: Int
+        func requestAccess() async throws -> Bool { true }
+        func fetchCandidates() async throws -> [ContactIdentity] { [] }
+        func fetchCandidate(id: String) async -> ContactIdentity? { nil }
+        func imageData(forContactID id: String) async throws -> Data? { nil }
+        func setImage(_ data: Data, forContactID id: String) async throws {}
+        func removeImage(forContactID id: String) async throws {}
+        func limitedAccessDiagnosis() async -> LimitedAccessState { state }
+        func visibleContactCount() async -> Int { visible }
+    }
+
+    @MainActor
+    private func scannedSession(_ state: LimitedAccessState, _ visible: Int) async -> ReviewSession {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = ReviewQueueStore(directory: tempDir, currentChangeToken: { nil })
+        let session = ReviewSession(queueStore: store)
+        session.contactsProviderForTesting = DiagnosingProvider(state: state, visible: visible)
+        session.pipelineForTesting = MatchPipeline(sources: [], fetchImage: { _ in Data() })
+        await session.scanAndMatch()
+        return session
+    }
+
+    func testOnlyDefiniteCountsAsAGenuineLimitedGrant() {
+        // The whole point of the 2026-09-27 fix: only a proven `.limited`
+        // grant justifies telling the user to switch to All Contacts.
+        // `.heuristic` is unproven and `.fullAccessSmallDatabase` is
+        // actively disproven, so neither may claim that fix applies.
+        XCTAssertTrue(LimitedAccessState.definite.isGenuineLimitedGrant)
+        XCTAssertFalse(LimitedAccessState.fullAccessSmallDatabase(22).isGenuineLimitedGrant)
+        XCTAssertFalse(LimitedAccessState.heuristic(22).isGenuineLimitedGrant)
+        XCTAssertFalse(LimitedAccessState.open.isGenuineLimitedGrant)
+        XCTAssertFalse(LimitedAccessState.denied.isGenuineLimitedGrant)
+        XCTAssertFalse(LimitedAccessState.restricted.isGenuineLimitedGrant)
+    }
+
+    func testFullAccessSmallDatabaseStateIsDistinctAndCarriesItsCount() {
+        // Regression: the old code reported this situation as
+        // `.heuristic(22)`, which the UI rendered as a limited grant and
+        // "fixed" with a Settings toggle that cannot change anything.
+        let small: LimitedAccessState = .fullAccessSmallDatabase(22)
+        XCTAssertEqual(small, .fullAccessSmallDatabase(22))
+        XCTAssertNotEqual(small, .fullAccessSmallDatabase(25))
+        XCTAssertNotEqual(small, .heuristic(22))
+        XCTAssertNotEqual(small, .definite)
+    }
+
+    @MainActor
+    func testFullAccessSmallDatabaseIsNotFlaggedAsALimitedGrant() async {
+        // 2026-09-27 — the exact state the owner was stuck in: iOS reports
+        // FULL access and the device database holds 22 entries.  Flagging
+        // this as a limited grant is what produced the dead-end "still only
+        // 22" loop, so the boolean must stay false here.
+        let session = await scannedSession(.fullAccessSmallDatabase(22), 22)
+        XCTAssertEqual(session.limitedAccessState, .fullAccessSmallDatabase(22))
+        XCTAssertFalse(session.limitedAccessGranted)
+        XCTAssertEqual(session.visibleContactCount, 22)
+    }
+
+    @MainActor
+    func testDefiniteLimitedGrantStillSetsTheBoolean() async {
+        // The inverse guard, so the fix cannot regress the case that really
+        // is a limited grant and really is fixed by All Contacts.
+        let session = await scannedSession(.definite, 22)
+        XCTAssertEqual(session.limitedAccessState, .definite)
+        XCTAssertTrue(session.limitedAccessGranted)
+    }
+
+    @MainActor
+    func testHeuristicLimitedGrantStillSetsTheBoolean() async {
+        // Pre-iOS 18 has no `.limited` signal, so the heuristic keeps its
+        // existing meaning and its existing copy.
+        let session = await scannedSession(.heuristic(22), 22)
+        XCTAssertEqual(session.limitedAccessState, .heuristic(22))
+        XCTAssertTrue(session.limitedAccessGranted)
+    }
 }
 #endif

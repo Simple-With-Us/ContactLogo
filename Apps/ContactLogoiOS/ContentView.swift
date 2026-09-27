@@ -89,21 +89,46 @@ struct ContentView: View {
 /// all named the same single cause — a limited-access grant — and the same
 /// single fix.  That is wrong for a user whose business contacts live in a
 /// Google or Exchange account that is not syncing Contacts to the device:
-/// they have full access, the OS says `.open`, the device database really
-/// does only hold a handful of entries, and "select All Contacts" fixes
-/// nothing.  That is exactly the loop the owner was stuck in ("still only
-/// 22"), so the copy now names both causes and both Settings paths.
+/// they have full access, the OS says `.authorized`, the device database
+/// really does only hold a handful of entries, and "select All Contacts"
+/// fixes nothing.  That is exactly the loop the owner was stuck in ("still
+/// only 22"), so the copy now names both causes and both Settings paths.
+///
+/// 2026-09-27 follow-up — the two causes are no longer just described side
+/// by side, they are *told apart*, because the app can tell them apart on
+/// iOS 18+.  When iOS reports full access, "All Contacts" is not offered at
+/// all, because it cannot work.  Offering a fix that provably cannot change
+/// the number is what made this look like a broken app.
 struct AddressBookVisibilityNotice: View {
     @EnvironmentObject var model: ReviewSession
+
+    /// What the app can actually prove about the tiny address book.
+    private enum Diagnosis: Equatable {
+        /// iOS reported a limited grant, so All Contacts is the real fix.
+        case limitedGrant
+        /// iOS reported full access, so the contacts are simply not on the
+        /// device and Contacts Sync is the real fix.
+        case notSyncedToDevice
+        /// The OS does not expose enough to tell the two apart (pre-iOS 18).
+        case cannotTell
+        /// Access was refused, so nothing can be scanned until it is granted.
+        case notAuthorized
+    }
+
+    private var looksSmall: Bool {
+        let visible = model.visibleContactCount
+        return visible > 0 && visible < LimitedAccessState.smallAddressBookThreshold
+    }
 
     /// Shown when the app can see a suspiciously small address book, or when
     /// iOS reports a limited grant outright.
     static func applies(to model: ReviewSession) -> Bool {
         switch model.limitedAccessState {
-        case .definite, .heuristic, .denied, .restricted: return true
+        case .definite, .heuristic, .denied, .restricted, .fullAccessSmallDatabase:
+            return true
         case .open:
-            let visible = model.visibleContactCount
-            return visible > 0 && visible < 100
+            return model.visibleContactCount > 0
+                && model.visibleContactCount < LimitedAccessState.smallAddressBookThreshold
         }
     }
 
@@ -113,34 +138,36 @@ struct AddressBookVisibilityNotice: View {
         return "\(n.formatted())"
     }
 
-    private var limitedGrant: Bool {
-        if case .definite = model.limitedAccessState { return true }
-        if case .heuristic = model.limitedAccessState { return true }
-        return false
+    private var diagnosis: Diagnosis {
+        switch model.limitedAccessState {
+        case .definite: return .limitedGrant
+        case .denied, .restricted: return .notAuthorized
+        // Pre-iOS 18 has no `.limited` signal at all, so a small book could
+        // be either cause.  Say so rather than guessing.
+        case .heuristic: return .cannotTell
+        case .fullAccessSmallDatabase, .open: return .notSyncedToDevice
+        }
+    }
+
+    private var headline: String {
+        switch diagnosis {
+        case .limitedGrant: return "Limited contacts access"
+        case .notSyncedToDevice: return "Contacts aren't syncing to this iPhone"
+        case .cannotTell: return "Address book looks incomplete"
+        case .notAuthorized: return "ContactLogo has no access to Contacts"
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(limitedGrant ? "Limited contacts access" : "Address book looks incomplete",
-                  systemImage: "person.crop.circle.badge.exclamationmark.fill")
+            Label(headline, systemImage: "person.crop.circle.badge.exclamationmark.fill")
                 .font(.headline)
                 .foregroundStyle(.orange)
-            Text("ContactLogo reads the Contacts database on this iPhone, and it currently holds only \(visible) entries. Every logo it can offer has to come from there, so the scan is capped at that number no matter how many business contacts you keep elsewhere.")
+            Text(explanation)
                 .font(.subheadline)
-
-            Text("Two different causes, two different fixes:")
-                .font(.subheadline.bold())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("1.  Limited access was granted.")
-                Text("   Settings → ContactLogo → Contacts → All Contacts.")
-                Text("2.  Contacts Sync is off for the account that holds them.")
-                Text("   Settings → [Google / Exchange account] → Contacts → Sync Contacts on.")
-                Text("   If your business contacts live in Google or Exchange, this is usually the one.")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
+            Text(fix)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Button {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
@@ -157,6 +184,32 @@ struct AddressBookVisibilityNotice: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var explanation: String {
+        switch diagnosis {
+        case .limitedGrant:
+            return "ContactLogo was allowed to read only some of your contacts, so the database it can reach holds \(visible) entries. Every logo it can offer has to come from there, so the scan is capped at that number."
+        case .notSyncedToDevice:
+            return "ContactLogo has full access to Contacts, and the Contacts database on this iPhone holds only \(visible) entries. The business contacts you keep elsewhere simply aren't in it, so a scan cannot return more than that. This is not a permissions problem and ContactLogo is not filtering them out."
+        case .cannotTell:
+            return "ContactLogo reads the Contacts database on this iPhone, and it currently holds only \(visible) entries. Every logo it can offer has to come from there, so the scan is capped at that number no matter how many business contacts you keep elsewhere."
+        case .notAuthorized:
+            return "ContactLogo has not been allowed to read your Contacts, so there is nothing to scan yet."
+        }
+    }
+
+    private var fix: String {
+        switch diagnosis {
+        case .limitedGrant:
+            return "Fix:  Settings → ContactLogo → Contacts → All Contacts."
+        case .notSyncedToDevice:
+            return "Fix:  Settings → [Google / Exchange account] → Contacts → Sync Contacts.  Your access is already full, so changing ContactLogo's Contacts setting will not raise the number."
+        case .cannotTell:
+            return "Two different causes, two different fixes.  1.  Limited access was granted — Settings → ContactLogo → Contacts → All Contacts.  2.  Contacts Sync is off for the account that holds them — Settings → [Google / Exchange account] → Contacts → Sync Contacts.  If your business contacts live in Google or Exchange, this is usually the one."
+        case .notAuthorized:
+            return "Fix:  Settings → ContactLogo → Contacts → Allow Full Access."
+        }
     }
 }
 
@@ -631,18 +684,23 @@ struct DiagnosticView: View {
                         Text("In this device's Contacts database")
                         Spacer()
                         Text(visibleContactsText)
-                            .foregroundStyle(model.visibleContactCount > 0 && model.visibleContactCount < 100
+                            .foregroundStyle(model.visibleContactCount > 0
+                                             && model.visibleContactCount < LimitedAccessState.smallAddressBookThreshold
                                              ? .orange : .secondary)
                     }
                 }
-                if model.visibleContactCount > 0 && model.visibleContactCount < 100 {
+                if model.visibleContactCount > 0
+                    && model.visibleContactCount < LimitedAccessState.smallAddressBookThreshold {
                     Section("Why the scan is capped") {
                         Text("ContactLogo can only offer logos for contacts that are in the Contacts database on this iPhone. That database currently holds \(model.visibleContactCount.formatted()) entries, so a scan cannot return more than that.")
                             .font(.caption)
-                        Text("If your business contacts live in Google or Exchange rather than on the phone, the database is small because Contacts Sync is off for that account — not because ContactLogo is filtering them. Turn it on in Settings → [account] → Contacts.")
-                            .font(.caption)
-                        Text("Separately, a limited-access grant also caps the scan. Check Settings → ContactLogo → Contacts and select All Contacts.")
-                            .font(.caption)
+                        if model.limitedAccessState.isGenuineLimitedGrant {
+                            Text("You granted limited access, so only the contacts you selected are visible. Switch to All Contacts in Settings → ContactLogo → Contacts.")
+                                .font(.caption)
+                        } else {
+                            Text("Your access is full, so the contacts are not reaching this iPhone. If your business contacts live in Google or Exchange rather than on the phone, the database is small because Contacts Sync is off for that account — not because ContactLogo is filtering them. Turn it on in Settings → [account] → Contacts.")
+                                .font(.caption)
+                        }
                     }
                 }
                 Section("Last scan") {
@@ -695,6 +753,10 @@ struct DiagnosticView: View {
         switch model.limitedAccessState {
         case .open: return model.limitedAccessGranted ? "Detected limited (heuristic)" : "Full access"
         case .definite: return "Limited (iOS 18)"
+        // 2026-09-27 — full access is a *good* state and the reason the
+        // book is small is upstream.  Labelling it "likely limited" is what
+        // kept pointing the owner at the All Contacts toggle.
+        case .fullAccessSmallDatabase: return "Full access — small database"
         case .heuristic: return "Likely limited (heuristic)"
         case .denied: return "Denied"
         case .restricted: return "Restricted"
@@ -705,8 +767,9 @@ struct DiagnosticView: View {
         switch model.limitedAccessState {
         case .open where model.limitedAccessGranted: return AnyShapeStyle(.orange)
         case .definite, .heuristic: return AnyShapeStyle(.orange)
+        // Access is fine; the database is the problem, so keep it green.
+        case .fullAccessSmallDatabase, .open: return AnyShapeStyle(.green)
         case .denied, .restricted: return AnyShapeStyle(.red)
-        case .open: return AnyShapeStyle(.green)
         }
     }
 }

@@ -31,6 +31,8 @@ struct ContentView: View {
                         MacLimitedAccessBlocker()
                     } else if case .heuristic(let count) = model.limitedAccessState {
                         MacLimitedAccessHeuristicNotice(visibleCount: count)
+                    } else if case .fullAccessSmallDatabase(let count) = model.limitedAccessState {
+                        MacContactsNotSyncedNotice(visibleCount: count)
                     } else if model.limitedAccessGranted {
                         LimitedAccessBanner()
                     }
@@ -135,6 +137,8 @@ struct ReviewQueueView: View {
                 MacLimitedAccessBlocker()
             } else if case .heuristic(let count) = model.limitedAccessState {
                 MacLimitedAccessHeuristicNotice(visibleCount: count)
+            } else if case .fullAccessSmallDatabase(let count) = model.limitedAccessState {
+                MacContactsNotSyncedNotice(visibleCount: count)
             } else if model.limitedAccessGranted {
                 LimitedAccessBanner()
             }
@@ -426,6 +430,40 @@ struct MacLimitedAccessHeuristicNotice: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(.orange)
             Text("ContactLogo scanned your address book and only found \(visibleCount) entries. If you granted Limited access in System Settings, only the contacts you selected are visible.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Open System Settings") {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            .font(.caption.bold())
+            .padding(.top, 2)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// 2026-09-27 — the Contacts authorization is full, but the address book on
+/// this Mac is small.  Previously this reported itself as a limited grant
+/// and pointed at Privacy & Security → Contacts → All Contacts, which
+/// cannot change anything when access is already full.  The contacts are
+/// simply not in the Mac's Contacts database — usually because they live in
+/// a Google / Exchange account whose Contacts sync is off.
+struct MacContactsNotSyncedNotice: View {
+    let visibleCount: Int
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Only \(visibleCount) contacts are on this Mac", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.orange)
+            Text("ContactLogo has full access to Contacts, and the Contacts database on this Mac holds \(visibleCount) entries. Contacts you keep in Google or Exchange are not in it, so a scan cannot return more than that. Your access is already full, so changing the Contacts permission will not raise the number.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Fix:  System Settings → [Google / Exchange account] → Contacts → Sync Contacts.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button("Open System Settings") {
