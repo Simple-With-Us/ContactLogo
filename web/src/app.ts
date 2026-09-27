@@ -107,6 +107,10 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+function visibleSentenceGaps(copy: string): string {
+  return copy.replace(/([.!?])  (?=\S)/g, "$1\u00a0 ");
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 function noLogoIcon(): SVGElement {
@@ -1634,12 +1638,12 @@ function buildLanding(deviceContactsAvailable: boolean): HTMLElement {
     el(
       "p",
       {},
-      "ContactLogo suggests brand marks for business cards, such as a pharmacy, bank, or school.  Compare candidates before you export or sync approved updates.",
+      visibleSentenceGaps("ContactLogo suggests brand marks for business cards, such as a pharmacy, bank, or school.  Compare candidates before you export or sync approved updates."),
     ),
     el(
       "p",
       { class: "meta landing-help" },
-      "Contacts identified as people are excluded from logo suggestions.  Business cards with existing photos wait in Needs Review, with replacement left to your choice.",
+      visibleSentenceGaps("Contacts identified as people are excluded from logo suggestions.  Business cards with existing photos wait in Needs Review, with replacement left to your choice."),
     ),
   );
 
@@ -1662,7 +1666,7 @@ function buildLanding(deviceContactsAvailable: boolean): HTMLElement {
         "li",
         {},
         el("strong", {}, "Review. "),
-        "Candidates are ranked by matching evidence.  High-confidence candidates may be pre-checked; guessed domains, look-alike names, and existing photos wait in Needs Review.  You can choose another image, upload your own, paste a URL, or crop.",
+        visibleSentenceGaps("Candidates are ranked by matching evidence.  High-confidence candidates may be pre-checked; guessed domains, look-alike names, and existing photos wait in Needs Review.  You can choose another image, upload your own, paste a URL, or crop."),
       ),
       el(
         "li",
@@ -1680,14 +1684,14 @@ function buildLanding(deviceContactsAvailable: boolean): HTMLElement {
     el(
       "p",
       {},
-      "Nothing is applied automatically.  Review selected logos before downloading an updated vCard or syncing approved photos to Google Contacts.  You can download a backup of the imported address book first.",
+      visibleSentenceGaps("Nothing is applied automatically.  Review selected logos before downloading an updated vCard or syncing approved photos to Google Contacts.  You can download a backup of the imported address book first."),
     ),
     el("h2", {}, "Review in Your Browser"),
-    el("p", {}, PRIVACY_SENTENCE),
+    el("p", {}, visibleSentenceGaps(PRIVACY_SENTENCE)),
     el(
       "p",
-      { class: "meta" },
-      "A wrong logo is worse than none.  Generic names like “Hospital” or “Gift Card” stay out of automatic suggestions.",
+      { class: "meta landing-help" },
+      visibleSentenceGaps("A wrong logo is worse than none.  Generic names like “Hospital” or “Gift Card” stay out of automatic suggestions."),
     ),
   );
 
@@ -1730,9 +1734,9 @@ function mountShell(root: HTMLElement): Shell {
       el(
         "p",
         {},
-        "Brand icons for your address book.  Import a vCard or Google CSV, or connect Google Contacts",
+        visibleSentenceGaps("Brand icons for your address book.  Import a vCard or Google CSV, or connect Google Contacts"),
         ...(deviceContactsAvailable ? [el("span", { class: "phone-only" }, ", or choose contacts from this phone")] : []),
-        ".  Review suggested logos, then download approved updates or sync selected photos to Google.  Existing photos wait for explicit review before replacement.",
+        visibleSentenceGaps(".  Review suggested logos, then download approved updates or sync selected photos to Google.  Existing photos wait for explicit review before replacement."),
       ),
     ),
   );

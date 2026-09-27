@@ -229,9 +229,11 @@ test("the landing page gives way to the review stage", () => {
   assert.ok(headings.includes("Review in Your Browser"));
   assert.ok(headings.includes("Suggested Logos for Business Contacts"));
 
-  const copy = findAll(stubDocument.root, (n) => visible(n))
+  const renderedCopy = findAll(stubDocument.root, (n) => visible(n))
     .map((n) => n.textContent)
     .join(" ");
+  const copy = renderedCopy.replaceAll("\u00a0", " ");
+  assert.ok(renderedCopy.includes("address book.\u00a0 Import"), "landing sentence gap is not visible");
   for (const jargon of ["ContactLogoKit", "backups/", "BadgeBook", "Crest"]) {
     assert.ok(!copy.includes(jargon), `customer copy leaked "${jargon}"`);
   }
@@ -245,7 +247,7 @@ test("the landing page gives way to the review stage", () => {
   );
   assert.ok(!copy.includes("from this phone"), "unsupported phone import promise shown");
   assert.ok(!findAll(stubDocument.root, (n) => hasClass(n, "phone-only")).length, "phone import shown without capability");
-  assert.ok(findAll(stubDocument.root, (n) => hasClass(n, "landing-help")).length === 1, "photo review guidance must wrap");
+  assert.ok(findAll(stubDocument.root, (n) => hasClass(n, "landing-help")).length === 2, "landing help copy must wrap");
   assert.ok(copy.includes("Import an Address Book"), "drop-zone heading missing");
   const landingButtons = findAll(stubDocument.root, (n) => n.tagName === "BUTTON" && visible(n)).map((n) => n.textContent);
   assert.ok(landingButtons.includes("Import vCard or CSV"), `landing buttons: ${landingButtons.join(" | ")}`);
