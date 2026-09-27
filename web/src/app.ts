@@ -1740,19 +1740,6 @@ function mountShell(root: HTMLElement): Shell {
       ),
     ),
   );
-  app.append(
-    el(
-      "p",
-      { class: "footer-brand" },
-      el(
-        "a",
-        { href: "https://simplewithus.com/", "aria-label": "From Simple With Us" },
-        "From ",
-        el("img", { src: "/swu-logo-wide.webp", alt: "Simple With Us by Jay Wedgeworth", width: "288", height: "30" }),
-      ),
-    ),
-  );
-
   const settings = buildSettingsPanel();
   app.append(settings.node);
 
@@ -1926,6 +1913,18 @@ function mountShell(root: HTMLElement): Shell {
       el("a", { href: "/terms" }, "Terms"),
       " · ",
       reportBtn,
+    ),
+  );
+  app.append(
+    el(
+      "p",
+      { class: "footer-brand" },
+      el(
+        "a",
+        { href: "https://simplewithus.com/", "aria-label": "From Simple With Us" },
+        "From ",
+        el("img", { src: "/swu-logo-wide.webp", alt: "Simple With Us by Jay Wedgeworth", width: "288", height: "30" }),
+      ),
     ),
   );
 
