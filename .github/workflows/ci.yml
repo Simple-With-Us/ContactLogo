@@ -124,7 +124,7 @@ jobs:
 
       - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-test-report
           path: Apps/ContactLogoAndroid/app/build/reports/tests/testDebugUnitTest
