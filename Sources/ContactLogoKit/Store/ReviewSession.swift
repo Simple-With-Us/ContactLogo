@@ -296,10 +296,12 @@ public final class ReviewSession: ObservableObject {
         guard let settings else { return Self.makePipeline() }
         let clientID = settings.resolvedBrandfetchClientID
         let apiKey = settings.resolvedBrandfetchAPIKey
-        guard clientID != nil || apiKey != nil else { return Self.makePipeline() }
+        let logoToken = settings.resolvedLogoDevToken
+        guard clientID != nil || apiKey != nil || logoToken != nil else { return Self.makePipeline() }
         return DefaultSources.makePipeline(
             brandfetchClientID: clientID ?? DefaultSources.env("CONTACTLOGO_BRANDFETCH_CLIENT_ID"),
-            brandfetchAPIKey: apiKey ?? DefaultSources.env("CONTACTLOGO_BRANDFETCH_API_KEY")
+            brandfetchAPIKey: apiKey ?? DefaultSources.env("CONTACTLOGO_BRANDFETCH_API_KEY"),
+            logoDevToken: logoToken ?? DefaultSources.env("CONTACTLOGO_LOGODEV_TOKEN") ?? DefaultSources.env("LOGODEV_TOKEN")
         )
     }
 
@@ -406,7 +408,7 @@ public final class ReviewSession: ObservableObject {
             visibleContactCountIsExact = await provider.visibleContactCountIsExact()
             let contacts = try await provider.fetchCandidates()
             totalScannedCount = contacts.count
-            names = Dictionary(uniqueKeysWithValues: contacts.map { ($0.id, $0.displayName) })
+            names = Dictionary(contacts.map { ($0.id, $0.displayName) }, uniquingKeysWith: { first, _ in first })
             let pipeline = configuredPipeline()
             // 2026-09-21 — sample 20 dropped contacts with their drop reason
             // so the user can see in Diagnostic view what the engine
@@ -502,7 +504,7 @@ public final class ReviewSession: ObservableObject {
             }
 
             let allTargets: [ScanTarget] = businessTargets.map { .business($0) } + affiliatedTargets.map { .affiliated($0) }
-            identitiesByID = Dictionary(uniqueKeysWithValues: allTargets.map { ($0.contact.id, $0.contact) })
+            identitiesByID = Dictionary(allTargets.map { ($0.contact.id, $0.contact) }, uniquingKeysWith: { first, _ in first })
             retryingIDs = []
             stage = .matching(done: 0, total: allTargets.count)
             if cancelRequested || Task.isCancelled {

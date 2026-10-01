@@ -16,6 +16,10 @@ struct SettingsView: View {
                     .onChange(of: settings.brandfetchClientID) { settings.save() }
                 SecureField("API Key", text: $settings.brandfetchAPIKey)
                     .onChange(of: settings.brandfetchAPIKey) { settings.save() }
+            }
+            Section("Logo.dev") {
+                SecureField("Token", text: $settings.logoDevToken)
+                    .onChange(of: settings.logoDevToken) { settings.save() }
                 Text("Optional.  High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

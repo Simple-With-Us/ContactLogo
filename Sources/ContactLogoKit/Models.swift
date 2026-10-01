@@ -40,7 +40,7 @@ public enum ContactClass: String, Sendable, Codable {
 }
 
 public enum SourceKind: String, Sendable, Codable {
-    case brandfetch, wikimedia, googleCSE, googleScrape
+    case brandfetch, logodev, wikimedia, googleCSE, googleScrape
     case simpleIcons, favicon, preferred, companiesLogo, manual
     case contactLogoCache
 }

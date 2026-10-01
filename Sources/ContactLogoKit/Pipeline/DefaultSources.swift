@@ -11,7 +11,8 @@ public enum DefaultSources {
 
     public static func logoSources(
         brandfetchClientID: String? = Self.env("CONTACTLOGO_BRANDFETCH_CLIENT_ID"),
-        brandfetchAPIKey: String? = Self.env("CONTACTLOGO_BRANDFETCH_API_KEY")
+        brandfetchAPIKey: String? = Self.env("CONTACTLOGO_BRANDFETCH_API_KEY"),
+        logoDevToken: String? = Self.env("CONTACTLOGO_LOGODEV_TOKEN") ?? Self.env("LOGODEV_TOKEN")
     ) -> [any LogoSource] {
         var sources: [any LogoSource] = [
             PreferredMarksSource(),
@@ -24,6 +25,9 @@ public enum DefaultSources {
             WikimediaSource(),
             FaviconSource()
         ]
+        if let token = logoDevToken, !token.isEmpty {
+            sources.insert(LogoDevSource(token: token), at: 1)
+        }
         if let id = brandfetchClientID, !id.isEmpty {
             sources.insert(
                 BrandfetchSource(brandAPIKey: brandfetchAPIKey, logoClientID: id),
@@ -60,12 +64,14 @@ public enum DefaultSources {
 
     public static func makePipeline(
         brandfetchClientID: String? = Self.env("CONTACTLOGO_BRANDFETCH_CLIENT_ID"),
-        brandfetchAPIKey: String? = Self.env("CONTACTLOGO_BRANDFETCH_API_KEY")
+        brandfetchAPIKey: String? = Self.env("CONTACTLOGO_BRANDFETCH_API_KEY"),
+        logoDevToken: String? = Self.env("CONTACTLOGO_LOGODEV_TOKEN") ?? Self.env("LOGODEV_TOKEN")
     ) -> MatchPipeline {
         MatchPipeline(
             sources: logoSources(
                 brandfetchClientID: brandfetchClientID,
-                brandfetchAPIKey: brandfetchAPIKey
+                brandfetchAPIKey: brandfetchAPIKey,
+                logoDevToken: logoDevToken
             ),
             fetchImage: fetchImage
         )
