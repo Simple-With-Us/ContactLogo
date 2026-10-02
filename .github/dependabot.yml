@@ -26,3 +26,8 @@ updates:
     labels:
       - dependencies
       - github-actions
+
+    ignore:
+      # gitleaks-action v3 aborts on orgs without a paid GITLEAKS_LICENSE.
+      # v2 is free and runs the scan. Remove this once a license is purchased.
+      - dependency-name: "gitleaks/gitleaks-action"
