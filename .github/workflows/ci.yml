@@ -108,7 +108,7 @@ jobs:
 
       # Default packages include the retired `tools` package; sdkmanager then
       # exits 1 with "Failed to find package 'tools'" on current GH runners.
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
