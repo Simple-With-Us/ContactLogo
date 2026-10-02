@@ -54,7 +54,7 @@ targets:
       - path: Sources/ContactLogoKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.contactlogo.kit.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.contactlogo.kit
         CODE_SIGN_STYLE: Automatic
         DEFINES_MODULE: YES
         GENERATE_INFOPLIST_FILE: YES
@@ -86,7 +86,7 @@ targets:
         product: Sentry
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.contactlogo.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.contactlogo
         PRODUCT_NAME: "ContactLogo"
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -103,10 +103,6 @@ targets:
         # do not merge from INFOPLIST_KEY_* on Xcode 26.  Apps/ContactLogoiOS/Info.plist
         # holds them; GENERATE_INFOPLIST_FILE still fills the scalar keys.  CL-05.
         INFOPLIST_FILE: Apps/ContactLogoiOS/Info.plist
-        # 2026-09-22 [MM]: App Group group.com.contactlogo + Universal Links / web
-        # credentials on the owned contactlogo.com domain.  See
-        # docs/rollouts/2026-09-22-bundle-id-migration.md.
-        CODE_SIGN_ENTITLEMENTS: Apps/ContactLogoiOS/ContactLogoiOS.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   ContactLogoMac:
