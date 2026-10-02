@@ -107,9 +107,13 @@ public final class ReviewSession: ObservableObject {
     private let settings: SettingsStore?
     private let queueStore: ReviewQueueStore
     private var cancelRequested = false
-    /// Identities from the last scan, keyed by contact ID, so Retry can
-    /// rematch one row without enumerating the whole book.
-    var identitiesByID: [String: ContactIdentity] = [:]
+    /// Identities from the last scan, keyed by contact ID, so Retry and
+    /// review detail sheets can inspect full contact info without re-enumerating.
+    @Published public internal(set) var identitiesByID: [String: ContactIdentity] = [:]
+
+    public func identity(for contactID: String) -> ContactIdentity? {
+        identitiesByID[contactID]
+    }
     /// Tests inject a pipeline so Retry can run without the network.
     var pipelineForTesting: MatchPipeline?
     /// Tests inject a contacts provider.

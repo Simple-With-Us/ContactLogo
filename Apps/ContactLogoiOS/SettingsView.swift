@@ -23,6 +23,8 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .onChange(of: settings.brandfetchAPIKey) { settings.save() }
+                    Link("Get a Brandfetch API Key ↗", destination: URL(string: "https://brandfetch.com/developers")!)
+                        .font(.footnote)
                 } header: {
                     Text("Brandfetch")
                 }
@@ -31,11 +33,13 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .onChange(of: settings.logoDevToken) { settings.save() }
+                    Link("Get a Logo.dev API Key ↗", destination: URL(string: "https://logo.dev")!)
+                        .font(.footnote)
                 } header: {
                     Text("Logo.dev")
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Optional.  High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.")
+                        Text("Optional.  High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, Clearbit, Apple Touch Icons, Unavatar, and favicons.")
                         if settings.credentialStorageFailed {
                             Text("The keychain would not save that credential.  High-resolution sources will stay off until it can.")
                                 .foregroundStyle(.red)
@@ -43,10 +47,24 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    Toggle("Rescue split-name business contacts", isOn: $settings.rescueSplitNameBusinesses)
+                        .onChange(of: settings.rescueSplitNameBusinesses) { settings.save() }
+                    Toggle("Include single-name contacts", isOn: $settings.includeSingleNameContacts)
+                        .onChange(of: settings.includeSingleNameContacts) { settings.save() }
                     Toggle("Skip contacts that already have a photo", isOn: $settings.skipContactsWithExistingPhoto)
                         .onChange(of: settings.skipContactsWithExistingPhoto) { settings.save() }
+                } header: {
+                    Text("Pre-scan Discovery Options")
                 } footer: {
-                    Text("Off by default. A business card that already has a photo stays in Needs review, flagged \"replace existing\", and is never applied automatically. Turn this on to leave those cards out of the scan entirely.")
+                    Text("Rescue contacts where business names were typed into First and Last Name fields (e.g. \"Best Buy\", \"Trader Joe's\") or lone name fields.")
+                }
+                Section {
+                    Toggle("Find personal avatars (via Unavatar)", isOn: $settings.fetchPersonalAvatars)
+                        .onChange(of: settings.fetchPersonalAvatars) { settings.save() }
+                } header: {
+                    Text("Personal Contacts (Optional)")
+                } footer: {
+                    Text("When enabled, searches public profile avatars for personal contacts via their email addresses. Personal contacts are never overwritten automatically.")
                 }
                 // 2026-09-21 follow-up audit — direct route to the "Why am I only
                 // seeing X contacts?" diagnostic so a user can verify whether

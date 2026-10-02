@@ -8,24 +8,37 @@ public struct ContactIdentity: Sendable, Hashable {
     public var givenName: String?
     public var familyName: String?
     public var organization: String?
+    public var jobTitle: String?
+    public var departmentName: String?
     public var emailDomains: [String]
     public var websiteHosts: [String]
     /// Raw phone strings (published customer-service numbers from vendor/crest).
     public var phoneNumbers: [String]
+    public var emails: [String]
+    public var urls: [String]
+    public var postalAddresses: [String]
     public var hasImage: Bool
 
     public init(id: String, displayName: String, givenName: String? = nil,
                 familyName: String? = nil, organization: String? = nil,
+                jobTitle: String? = nil, departmentName: String? = nil,
                 emailDomains: [String] = [], websiteHosts: [String] = [],
-                phoneNumbers: [String] = [], hasImage: Bool = false) {
+                phoneNumbers: [String] = [], emails: [String] = [],
+                urls: [String] = [], postalAddresses: [String] = [],
+                hasImage: Bool = false) {
         self.id = id
         self.displayName = displayName
         self.givenName = givenName
         self.familyName = familyName
         self.organization = organization
+        self.jobTitle = jobTitle
+        self.departmentName = departmentName
         self.emailDomains = emailDomains
         self.websiteHosts = websiteHosts
         self.phoneNumbers = phoneNumbers
+        self.emails = emails
+        self.urls = urls
+        self.postalAddresses = postalAddresses
         self.hasImage = hasImage
     }
 }
@@ -43,6 +56,29 @@ public enum SourceKind: String, Sendable, Codable {
     case brandfetch, logodev, wikimedia, googleCSE, googleScrape
     case simpleIcons, favicon, preferred, companiesLogo, manual
     case contactLogoCache
+    case appleTouchIcon, clearbit, googleFaviconV2, socialAvatar, unavatar, unavatarPersonal
+
+    public var displayName: String {
+        switch self {
+        case .brandfetch: return "Brandfetch"
+        case .logodev: return "Logo.dev"
+        case .wikimedia: return "Wikimedia"
+        case .googleCSE: return "Google CSE"
+        case .googleScrape: return "Google"
+        case .simpleIcons: return "Simple Icons"
+        case .favicon: return "Favicon"
+        case .preferred: return "Preferred"
+        case .companiesLogo: return "CompaniesLogo"
+        case .manual: return "Custom Upload"
+        case .contactLogoCache: return "Cache"
+        case .appleTouchIcon: return "Apple Touch Icon"
+        case .clearbit: return "Clearbit"
+        case .googleFaviconV2: return "Google Favicon"
+        case .socialAvatar: return "Social Profile"
+        case .unavatar: return "Unavatar"
+        case .unavatarPersonal: return "Personal Avatar"
+        }
+    }
 }
 
 /// One logo option for a contact. The pipeline keeps the top N, not just the winner.
