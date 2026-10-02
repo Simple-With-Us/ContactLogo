@@ -147,6 +147,26 @@ public final class ReviewSession: ObservableObject {
     private func restorePersistedQueue() {
         guard let snapshot = try? queueStore.loadFresh() else { return }
         results = snapshot.results
+        if let token = settings?.logoDevToken, !token.isEmpty {
+            results = results.map { result in
+                var res = result
+                res.candidates = res.candidates.map { candidate in
+                    var c = candidate
+                    if c.source == .logodev, var components = URLComponents(url: c.imageURL, resolvingAgainstBaseURL: false) {
+                        var items = components.queryItems ?? []
+                        if !items.contains(where: { $0.name == "token" }) {
+                            items.append(URLQueryItem(name: "token", value: token))
+                            components.queryItems = items
+                            if let withToken = components.url {
+                                c.imageURL = withToken
+                            }
+                        }
+                    }
+                    return c
+                }
+                return res
+            }
+        }
         selected = Set(snapshot.selected)
         chosenIndex = snapshot.chosenIndex
         names = snapshot.names
@@ -503,7 +523,14 @@ public final class ReviewSession: ObservableObject {
                 }
             }
 
-            let allTargets: [ScanTarget] = businessTargets.map { .business($0) } + affiliatedTargets.map { .affiliated($0) }
+            var seenTargetIDs = Set<String>()
+            var deduplicatedTargets: [ScanTarget] = []
+            for target in (businessTargets.map { ScanTarget.business($0) } + affiliatedTargets.map { ScanTarget.affiliated($0) }) {
+                if seenTargetIDs.insert(target.contact.id).inserted {
+                    deduplicatedTargets.append(target)
+                }
+            }
+            let allTargets = deduplicatedTargets
             identitiesByID = Dictionary(allTargets.map { ($0.contact.id, $0.contact) }, uniquingKeysWith: { first, _ in first })
             retryingIDs = []
             stage = .matching(done: 0, total: allTargets.count)

@@ -162,7 +162,7 @@ public enum CompanyCatalog {
         "aetna": "aetna.com", "cigna": "cigna.com", "humana": "humana.com",
         "unitedhealthcare": "uhc.com", "uhc": "uhc.com",
         "blue cross": "bcbs.com", "blue cross blue shield": "bcbs.com", "bcbs": "bcbs.com",
-        "anthem": "elevancehealth.com", "centene": "centene.com",
+        "anthem": "anthem.com", "centene": "centene.com",
 
         // Travel, Rental & Hotels
         "budget": "budget.com", "budget rent a car": "budget.com",
@@ -175,8 +175,8 @@ public enum CompanyCatalog {
         "air canada": "aircanada.com", "british airways": "britishairways.com",
         "lufthansa": "lufthansa.com", "emirates": "emirates.com", "dhl": "dhl.com",
         "wyndham": "wyndhamhotels.com", "choice hotels": "choicehotels.com",
-        "best western": "bestwestern.com", "ihg": "ihg.com", "holiday inn": "ihg.com",
-        "sheraton": "marriott.com", "westin": "marriott.com",
+        "best western": "bestwestern.com", "ihg": "ihg.com", "holiday inn": "holidayinn.com",
+        "sheraton": "sheraton.com", "westin": "westin.com",
         "four seasons": "fourseasons.com", "ritz carlton": "ritzcarlton.com", "ritz-carlton": "ritzcarlton.com",
 
         // Auto Brands

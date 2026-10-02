@@ -100,8 +100,9 @@ public struct LogoDevSource: LogoSource, Sendable {
 
     public func candidates(forBrandName name: String) async throws -> [LogoCandidate] {
         guard !token.isEmpty else { throw LogoSourceError.misconfigured("Logo.dev token missing") }
-        let q = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
-        guard let url = URL(string: "https://api.logo.dev/search?q=\(q)") else { return [] }
+        var components = URLComponents(string: "https://api.logo.dev/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: name)]
+        guard let url = components?.url else { return [] }
         let data: Data
         do {
             data = try await HTTPRetry.withRateLimitRetry {
@@ -125,19 +126,25 @@ public struct LogoDevSource: LogoSource, Sendable {
     public func candidates(forDomain domain: String) async throws -> [LogoCandidate] {
         guard !token.isEmpty else { throw LogoSourceError.misconfigured("Logo.dev token missing") }
         let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? domain
-        let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
-        guard let url = URL(string: "https://img.logo.dev/\(encodedDomain)?token=\(encodedToken)&size=512&format=png&fallback=404") else {
+        var components = URLComponents(string: "https://img.logo.dev/\(encodedDomain)")
+        components?.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "size", value: "512"),
+            URLQueryItem(name: "format", value: "png"),
+            URLQueryItem(name: "fallback", value: "404")
+        ]
+        guard let url = components?.url else {
             return []
         }
         return [
             LogoCandidate(
                 source: .logodev,
                 imageURL: url,
-                pixelWidth: 512,
-                pixelHeight: 512,
+                pixelWidth: nil,
+                pixelHeight: nil,
                 assetType: "icon",
                 altText: domain,
-                hasAlpha: true
+                hasAlpha: nil
             )
         ]
     }

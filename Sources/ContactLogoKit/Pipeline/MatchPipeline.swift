@@ -201,7 +201,11 @@ public struct MatchPipeline: Sendable {
         let combined = NameNormalizer.clean([given, family].joined(separator: " "))
         guard !combined.isEmpty else { return nil }
 
-        if CompanyCatalog.domain(forName: combined) != nil { return combined }
+        if CompanyCatalog.domain(forName: combined) != nil {
+            if !looksLikePersonName(combined) || looksLikeBusinessName(combined) || domainForOrganization(combined, contact: c) != nil {
+                return combined
+            }
+        }
 
         // One part is a catalog firm and the other is a department/store/place/sub-brand tail
         // (e.g. Given: "Costco", Family: "Wholesale", or Given: "Target", Family: "#1234")
@@ -251,7 +255,7 @@ public struct MatchPipeline: Sendable {
         }
         let normOrg = org.lowercased().filter { $0.isLetter || $0.isNumber }
         guard !normOrg.isEmpty else { return nil }
-        for raw in contact.emailDomains + contact.websiteHosts {
+        for raw in contact.websiteHosts + contact.emailDomains {
             guard let d = DomainDeriver.reduce(DomainDeriver.emailHost(raw)) ?? DomainDeriver.reduce(raw) else { continue }
             if DomainDeriver.freemail.contains(d.domain) { continue }
             if DomainDeriver.isSocial(d) || DomainDeriver.isPlatform(d) { continue }
@@ -339,7 +343,7 @@ public struct MatchPipeline: Sendable {
         }
 
         // 3. Work email domain or website (only if domain is not a public mail provider or social/platform)
-        for raw in c.emailDomains + c.websiteHosts {
+        for raw in c.websiteHosts + c.emailDomains {
             guard let d = DomainDeriver.reduce(DomainDeriver.emailHost(raw)) ?? DomainDeriver.reduce(raw) else { continue }
             if DomainDeriver.freemail.contains(d.domain) { continue }
             if DomainDeriver.isSocial(d) || DomainDeriver.isPlatform(d) { continue }

@@ -57,9 +57,26 @@ final class LogoDevSourceTests: XCTestCase {
         XCTAssertEqual(first.imageURL.path, "/stripe.com")
         XCTAssertTrue(first.imageURL.query?.contains("token=pk_test_123") == true)
         XCTAssertEqual(first.assetType, "icon")
-        XCTAssertEqual(first.pixelWidth, 512)
-        XCTAssertEqual(first.pixelHeight, 512)
-        XCTAssertEqual(first.hasAlpha, true)
+        XCTAssertNil(first.pixelWidth)
+        XCTAssertNil(first.pixelHeight)
+        XCTAssertNil(first.hasAlpha)
+    }
+
+    func testLogoCandidateCodableStripsTokenOnEncode() throws {
+        let candidate = LogoCandidate(
+            source: .logodev,
+            imageURL: URL(string: "https://img.logo.dev/example.com?token=secret123&size=512&format=png&fallback=404")!,
+            assetType: "icon",
+            altText: "example.com"
+        )
+        let data = try JSONEncoder().encode(candidate)
+        let jsonString = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(jsonString.contains("secret123"), "Secret token should be stripped upon encoding")
+        let decoded = try JSONDecoder().decode(LogoCandidate.self, from: data)
+        XCTAssertEqual(decoded.imageURL.host, "img.logo.dev")
+        XCTAssertEqual(decoded.imageURL.path, "/example.com")
+        XCTAssertFalse(decoded.imageURL.query?.contains("secret123") == true)
+        XCTAssertTrue(decoded.imageURL.query?.contains("fallback=404") == true)
     }
 
     func testSearchByNameWithEmptyTokenThrowsMisconfigured() async {

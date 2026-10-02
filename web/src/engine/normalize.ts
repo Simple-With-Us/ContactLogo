@@ -13,7 +13,7 @@ const LEGAL_STRIP =
 
 /** R6.6 — trade words that make a tail a business rather than a role or a place. */
 const ORG_SIGNAL =
-  /\b(insurance|agency|realty|realtors|roofing|plumbing|electric|electrical|hvac|tire|tires|auto|motors|bank|credit|union|dental|dentistry|orthodontics|medical|clinic|pharmacy|law|legal|attorney|accounting|cpa|construction|contracting|landscaping|sprinkler|irrigation|cleaning|janitorial|salon|barber|bakery|cafe|restaurant|grill|pizza|mortgage|lending|title|escrow|storage|moving|towing|glass|paint|painting|flooring|pest|exterminating|veterinary|vet|daycare|academy|church|studio|fitness|gym|supply|wholesale|distributors|logistics|transport|energy|propane|security|alarm|telecom|wireless|media|marketing|consulting|partners|associates|enterprises|industries|systems|technologies|labs|works)\b/i;
+  /\b(insurance|agency|realty|realtors|roofing|plumbing|electric|electrical|hvac|tire|tires|auto|motors|bank|credit|union|dental|dentistry|orthodontics|medical|clinic|pharmacy|law|legal|attorney|accounting|cpa|construction|contracting|landscaping|sprinkler|irrigation|cleaning|janitorial|salon|barber|bakery|cafe|restaurant|grill|pizza|mortgage|lending|title|escrow|storage|moving|towing|glass|paint|painting|flooring|pest|exterminating|veterinary|vet|daycare|academy|church|studio|fitness|gym|supply|wholesale|distributors|logistics|transport|energy|propane|security|alarm|telecom|wireless|media|marketing|consulting|partners|associates|enterprises|industries|systems|technologies|labs|works|express|coffee|financial|advisors|solutions|digital|tech|optometry|vision|hardware|foods|airlines|airways)\b/i;
 
 /** R6.6 — job titles and contact-method junk. */
 const ROLE_WORDS =
