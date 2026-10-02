@@ -1,40 +1,70 @@
 import Foundation
 
-/// Brandfetch: Brand API (name → domain, rate-limited) + Logo Link CDN
+/// Brandfetch: Brand API (name → domain, rate-limited) + Plugin API (vector/PNG assets) + Logo Link CDN
 /// (domain → asset; free client ID; needs a real Referer header).
 /// Honors MATCHING-ENGINE §3.1: icon > wordmark, light theme, fallback-tile
 /// detection, 429 backoff (ENGINE-CONTRACT R11.6).
 public struct BrandfetchSource: LogoSource, Sendable {
     public let kind = SourceKind.brandfetch
-    private let brandAPIKey: String?   // Bearer for api.brandfetch.io (search)
+    private let brandAPIKey: String?   // Optional Bearer for api.brandfetch.io
     private let logoClientID: String   // c= param for cdn.brandfetch.io
     private let session: URLSession
 
-    public init(brandAPIKey: String? = nil, logoClientID: String,
+    /// Default client ID extracted from the official Brandfetch integration
+    public static let defaultClientID = "1bfwsmEH20zzEfSNTed"
+
+    public init(brandAPIKey: String? = nil,
+                logoClientID: String = defaultClientID,
                 session: URLSession = .shared) {
         self.brandAPIKey = brandAPIKey
-        self.logoClientID = logoClientID
+        self.logoClientID = logoClientID.isEmpty ? Self.defaultClientID : logoClientID
         self.session = session
     }
 
     private struct SearchResult: Decodable {
         let name: String?
         let domain: String?
+        let icon: String?
+        let qualityScore: Double?
     }
 
     public func candidates(forBrandName name: String) async throws -> [LogoCandidate] {
-        guard let key = brandAPIKey else { throw LogoSourceError.misconfigured("brand API key missing") }
-        let q = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty else { return [] }
+        let q = cleanName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? cleanName
         guard let url = URL(string: "https://api.brandfetch.io/v2/search/\(q)") else { return [] }
-        let data = try await HTTPRetry.withRateLimitRetry {
-            try await self.get(url, bearer: key)
+
+        let data: Data
+        if let key = brandAPIKey, !key.isEmpty {
+            data = try await HTTPRetry.withRateLimitRetry {
+                try await self.get(url, bearer: key)
+            }
+        } else {
+            // Public unauthenticated Brandfetch search index (keyless)
+            data = try await HTTPRetry.withRateLimitRetry {
+                try await self.get(url, bearer: nil)
+            }
         }
-        let hits = try JSONDecoder().decode([SearchResult].self, from: data)
+
+        guard let hits = try? JSONDecoder().decode([SearchResult].self, from: data) else { return [] }
         var out: [LogoCandidate] = []
-        for hit in hits.prefix(3) {
+        for hit in hits.prefix(4) {
             guard let domain = hit.domain,
-                  NameNormalizer.passesSimilarity(query: name, brandName: hit.name ?? "") else { continue }
-            out.append(contentsOf: try await candidates(forDomain: domain))
+                  NameNormalizer.passesSimilarity(query: cleanName, brandName: hit.name ?? "") else { continue }
+
+            if let iconStr = hit.icon, let iconURL = URL(string: iconStr) {
+                out.append(
+                    LogoCandidate(
+                        source: .brandfetch,
+                        imageURL: iconURL,
+                        assetType: "icon",
+                        altText: "\(hit.name ?? cleanName) Brandfetch Icon"
+                    )
+                )
+            }
+            if let domainCandidates = try? await candidates(forDomain: domain) {
+                out.append(contentsOf: domainCandidates)
+            }
         }
         return out
     }
@@ -51,10 +81,34 @@ public struct BrandfetchSource: LogoSource, Sendable {
         let fallback: Bool?
     }
 
+    private struct PluginResponse: Decodable {
+        struct Collection: Decodable {
+            let sections: [Section]?
+        }
+        struct Section: Decodable {
+            let sectionName: String?
+            let assets: [Asset]?
+        }
+        struct Asset: Decodable {
+            let sectionType: String?
+            let theme: String?
+            let formats: [Format]?
+        }
+        struct Format: Decodable {
+            let src: String
+            let format: String?
+            let width: Int?
+            let height: Int?
+        }
+        let collections: [Collection]?
+    }
+
     public func candidates(forDomain domain: String) async throws -> [LogoCandidate] {
-        // Brand API gives typed assets (icon vs wordmark); fall back to the
-        // bare CDN logo when only the client ID is configured.
-        if let key = brandAPIKey, let url = URL(string: "https://api.brandfetch.io/v2/brands/\(domain)") {
+        let cleanDomain = domain.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanDomain.isEmpty else { return [] }
+
+        // 1. Authenticated Brand API (if key provided)
+        if let key = brandAPIKey, !key.isEmpty, let url = URL(string: "https://api.brandfetch.io/v2/brands/\(cleanDomain)") {
             let data: Data?
             do {
                 data = try await HTTPRetry.withRateLimitRetry { try await self.get(url, bearer: key) }
@@ -71,21 +125,119 @@ public struct BrandfetchSource: LogoSource, Sendable {
                         .compactMap { format in
                             guard let assetURL = URL(string: format.src) else { return nil }
                             return LogoCandidate(source: .brandfetch, imageURL: assetURL,
-                                                 assetType: logo.type, altText: domain)
+                                                 assetType: logo.type, altText: cleanDomain)
                         }
                 }
                 if !assets.isEmpty { return assets }
             }
         }
-        guard let url = URL(string: "https://cdn.brandfetch.io/\(domain)?c=\(logoClientID)") else { return [] }
-        return [LogoCandidate(source: .brandfetch, imageURL: url, altText: domain)]
+
+        // 2. Unauthenticated Brandfetch Plugin API (vector & high-res PNG assets)
+        if let pluginAssets = await fetchPluginAssets(forDomain: cleanDomain), !pluginAssets.isEmpty {
+            return pluginAssets
+        }
+
+        // 3. Fallback to Brandfetch Logo CDN URL
+        guard let url = URL(string: "https://cdn.brandfetch.io/\(cleanDomain)?c=\(logoClientID)") else { return [] }
+        return [LogoCandidate(source: .brandfetch, imageURL: url, altText: cleanDomain)]
     }
 
-    /// One authenticated GET, translating HTTP status into `LogoSourceError`
-    /// so the retry policy can see a 429 instead of a decode failure.
-    private func get(_ url: URL, bearer: String) async throws -> Data {
+    private func fetchPluginAssets(forDomain domain: String) async -> [LogoCandidate]? {
+        guard let url = URL(string: "https://api.brandfetch.io/v2/plugin/\(domain)") else { return nil }
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let r = "\(timestamp)-2eP2dELt9XXD2MriGRGwCtmaPyDHDab8ggLBLf"
+        let sig = String(Self.murmur3(r, seed: 58425345))
+
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        request.setValue(sig, forHTTPHeaderField: "signature")
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let pluginResp = try? JSONDecoder().decode(PluginResponse.self, from: data) else {
+            return nil
+        }
+
+        let logoSections = (pluginResp.collections ?? []).flatMap { $0.sections ?? [] }.filter { $0.sectionName == "logos" }
+        var candidates: [LogoCandidate] = []
+        for asset in logoSections.flatMap({ $0.assets ?? [] }) {
+            for format in (asset.formats ?? []) {
+                guard let formatType = format.format?.lowercased(),
+                      formatType == "png" || formatType == "webp" || formatType == "svg",
+                      let assetURL = URL(string: format.src) else { continue }
+
+                candidates.append(
+                    LogoCandidate(
+                        source: .brandfetch,
+                        imageURL: assetURL,
+                        pixelWidth: format.width,
+                        pixelHeight: format.height,
+                        assetType: asset.sectionType ?? "icon",
+                        altText: "\(domain) Brandfetch \(asset.sectionType ?? "mark")",
+                        hasAlpha: true
+                    )
+                )
+            }
+        }
+        return candidates.isEmpty ? nil : candidates
+    }
+
+    /// Fast, deterministic MurmurHash3_x86_32 implementation for plugin API signatures.
+    static func murmur3(_ string: String, seed: UInt32) -> UInt32 {
+        let utf8 = Array(string.utf8)
+        let nblocks = utf8.count / 4
+        var h1: UInt32 = seed
+        let c1: UInt32 = 0xcc9e2d51
+        let c2: UInt32 = 0x1b873593
+
+        for i in 0..<nblocks {
+            let idx = i * 4
+            var k1 = UInt32(utf8[idx]) |
+                     (UInt32(utf8[idx + 1]) << 8) |
+                     (UInt32(utf8[idx + 2]) << 16) |
+                     (UInt32(utf8[idx + 3]) << 24)
+
+            k1 = k1 &* c1
+            k1 = (k1 << 15) | (k1 >> 17)
+            k1 = k1 &* c2
+
+            h1 ^= k1
+            h1 = (h1 << 13) | (h1 >> 19)
+            h1 = h1 &* 5 &+ 0xe6546b64
+        }
+
+        let tailIdx = nblocks * 4
+        let remaining = utf8.count & 3
+        var k1: UInt32 = 0
+
+        if remaining >= 3 { k1 ^= UInt32(utf8[tailIdx + 2]) << 16 }
+        if remaining >= 2 { k1 ^= UInt32(utf8[tailIdx + 1]) << 8 }
+        if remaining >= 1 {
+            k1 ^= UInt32(utf8[tailIdx])
+            k1 = k1 &* c1
+            k1 = (k1 << 15) | (k1 >> 17)
+            k1 = k1 &* c2
+            h1 ^= k1
+        }
+
+        h1 ^= UInt32(utf8.count)
+        h1 ^= h1 >> 16
+        h1 = h1 &* 0x85ebca6b
+        h1 ^= h1 >> 13
+        h1 = h1 &* 0xc2b2ae35
+        h1 ^= h1 >> 16
+
+        return h1
+    }
+
+    /// One GET request, translating HTTP status into `LogoSourceError`
+    /// so the retry policy can see a 429 instead of a decode failure.
+    private func get(_ url: URL, bearer: String?) async throws -> Data {
+        var request = URLRequest(url: url)
+        if let bearer = bearer, !bearer.isEmpty {
+            request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await session.data(for: request)

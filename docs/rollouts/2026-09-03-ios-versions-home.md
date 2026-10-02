@@ -2,4 +2,4 @@
 
 Owner is deleting `jaywedgeworth22/ios-app-versions`.  Personal-Site does not
 link it.  iOS and Mac `AppUpdatePrompt.swift` now fetch
-`site/ios-versions.json` from `jaywedgeworth22/ai-fleet-coordinator`.
+`site/ios-versions.json` from `Simple-With-Us/ai-fleet-coordinator`.

@@ -11,7 +11,7 @@ Brand icons for the address book.  Review-first matching on macOS, iOS, Android,
 and the web.
 
 **Official site:** [https://contactlogo.com](https://contactlogo.com)
-**GitHub:** `jaywedgeworth22/ContactLogo`
+**GitHub:** `Simple-With-Us/ContactLogo`
 **Local:** `/Users/jay/Code/ContactLogo`
 **Slack `repo:`:** `ContactLogo`
 **Acronym:** `CL`

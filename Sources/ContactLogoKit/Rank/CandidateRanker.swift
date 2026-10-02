@@ -21,6 +21,7 @@ public enum CandidateRanker {
         case .companiesLogo: s += 32
         case .clearbit: s += 26
         case .appleTouchIcon: s += 24
+        case .duckduckgo: s += 22
         case .brandfetch: s += 20
         case .logodev: s += 20
         case .unavatar: s += 19

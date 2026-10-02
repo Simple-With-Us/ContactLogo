@@ -22,6 +22,7 @@ public enum DefaultSources {
             ),
             SimpleIconsSource(),
             CompaniesLogoSource(),
+            DuckDuckGoSource(),
             ClearbitSource(),
             AppleTouchIconSource(),
             UnavatarSource(),
@@ -67,7 +68,7 @@ public enum DefaultSources {
     }
 
     public static func makePipeline(
-        brandfetchClientID: String? = Self.env("CONTACTLOGO_BRANDFETCH_CLIENT_ID"),
+        brandfetchClientID: String? = Self.env("CONTACTLOGO_BRANDFETCH_CLIENT_ID") ?? BrandfetchSource.defaultClientID,
         brandfetchAPIKey: String? = Self.env("CONTACTLOGO_BRANDFETCH_API_KEY"),
         logoDevToken: String? = Self.env("CONTACTLOGO_LOGODEV_TOKEN") ?? Self.env("LOGODEV_TOKEN")
     ) -> MatchPipeline {
