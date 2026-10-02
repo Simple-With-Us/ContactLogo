@@ -242,9 +242,12 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
             CNContactGivenNameKey as CNKeyDescriptor,
             CNContactFamilyNameKey as CNKeyDescriptor,
             CNContactOrganizationNameKey as CNKeyDescriptor,
+            CNContactJobTitleKey as CNKeyDescriptor,
+            CNContactDepartmentNameKey as CNKeyDescriptor,
             CNContactEmailAddressesKey as CNKeyDescriptor,
             CNContactUrlAddressesKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
+            CNContactPostalAddressesKey as CNKeyDescriptor,
             CNContactImageDataAvailableKey as CNKeyDescriptor
         ]
     }
@@ -273,6 +276,8 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         let given = contact.givenName.trimmingCharacters(in: .whitespaces)
         let family = contact.familyName.trimmingCharacters(in: .whitespaces)
         let org = contact.organizationName.trimmingCharacters(in: .whitespaces)
+        let job = contact.jobTitle.trimmingCharacters(in: .whitespaces)
+        let dept = contact.departmentName.trimmingCharacters(in: .whitespaces)
 
         // Label-aware email selection — work/business labels outrank home
         // so the brand-relevant inbox beats a personal gmail fallback.
@@ -280,6 +285,8 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         // entered first) overrides the work address that names the brand,
         // and an entire contact is mis-attributed.
         let emailDomains = rankedEmailDomains(from: contact)
+        let fullEmails = contact.emailAddresses.map { $0.value as String }
+        let fullURLs = contact.urlAddresses.map { $0.value as String }
         let websiteHosts: [String] = contact.urlAddresses.compactMap { labeled in
             let raw = labeled.value as String
             // MATCHING-ENGINE §4: only http(s) URLs — drop ms-outlook:// etc.
@@ -287,6 +294,12 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
             return URL(string: raw)?.host
         }
         let phones = contact.phoneNumbers.map { $0.value.stringValue }
+        let addresses = contact.postalAddresses.map { labeled -> String in
+            let addr = labeled.value
+            return [addr.street, addr.city, addr.state, addr.postalCode, addr.country]
+                .filter { !$0.isEmpty }
+                .joined(separator: ", ")
+        }
         let display = [given, family].joined(separator: " ").trimmingCharacters(in: .whitespaces)
         let resolvedDisplay = display.isEmpty ? (org.isEmpty ? (websiteHosts.first ?? "") : org) : display
 
@@ -299,9 +312,14 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
             givenName: given.isEmpty ? nil : given,
             familyName: family.isEmpty ? nil : family,
             organization: org.isEmpty ? nil : org,
+            jobTitle: job.isEmpty ? nil : job,
+            departmentName: dept.isEmpty ? nil : dept,
             emailDomains: emailDomains,
             websiteHosts: websiteHosts,
             phoneNumbers: phones,
+            emails: fullEmails,
+            urls: fullURLs,
+            postalAddresses: addresses,
             hasImage: contact.imageDataAvailable
         )
     }

@@ -22,7 +22,11 @@ public enum DefaultSources {
             ),
             SimpleIconsSource(),
             CompaniesLogoSource(),
+            ClearbitSource(),
+            AppleTouchIconSource(),
+            UnavatarSource(),
             WikimediaSource(),
+            GoogleFaviconV2Source(),
             FaviconSource()
         ]
         if let token = logoDevToken, !token.isEmpty {

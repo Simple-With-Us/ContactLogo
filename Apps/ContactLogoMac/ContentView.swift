@@ -110,6 +110,7 @@ struct MacScanBreakdown: View {
 struct ReviewQueueView: View {
     @EnvironmentObject var model: ReviewSession
     @State private var searchText = ""
+    @State private var inspectedResult: MatchResult?
     @State private var manualOverrideResult: MatchResult?
     @State private var showError = false
 
@@ -184,12 +185,30 @@ struct ReviewQueueView: View {
             }
             Text("High-confidence business matches are pre-checked. Personal contacts with company affiliations, favicon fallbacks, and guessed domains stay in Needs review.")
                 .foregroundStyle(.secondary)
-            List(rows, id: \.contactID) { result in
-                ReviewRow(result: result, onManualOverride: {
-                    manualOverrideResult = result
-                })
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 380, maximum: 560), spacing: 14)], spacing: 14) {
+                    ForEach(rows, id: \.contactID) { result in
+                        ReviewRow(result: result, onInspect: {
+                            inspectedResult = result
+                        }, onManualOverride: {
+                            manualOverrideResult = result
+                        })
+                        .padding(12)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                        )
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
             .searchable(text: $searchText, prompt: "Search all tabs…")
+        }
+        .sheet(item: $inspectedResult) { result in
+            ContactDetailSheet(result: result)
         }
         .sheet(item: $manualOverrideResult) { result in
             ManualOverrideSheet(contactID: result.contactID)
@@ -229,72 +248,169 @@ extension MatchResult: @retroactive Identifiable {
 struct ReviewRow: View {
     @EnvironmentObject var model: ReviewSession
     let result: MatchResult
+    var onInspect: (() -> Void)? = nil
     var onManualOverride: (() -> Void)? = nil
 
+    private var identity: ContactIdentity? {
+        model.identity(for: result.contactID)
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Toggle("", isOn: Binding(
-                get: { model.selected.contains(result.contactID) },
-                set: { model.setSelected(result.contactID, $0) }
-            ))
-            .labelsHidden()
-            .disabled(result.candidates.isEmpty)
-            LogoThumb(url: model.chosenCandidate(for: result)?.imageURL)
-                .frame(width: 56, height: 56)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(model.displayName(for: result.contactID)).font(.headline)
-                    if result.flags.contains("affiliated") {
-                        Text("Affiliated")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.15))
-                            .foregroundStyle(.blue)
-                            .clipShape(Capsule())
-                    }
-                    if result.isRetryable {
-                        RetryableBadge()
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                Toggle("", isOn: Binding(
+                    get: { model.selected.contains(result.contactID) },
+                    set: { model.setSelected(result.contactID, $0) }
+                ))
+                .labelsHidden()
+                .disabled(result.candidates.isEmpty)
+
+                Button {
+                    onInspect?()
+                } label: {
+                    LogoThumb(url: model.chosenCandidate(for: result)?.imageURL)
                 }
-                if let exhausted = result.exhaustedLabel {
-                    Text(exhausted)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if !result.isRetryable {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                HStack(spacing: 8) {
-                    if result.isRetryable {
-                        if model.retryingIDs.contains(result.contactID) {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Button("Retry") {
-                                Task { await model.retryMatch(for: result.contactID) }
-                            }
-                            .font(.caption)
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Button {
+                            onInspect?()
+                        } label: {
+                            Text(model.displayName(for: result.contactID))
+                                .font(.headline)
+                                .foregroundStyle(.primary)
                         }
-                    } else if result.candidates.count > 1 {
-                        Button("Try another") { model.cycleCandidate(result.contactID) }
-                            .font(.caption)
-                        Text("(\((model.chosenIndex[result.contactID] ?? 0) + 1)/\(result.candidates.count))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                        .buttonStyle(.plain)
+
+                        if result.flags.contains("affiliated") {
+                            Text("Affiliated")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.15))
+                                .foregroundStyle(.blue)
+                                .clipShape(Capsule())
+                        }
+                        if result.isRetryable {
+                            RetryableBadge()
+                        }
+                        Spacer()
+                        Button {
+                            onInspect?()
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Inspect details")
                     }
-                    Button("Choose your own…") { onManualOverride?() }
-                        .font(.caption)
+
+                    if let job = identity?.jobTitle, !job.isEmpty {
+                        Text(job)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let exhausted = result.exhaustedLabel {
+                        Text(exhausted)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if !result.isRetryable {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 10) {
+                        if result.isRetryable {
+                            if model.retryingIDs.contains(result.contactID) {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Button("Retry") {
+                                    Task { await model.retryMatch(for: result.contactID) }
+                                }
+                                .font(.caption.bold())
+                            }
+                        }
+                        Button("Details") { onInspect?() }
+                            .font(.caption)
+                        Button("Choose own…") { onManualOverride?() }
+                            .font(.caption)
+                    }
+                    .padding(.top, 2)
                 }
+            }
+
+            // Candidate Carousel Thumbnail Strip
+            if result.candidates.count > 1 {
+                candidateStrip
             }
         }
     }
 
+    private var candidateStrip: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Candidates (\(result.candidates.count)):")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Click to select")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(result.candidates.enumerated()), id: \.offset) { idx, candidate in
+                        let isChosen = (model.chosenIndex[result.contactID] ?? 0) == idx
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                model.setChosenIndex(result.contactID, idx)
+                            }
+                        } label: {
+                            VStack(spacing: 3) {
+                                ZStack(alignment: .topTrailing) {
+                                    LogoThumb(url: candidate.imageURL)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color.gray.opacity(0.1))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(isChosen ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isChosen ? 2.5 : 1)
+                                        )
+                                    if isChosen {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(Color.accentColor)
+                                            .background(Circle().fill(Color.white))
+                                            .offset(x: 4, y: -4)
+                                    }
+                                }
+                                Text(candidate.source.displayName)
+                                    .font(.system(size: 9, weight: isChosen ? .bold : .regular))
+                                    .foregroundStyle(isChosen ? Color.accentColor : .secondary)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 56)
+                            }
+                            .padding(.top, 4)
+                            .padding(.horizontal, 2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .padding(.leading, 36)
+    }
+
     private var detail: String {
-        let source = model.chosenCandidate(for: result)?.source.rawValue ?? "none"
+        let source = model.chosenCandidate(for: result)?.source.displayName ?? "none"
         let flags = result.flags.isEmpty ? "" : " · " + result.flags.joined(separator: ", ")
-        return "\(label(result.confidence)) · \(source) · \(result.candidates.count) candidates\(flags)"
+        return "\(label(result.confidence)) · \(source) · \(result.candidates.count) options\(flags)"
     }
 
     private func label(_ c: Confidence) -> String {
@@ -304,6 +420,380 @@ struct ReviewRow: View {
         case .low: "low"
         case .skip: "skip"
         }
+    }
+}
+
+struct ContactDetailSheet: View {
+    @EnvironmentObject var model: ReviewSession
+    @Environment(\.dismiss) var dismiss
+    let result: MatchResult
+    @State private var showingManualOverride = false
+
+    private var identity: ContactIdentity? {
+        model.identity(for: result.contactID)
+    }
+
+    private var chosenCandidate: LogoCandidate? {
+        model.chosenCandidate(for: result)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 18) {
+                    headerCard
+                    candidateGallerySection
+                    contactInfoSection
+                    matchingRationaleSection
+                }
+                .padding()
+            }
+            .navigationTitle(model.displayName(for: result.contactID))
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                actionBar
+            }
+            .sheet(isPresented: $showingManualOverride) {
+                ManualOverrideSheet(contactID: result.contactID)
+            }
+        }
+        .frame(minWidth: 500, minHeight: 550)
+    }
+
+    private var headerCard: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 16) {
+                LogoThumb(url: chosenCandidate?.imageURL)
+                    .frame(width: 68, height: 68)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
+                    .overlay(Circle().stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.displayName(for: result.contactID))
+                        .font(.title3.bold())
+                        .lineLimit(2)
+
+                    if let job = identity?.jobTitle, !job.isEmpty {
+                        Text(job)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let org = identity?.organization, !org.isEmpty {
+                        Text(org)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                    }
+                    if let dept = identity?.departmentName, !dept.isEmpty {
+                        Text(dept)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    HStack(spacing: 6) {
+                        confidenceBadge(result.confidence)
+                        if result.flags.contains("affiliated") {
+                            Text("Affiliated")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.15))
+                                .foregroundStyle(.blue)
+                                .clipShape(Capsule())
+                        }
+                        if result.isRetryable {
+                            RetryableBadge()
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+                Spacer()
+            }
+        }
+        .padding()
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var candidateGallerySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Candidate Logos (\(result.candidates.count))", systemImage: "photo.stack")
+                    .font(.headline)
+                Spacer()
+                Button("Custom image…") {
+                    showingManualOverride = true
+                }
+                .font(.caption.bold())
+            }
+
+            if result.candidates.isEmpty {
+                Text("No candidate logos found for this contact.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(Array(result.candidates.enumerated()), id: \.offset) { idx, candidate in
+                            let isChosen = (model.chosenIndex[result.contactID] ?? 0) == idx
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    model.setChosenIndex(result.contactID, idx)
+                                }
+                            } label: {
+                                VStack(spacing: 6) {
+                                    ZStack(alignment: .topTrailing) {
+                                        LogoThumb(url: candidate.imageURL)
+                                            .frame(width: 60, height: 60)
+                                            .background(Color.gray.opacity(0.1))
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(isChosen ? Color.accentColor : Color.gray.opacity(0.25), lineWidth: isChosen ? 3 : 1)
+                                            )
+                                        if isChosen {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 16))
+                                                .foregroundStyle(Color.accentColor)
+                                                .background(Circle().fill(Color.white))
+                                                .offset(x: 4, y: -4)
+                                        }
+                                    }
+
+                                    Text(candidate.source.displayName)
+                                        .font(.caption.weight(isChosen ? .bold : .regular))
+                                        .foregroundStyle(isChosen ? Color.accentColor : .primary)
+                                        .lineLimit(1)
+
+                                    if let w = candidate.pixelWidth, let h = candidate.pixelHeight {
+                                        Text("\(w)×\(h)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    } else if let assetType = candidate.assetType {
+                                        Text(assetType)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(8)
+                                .background(isChosen ? Color.accentColor.opacity(0.08) : Color.gray.opacity(0.05))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .padding()
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var contactInfoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Contact Information", systemImage: "person.text.rectangle")
+                .font(.headline)
+
+            if let ident = identity {
+                if !ident.phoneNumbers.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Phones").font(.caption.bold()).foregroundStyle(.secondary)
+                        ForEach(ident.phoneNumbers, id: \.self) { phone in
+                            HStack {
+                                Image(systemName: "phone.fill")
+                                    .foregroundStyle(.green)
+                                    .font(.caption)
+                                Text(phone)
+                                    .font(.subheadline)
+                                Spacer()
+                                let cleaned = phone.replacingOccurrences(of: " ", with: "")
+                                if let url = URL(string: "tel:\(cleaned)") {
+                                    Link("Call", destination: url)
+                                        .font(.caption.bold())
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !ident.emails.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Emails").font(.caption.bold()).foregroundStyle(.secondary)
+                        ForEach(ident.emails, id: \.self) { email in
+                            HStack {
+                                Image(systemName: "envelope.fill")
+                                    .foregroundStyle(.blue)
+                                    .font(.caption)
+                                Text(email)
+                                    .font(.subheadline)
+                                Spacer()
+                                if let url = URL(string: "mailto:\(email)") {
+                                    Link("Mail", destination: url)
+                                        .font(.caption.bold())
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !ident.urls.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Websites").font(.caption.bold()).foregroundStyle(.secondary)
+                        ForEach(ident.urls, id: \.self) { urlString in
+                            HStack {
+                                Image(systemName: "link")
+                                    .foregroundStyle(.orange)
+                                    .font(.caption)
+                                Text(urlString)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                Spacer()
+                                let dest = urlString.hasPrefix("http") ? urlString : "https://\(urlString)"
+                                if let url = URL(string: dest) {
+                                    Link("Open", destination: url)
+                                        .font(.caption.bold())
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !ident.postalAddresses.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Addresses").font(.caption.bold()).foregroundStyle(.secondary)
+                        ForEach(ident.postalAddresses, id: \.self) { address in
+                            HStack(alignment: .top) {
+                                Image(systemName: "mappin.and.ellipse")
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                                    .padding(.top, 2)
+                                Text(address)
+                                    .font(.subheadline)
+                                Spacer()
+                                if let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                                   let url = URL(string: "http://maps.apple.com/?q=\(encoded)") {
+                                    Link("Map", destination: url)
+                                        .font(.caption.bold())
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HStack {
+                    Text("Existing photo on contact:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(ident.hasImage ? "Yes" : "No")
+                        .font(.caption.bold())
+                        .foregroundStyle(ident.hasImage ? .orange : .secondary)
+                }
+            } else {
+                Text("No additional details stored for this contact.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var matchingRationaleSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Match Rationale", systemImage: "sparkles")
+                .font(.headline)
+
+            if !result.flags.isEmpty {
+                Text("Engine flags: \(result.flags.joined(separator: ", "))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let chosen = chosenCandidate {
+                Text("Selected source: \(chosen.source.displayName) (\(chosen.source.rawValue))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let page = chosen.pageURL {
+                    Text("Page: \(page.absoluteString)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            if let exhausted = result.exhaustedLabel {
+                Text(exhausted)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var actionBar: some View {
+        let isSelected = model.selected.contains(result.contactID)
+        return HStack(spacing: 12) {
+            Button {
+                model.setSelected(result.contactID, !isSelected)
+            } label: {
+                Label(isSelected ? "Approved" : "Approve", systemImage: isSelected ? "checkmark.circle.fill" : "checkmark.circle")
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 16)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(isSelected ? .green : .accentColor)
+            .disabled(result.candidates.isEmpty)
+
+            Button(role: .destructive) {
+                model.setSelected(result.contactID, false)
+                dismiss()
+            } label: {
+                Label("Skip", systemImage: "xmark.circle")
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 16)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .background(.ultraThinMaterial)
+    }
+
+    private func confidenceBadge(_ c: Confidence) -> some View {
+        let text: String
+        let color: Color
+        switch c {
+        case .high:
+            text = "High Confidence"
+            color = .green
+        case .medium:
+            text = "Medium Confidence"
+            color = .orange
+        case .low:
+            text = "Low Confidence"
+            color = .purple
+        case .skip:
+            text = "Not Found"
+            color = .secondary
+        }
+        return Text(text)
+            .font(.caption2.bold())
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 }
 
