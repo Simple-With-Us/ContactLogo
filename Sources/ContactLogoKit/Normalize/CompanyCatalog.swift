@@ -217,7 +217,7 @@ public enum CompanyCatalog {
         "directv": "directv.com", "dish": "dish.com", "dish network": "dish.com",
         "coned": "coned.com", "con edison": "coned.com", "national grid": "nationalgridus.com",
         "eversource": "eversource.com", "xcel energy": "xcelenergy.com",
-        "entergy": "entergy.com", "southern company": "southerncompany.com",
+        "entergy": "entergy.com", "southern": "southerncompany.com", "southern company": "southerncompany.com",
         "dominion energy": "dominionenergy.com", "nextera": "nexteraenergy.com",
         "fpl": "fpl.com", "florida power & light": "fpl.com"
     ]
