@@ -21,7 +21,10 @@ public enum WordLists {
         "wholesale", "distributors", "logistics", "transport", "energy",
         "propane", "security", "alarm", "telecom", "wireless", "media",
         "marketing", "consulting", "partners", "associates", "enterprises",
-        "industries", "systems", "technologies", "labs", "works"
+        "industries", "systems", "technologies", "labs", "works",
+        "express", "coffee", "financial", "advisors", "solutions",
+        "digital", "tech", "optometry", "vision", "hardware", "foods",
+        "airlines", "airways"
     ]
 
     /// Business legal-form suffixes that mark a lone-name contact as a

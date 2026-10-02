@@ -20,6 +20,7 @@ public enum CandidateRanker {
         case .simpleIcons: s += 36
         case .companiesLogo: s += 32
         case .brandfetch: s += 20
+        case .logodev: s += 20
         case .wikimedia: s += 18
         case .googleCSE: s += 10
         case .favicon: s += 8
@@ -56,7 +57,7 @@ public enum CandidateRanker {
                                   domainAgrees: Bool) -> Confidence {
         guard let best, nameSimilarityPassed else { return .skip }
         var tier: Confidence
-        let iconic: Set<SourceKind> = [.brandfetch, .wikimedia, .manual, .preferred, .simpleIcons, .companiesLogo, .contactLogoCache]
+        let iconic: Set<SourceKind> = [.brandfetch, .logodev, .wikimedia, .manual, .preferred, .simpleIcons, .companiesLogo, .contactLogoCache]
         if best.isSquareish, best.isPictographic, iconic.contains(best.source) {
             tier = .high
         } else if best.isSquareish {

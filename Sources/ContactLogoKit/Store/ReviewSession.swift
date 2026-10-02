@@ -147,6 +147,26 @@ public final class ReviewSession: ObservableObject {
     private func restorePersistedQueue() {
         guard let snapshot = try? queueStore.loadFresh() else { return }
         results = snapshot.results
+        if let token = settings?.logoDevToken, !token.isEmpty {
+            results = results.map { result in
+                var res = result
+                res.candidates = res.candidates.map { candidate in
+                    var c = candidate
+                    if c.source == .logodev, var components = URLComponents(url: c.imageURL, resolvingAgainstBaseURL: false) {
+                        var items = components.queryItems ?? []
+                        if !items.contains(where: { $0.name == "token" }) {
+                            items.append(URLQueryItem(name: "token", value: token))
+                            components.queryItems = items
+                            if let withToken = components.url {
+                                c.imageURL = withToken
+                            }
+                        }
+                    }
+                    return c
+                }
+                return res
+            }
+        }
         selected = Set(snapshot.selected)
         chosenIndex = snapshot.chosenIndex
         names = snapshot.names
@@ -296,10 +316,12 @@ public final class ReviewSession: ObservableObject {
         guard let settings else { return Self.makePipeline() }
         let clientID = settings.resolvedBrandfetchClientID
         let apiKey = settings.resolvedBrandfetchAPIKey
-        guard clientID != nil || apiKey != nil else { return Self.makePipeline() }
+        let logoToken = settings.resolvedLogoDevToken
+        guard clientID != nil || apiKey != nil || logoToken != nil else { return Self.makePipeline() }
         return DefaultSources.makePipeline(
             brandfetchClientID: clientID ?? DefaultSources.env("CONTACTLOGO_BRANDFETCH_CLIENT_ID"),
-            brandfetchAPIKey: apiKey ?? DefaultSources.env("CONTACTLOGO_BRANDFETCH_API_KEY")
+            brandfetchAPIKey: apiKey ?? DefaultSources.env("CONTACTLOGO_BRANDFETCH_API_KEY"),
+            logoDevToken: logoToken ?? DefaultSources.env("CONTACTLOGO_LOGODEV_TOKEN") ?? DefaultSources.env("LOGODEV_TOKEN")
         )
     }
 
@@ -406,7 +428,7 @@ public final class ReviewSession: ObservableObject {
             visibleContactCountIsExact = await provider.visibleContactCountIsExact()
             let contacts = try await provider.fetchCandidates()
             totalScannedCount = contacts.count
-            names = Dictionary(uniqueKeysWithValues: contacts.map { ($0.id, $0.displayName) })
+            names = Dictionary(contacts.map { ($0.id, $0.displayName) }, uniquingKeysWith: { first, _ in first })
             let pipeline = configuredPipeline()
             // 2026-09-21 — sample 20 dropped contacts with their drop reason
             // so the user can see in Diagnostic view what the engine
@@ -501,8 +523,15 @@ public final class ReviewSession: ObservableObject {
                 }
             }
 
-            let allTargets: [ScanTarget] = businessTargets.map { .business($0) } + affiliatedTargets.map { .affiliated($0) }
-            identitiesByID = Dictionary(uniqueKeysWithValues: allTargets.map { ($0.contact.id, $0.contact) })
+            var seenTargetIDs = Set<String>()
+            var deduplicatedTargets: [ScanTarget] = []
+            for target in (businessTargets.map { ScanTarget.business($0) } + affiliatedTargets.map { ScanTarget.affiliated($0) }) {
+                if seenTargetIDs.insert(target.contact.id).inserted {
+                    deduplicatedTargets.append(target)
+                }
+            }
+            let allTargets = deduplicatedTargets
+            identitiesByID = Dictionary(allTargets.map { ($0.contact.id, $0.contact) }, uniquingKeysWith: { first, _ in first })
             retryingIDs = []
             stage = .matching(done: 0, total: allTargets.count)
             if cancelRequested || Task.isCancelled {

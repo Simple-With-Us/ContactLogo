@@ -80,3 +80,91 @@ public enum ImageDimensions {
         return nil
     }
 }
+
+/// Logo.dev: Brand search API (name → domain) + Image CDN (domain → 512px asset; needs token).
+/// Honors MATCHING-ENGINE §3: icon > wordmark, fallback-tile detection, 429 backoff (ENGINE-CONTRACT R11.6).
+public struct LogoDevSource: LogoSource, Sendable {
+    public let kind = SourceKind.logodev
+    private let token: String
+    private let session: URLSession
+
+    public init(token: String, session: URLSession = .shared) {
+        self.token = token
+        self.session = session
+    }
+
+    private struct SearchResult: Decodable {
+        let name: String?
+        let domain: String?
+    }
+
+    public func candidates(forBrandName name: String) async throws -> [LogoCandidate] {
+        guard !token.isEmpty else { throw LogoSourceError.misconfigured("Logo.dev token missing") }
+        var components = URLComponents(string: "https://api.logo.dev/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: name)]
+        guard let url = components?.url else { return [] }
+        let data: Data
+        do {
+            data = try await HTTPRetry.withRateLimitRetry {
+                try await self.get(url, bearer: token)
+            }
+        } catch let error as LogoSourceError where error == .notFound {
+            return []
+        }
+        guard let hits = try? JSONDecoder().decode([SearchResult].self, from: data) else {
+            return []
+        }
+        var out: [LogoCandidate] = []
+        for hit in hits.prefix(3) {
+            guard let domain = hit.domain,
+                  NameNormalizer.passesSimilarity(query: name, brandName: hit.name ?? "") else { continue }
+            out.append(contentsOf: try await candidates(forDomain: domain))
+        }
+        return out
+    }
+
+    public func candidates(forDomain domain: String) async throws -> [LogoCandidate] {
+        guard !token.isEmpty else { throw LogoSourceError.misconfigured("Logo.dev token missing") }
+        let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? domain
+        var components = URLComponents(string: "https://img.logo.dev/\(encodedDomain)")
+        components?.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "size", value: "512"),
+            URLQueryItem(name: "format", value: "png"),
+            URLQueryItem(name: "fallback", value: "404")
+        ]
+        guard let url = components?.url else {
+            return []
+        }
+        return [
+            LogoCandidate(
+                source: .logodev,
+                imageURL: url,
+                pixelWidth: nil,
+                pixelHeight: nil,
+                assetType: "icon",
+                altText: domain,
+                hasAlpha: nil
+            )
+        ]
+    }
+
+    private func get(_ url: URL, bearer: String) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        request.setValue(BrandfetchSource.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: request)
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 429 {
+                throw LogoSourceError.rateLimited(
+                    retryAfter: HTTPRetry.retryAfterSeconds(http.value(forHTTPHeaderField: "Retry-After"))
+                )
+            }
+            guard (200...299).contains(http.statusCode) else {
+                throw LogoSourceError.forStatus(http.statusCode)
+            }
+        }
+        return data
+    }
+}

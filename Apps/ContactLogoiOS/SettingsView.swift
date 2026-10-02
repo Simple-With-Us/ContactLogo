@@ -22,9 +22,17 @@ struct SettingsView: View {
                     SecureField("API Key", text: $settings.brandfetchAPIKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .onChange(of: settings.brandfetchClientID) { settings.save() }
+                        .onChange(of: settings.brandfetchAPIKey) { settings.save() }
                 } header: {
                     Text("Brandfetch")
+                }
+                Section {
+                    SecureField("Token", text: $settings.logoDevToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: settings.logoDevToken) { settings.save() }
+                } header: {
+                    Text("Logo.dev")
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Optional.  High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.")

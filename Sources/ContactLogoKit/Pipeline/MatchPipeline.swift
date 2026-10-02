@@ -183,16 +183,48 @@ public struct MatchPipeline: Sendable {
         let onlyGiven = !given.isEmpty && family.isEmpty
         let onlyFamily = !family.isEmpty && given.isEmpty
         let unstructured = given.isEmpty && family.isEmpty
-        guard onlyGiven || onlyFamily || unstructured else { return nil }
 
-        let candidate = NameNormalizer.clean(onlyGiven ? given : onlyFamily ? family : c.displayName)
-        guard !candidate.isEmpty else { return nil }
+        if onlyGiven || onlyFamily || unstructured {
+            let candidate = NameNormalizer.clean(onlyGiven ? given : onlyFamily ? family : c.displayName)
+            guard !candidate.isEmpty else { return nil }
 
-        if CompanyCatalog.domain(forName: candidate) != nil { return candidate }
-        // Catalog miss — fall through to the multi-token business heuristic.
-        // A single token is not enough signal to flip from "person" to
-        // "business" without a catalog hit.
-        if looksLikeBusinessName(candidate) { return candidate }
+            if CompanyCatalog.domain(forName: candidate) != nil { return candidate }
+            // Catalog miss — fall through to the multi-token business heuristic.
+            if looksLikeBusinessName(candidate) { return candidate }
+            // If contact has a matching domain on the card (website/work email), rescue candidate
+            if domainForOrganization(candidate, contact: c) != nil { return candidate }
+            return nil
+        }
+
+        // Both given and family names are populated (e.g. Given: "Best", Family: "Buy",
+        // Given: "Trader", Family: "Joe's", Given: "Smith", Family: "Roofing")
+        let combined = NameNormalizer.clean([given, family].joined(separator: " "))
+        guard !combined.isEmpty else { return nil }
+
+        if CompanyCatalog.domain(forName: combined) != nil {
+            if !looksLikePersonName(combined) || looksLikeBusinessName(combined) || domainForOrganization(combined, contact: c) != nil {
+                return combined
+            }
+        }
+
+        // One part is a catalog firm and the other is a department/store/place/sub-brand tail
+        // (e.g. Given: "Costco", Family: "Wholesale", or Given: "Target", Family: "#1234")
+        if CompanyCatalog.domain(forName: given) != nil &&
+            (WordLists.isRoleOrPlace(family) || WordLists.isCatalogTailOK(family) || WordLists.subbrandTail.contains(family.lowercased()) || family.allSatisfy({ $0.isNumber || $0 == "#" })) {
+            return combined
+        }
+        if CompanyCatalog.domain(forName: family) != nil &&
+            (WordLists.isRoleOrPlace(given) || WordLists.isCatalogTailOK(given) || WordLists.subbrandTail.contains(given.lowercased())) {
+            return combined
+        }
+
+        if looksLikeBusinessName(combined) { return combined }
+
+        // Combined name matches a website or work email on the card and does not look like a person
+        if domainForOrganization(combined, contact: c) != nil && !looksLikePersonName(combined) {
+            return combined
+        }
+
         return nil
     }
 
@@ -223,7 +255,7 @@ public struct MatchPipeline: Sendable {
         }
         let normOrg = org.lowercased().filter { $0.isLetter || $0.isNumber }
         guard !normOrg.isEmpty else { return nil }
-        for raw in contact.emailDomains + contact.websiteHosts {
+        for raw in contact.websiteHosts + contact.emailDomains {
             guard let d = DomainDeriver.reduce(DomainDeriver.emailHost(raw)) ?? DomainDeriver.reduce(raw) else { continue }
             if DomainDeriver.freemail.contains(d.domain) { continue }
             if DomainDeriver.isSocial(d) || DomainDeriver.isPlatform(d) { continue }
@@ -287,8 +319,8 @@ public struct MatchPipeline: Sendable {
                 }
                 // Reject role metadata or job titles ("Director", "Hsa PTO - Asst Treasurer")
                 if !GenericBlocklist.isNonBrand(orgCandidate) &&
-                    !WordLists.isRoleOrPlace(cleanOrg) &&
-                    !WordLists.isRoleOrPlace(orgCandidate) {
+                    Self.organizationNamesABusiness(cleanOrg) &&
+                    Self.organizationNamesABusiness(orgCandidate) {
                     // Organization-derived affiliations must resolve using organization-compatible
                     // evidence (catalog or work email/website), never arbitrary contact domains or guesses.
                     if let domain = domainForOrganization(orgCandidate, contact: c) {
@@ -310,9 +342,9 @@ public struct MatchPipeline: Sendable {
             }
         }
 
-        // 3. Work email domain (only if domain is not a public mail provider)
-        for raw in c.emailDomains {
-            guard let d = DomainDeriver.reduce(DomainDeriver.emailHost(raw)) else { continue }
+        // 3. Work email domain or website (only if domain is not a public mail provider or social/platform)
+        for raw in c.websiteHosts + c.emailDomains {
+            guard let d = DomainDeriver.reduce(DomainDeriver.emailHost(raw)) ?? DomainDeriver.reduce(raw) else { continue }
             if DomainDeriver.freemail.contains(d.domain) { continue }
             if DomainDeriver.isSocial(d) || DomainDeriver.isPlatform(d) { continue }
             let label = Self.domainLabel(d.domain)

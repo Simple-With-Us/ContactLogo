@@ -15,18 +15,20 @@ public final class SettingsStore: ObservableObject {
     private enum Key {
         static let clientID = "contactlogo.brandfetch.clientID"
         static let apiKey = "contactlogo.brandfetch.apiKey"
+        static let logoDevToken = "contactlogo.logodev.token"
         static let skipExistingPhoto = "contactlogo.skipContactsWithExistingPhoto"
     }
 
     private enum Credential {
         static let service = "com.contactlogo.credentials"
         static let brandfetchAPIKey = "brandfetch.apiKey"
+        static let logoDevToken = "logodev.token"
     }
 
     private let defaults: UserDefaults
     private var isLoading = true
 
-    /// True when the API key could not be written to the Keychain, so it is
+    /// True when the API key or token could not be written to the Keychain, so it is
     /// live for this launch but will not survive it.
     ///
     /// It is deliberately **not** written to `UserDefaults` instead: falling
@@ -36,6 +38,7 @@ public final class SettingsStore: ObservableObject {
 
     @Published public var brandfetchClientID: String = "" { didSet { autosave() } }
     @Published public var brandfetchAPIKey: String = "" { didSet { autosave() } }
+    @Published public var logoDevToken: String = "" { didSet { autosave() } }
     /// Opt-in, and off by default.
     ///
     /// It was on, described as mirroring a web toggle and the MATCHING-ENGINE
@@ -64,9 +67,6 @@ public final class SettingsStore: ObservableObject {
         if let stored = KeychainStore.read(account: Credential.brandfetchAPIKey, service: Credential.service) {
             brandfetchAPIKey = stored
         } else if let legacy = store.string(forKey: Key.apiKey), !legacy.isEmpty {
-            // An install that predates the move still has the key sitting in
-            // its preferences plist.  Carry it across and take it out of there
-            // — leaving the plaintext behind would make the fix cosmetic.
             brandfetchAPIKey = legacy
             if KeychainStore.write(legacy, account: Credential.brandfetchAPIKey, service: Credential.service) {
                 store.removeObject(forKey: Key.apiKey)
@@ -74,8 +74,19 @@ public final class SettingsStore: ObservableObject {
                 credentialStorageFailed = true
             }
         }
+        if let storedLogoDev = KeychainStore.read(account: Credential.logoDevToken, service: Credential.service) {
+            logoDevToken = storedLogoDev
+        } else if let legacyToken = store.string(forKey: Key.logoDevToken), !legacyToken.isEmpty {
+            logoDevToken = legacyToken
+            if KeychainStore.write(legacyToken, account: Credential.logoDevToken, service: Credential.service) {
+                store.removeObject(forKey: Key.logoDevToken)
+            } else {
+                credentialStorageFailed = true
+            }
+        }
         #else
         brandfetchAPIKey = store.string(forKey: Key.apiKey) ?? ""
+        logoDevToken = store.string(forKey: Key.logoDevToken) ?? ""
         #endif
 
         isLoading = false
@@ -86,21 +97,23 @@ public final class SettingsStore: ObservableObject {
         defaults.set(brandfetchClientID, forKey: Key.clientID)
         defaults.set(skipContactsWithExistingPhoto, forKey: Key.skipExistingPhoto)
         #if canImport(Security)
-        // Assigned only on a real change: `save()` runs from `didSet` on the
-        // published properties, and republishing on every keystroke provokes
-        // SwiftUI's "publishing changes from within view updates" warning.
-        let stored = KeychainStore.write(
+        let storedKey = KeychainStore.write(
             brandfetchAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
             account: Credential.brandfetchAPIKey,
             service: Credential.service
         )
-        if credentialStorageFailed != !stored { credentialStorageFailed = !stored }
-        // Never `defaults.set(brandfetchAPIKey, …)` as a fallback: an
-        // unwritable Keychain is a worse reason to put a credential in the
-        // preferences plist than the one that put it there originally.
+        let storedToken = KeychainStore.write(
+            logoDevToken.trimmingCharacters(in: .whitespacesAndNewlines),
+            account: Credential.logoDevToken,
+            service: Credential.service
+        )
+        let allStored = storedKey && storedToken
+        if credentialStorageFailed != !allStored { credentialStorageFailed = !allStored }
         defaults.removeObject(forKey: Key.apiKey)
+        defaults.removeObject(forKey: Key.logoDevToken)
         #else
         defaults.set(brandfetchAPIKey, forKey: Key.apiKey)
+        defaults.set(logoDevToken, forKey: Key.logoDevToken)
         #endif
     }
 
@@ -112,6 +125,11 @@ public final class SettingsStore: ObservableObject {
 
     public var resolvedBrandfetchAPIKey: String? {
         let value = brandfetchAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    public var resolvedLogoDevToken: String? {
+        let value = logoDevToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }
 

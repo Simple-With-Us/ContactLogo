@@ -115,4 +115,56 @@ final class BusinessContactShapeTests: XCTestCase {
         XCTAssertEqual(pipeline.classify(identity("", emails: ["sales@sunrisebakery.com"])), .businessCard)
         XCTAssertEqual(pipeline.classify(identity("", urls: ["www.gulfcoastroofing.com"])), .businessCard)
     }
+
+    /// Real-world business contacts frequently have their name split across
+    /// Given and Family name fields (e.g. from Google Contacts sync, vCard imports,
+    /// or manual user entry).  These must classify as business cards rather than
+    /// being dropped as protected people.
+    func testBusinessesSplitAcrossGivenAndFamilySurvive() {
+        let cases: [(String, ContactIdentity)] = [
+            ("Trader Joe's", identity("Trader Joe's", given: "Trader", family: "Joe's")),
+            ("Best Buy", identity("Best Buy", given: "Best", family: "Buy")),
+            ("Home Depot", identity("Home Depot", given: "Home", family: "Depot")),
+            ("Delta Airlines", identity("Delta Airlines", given: "Delta", family: "Airlines")),
+            ("Apex Plumbing LLC", identity("Apex Plumbing LLC", given: "Apex Plumbing", family: "LLC")),
+            ("Smith Roofing", identity("Smith Roofing", given: "Smith", family: "Roofing")),
+            ("Bluebonnet Dental", identity("Bluebonnet Dental", given: "Bluebonnet", family: "Dental")),
+            ("Costco Wholesale", identity("Costco Wholesale", given: "Costco", family: "Wholesale")),
+            ("Target Pharmacy", identity("Target Pharmacy", given: "Target", family: "Pharmacy")),
+            ("Acme Solutions with website", identity("Acme Solutions", given: "Acme", family: "Solutions", urls: ["https://www.acmesolutions.com"]))
+        ]
+
+        for (label, c) in cases {
+            XCTAssertEqual(pipeline.classify(c), .businessCard, "\(label) should be classified as businessCard")
+        }
+    }
+
+    /// Single-token businesses with a matching website on the contact card
+    /// are rescued even if they are not in the company catalog.
+    func testLoneNameWithMatchingWebsiteSurvives() {
+        let c = identity("Chewy", given: "Chewy", urls: ["https://www.chewy.com"])
+        XCTAssertEqual(pipeline.classify(c), .businessCard)
+    }
+
+    /// Ensure genuine personal names are never misclassified as business cards.
+    func testRealPeopleAreNotBusinessCards() {
+        let maya = identity("Maya Chen", given: "Maya", family: "Chen")
+        XCTAssertEqual(pipeline.classify(maya), .person)
+
+        let john = identity("John Smith", given: "John", family: "Smith")
+        XCTAssertEqual(pipeline.classify(john), .person)
+
+        let doug = identity("Doug Alvarez", given: "Doug", family: "Alvarez", org: "Texas Descon")
+        XCTAssertEqual(pipeline.classify(doug), .person)
+        XCTAssertNotNil(pipeline.affiliation(for: doug))
+    }
+
+    /// A person contact with a corporate website host on their card resolves
+    /// that website as their affiliation.
+    func testAffiliationWithWebsiteResolves() {
+        let bob = identity("Bob Taylor", given: "Bob", family: "Taylor", urls: ["https://taylorlawfirm.com"])
+        let aff = pipeline.affiliation(for: bob)
+        XCTAssertNotNil(aff)
+        XCTAssertEqual(aff?.domain, "taylorlawfirm.com")
+    }
 }

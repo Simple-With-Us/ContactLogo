@@ -40,7 +40,7 @@ public enum ContactClass: String, Sendable, Codable {
 }
 
 public enum SourceKind: String, Sendable, Codable {
-    case brandfetch, wikimedia, googleCSE, googleScrape
+    case brandfetch, logodev, wikimedia, googleCSE, googleScrape
     case simpleIcons, favicon, preferred, companiesLogo, manual
     case contactLogoCache
 }
@@ -48,7 +48,7 @@ public enum SourceKind: String, Sendable, Codable {
 /// One logo option for a contact. The pipeline keeps the top N, not just the winner.
 public struct LogoCandidate: Sendable, Hashable, Codable {
     public let source: SourceKind
-    public let imageURL: URL
+    public var imageURL: URL
     public let pageURL: URL?
     public var pixelWidth: Int?
     public var pixelHeight: Int?
@@ -92,6 +92,43 @@ public struct LogoCandidate: Sendable, Hashable, Codable {
         case "http", "https": return true
         default: return false
         }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source, imageURL, pageURL, pixelWidth, pixelHeight, assetType, altText, hasAlpha
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.source = try container.decode(SourceKind.self, forKey: .source)
+        self.imageURL = try container.decode(URL.self, forKey: .imageURL)
+        self.pageURL = try container.decodeIfPresent(URL.self, forKey: .pageURL)
+        self.pixelWidth = try container.decodeIfPresent(Int.self, forKey: .pixelWidth)
+        self.pixelHeight = try container.decodeIfPresent(Int.self, forKey: .pixelHeight)
+        self.assetType = try container.decodeIfPresent(String.self, forKey: .assetType)
+        self.altText = try container.decodeIfPresent(String.self, forKey: .altText)
+        self.hasAlpha = try container.decodeIfPresent(Bool.self, forKey: .hasAlpha)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(source, forKey: .source)
+        var sanitizedURL = imageURL
+        if source == .logodev, var components = URLComponents(url: imageURL, resolvingAgainstBaseURL: false) {
+            if let items = components.queryItems, items.contains(where: { $0.name == "token" }) {
+                components.queryItems = items.filter { $0.name != "token" }
+                if let clean = components.url {
+                    sanitizedURL = clean
+                }
+            }
+        }
+        try container.encode(sanitizedURL, forKey: .imageURL)
+        try container.encodeIfPresent(pageURL, forKey: .pageURL)
+        try container.encodeIfPresent(pixelWidth, forKey: .pixelWidth)
+        try container.encodeIfPresent(pixelHeight, forKey: .pixelHeight)
+        try container.encodeIfPresent(assetType, forKey: .assetType)
+        try container.encodeIfPresent(altText, forKey: .altText)
+        try container.encodeIfPresent(hasAlpha, forKey: .hasAlpha)
     }
 }
 
