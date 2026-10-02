@@ -10,6 +10,7 @@
 		001568AA1D5D1562A015B3C6 /* IdentityResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50D298FD00C310D0EF60F799 /* IdentityResolver.swift */; };
 		0250D2D9C2CBCA74D98F6245 /* ContactLogoKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 31BCB449DF697F691F3899EC /* ContactLogoKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		02848CAA91730AA6A8CD9AA4 /* CandidateRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04865AB793CE93A696E583A /* CandidateRanker.swift */; };
+		0374A33C90631926844B59A6 /* DuckDuckGoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5624D6B843022F3E83AEF39F /* DuckDuckGoSource.swift */; };
 		044A5E3E5D8C15654D298DDF /* ImagePreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D286008B1C88DA56ECD4BC34 /* ImagePreparer.swift */; };
 		0662999E9EE8C5DC290FE5CE /* AppUpdatePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 443265E102A01653A01178F2 /* AppUpdatePrompt.swift */; };
 		07111C4BA5781A90CCEA7E3B /* ClearbitSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5AF63E63B85506F7F169F9 /* ClearbitSource.swift */; };
@@ -83,6 +84,7 @@
 		C963AA407E3D6C2CA3819674 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B063D75543B34805CD5F1C /* SettingsView.swift */; };
 		CA91FC9CFC2D73B6A9E770E7 /* LogoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F13C914BB55CC5108C409D4 /* LogoSource.swift */; };
 		CD0E7DCE7500AB2379551539 /* ReviewSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8104FB0F5DF9282B24180F0 /* ReviewSession.swift */; };
+		CDF33F84CAD918D43C0E80C6 /* DuckDuckGoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5624D6B843022F3E83AEF39F /* DuckDuckGoSource.swift */; };
 		D0D47FEB698B1C1D6FEE35F9 /* WordLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8225B32D4FCAB226233A5B9 /* WordLists.swift */; };
 		D233291A0988401AC9AEC626 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B57A945885E5C85324DE0C5A /* SettingsView.swift */; };
 		D4CAA2941479A80366213C46 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475C47C21BB6C48B687167A /* ContentView.swift */; };
@@ -164,6 +166,7 @@
 		4969E286A152FDE73909DD81 /* NameNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameNormalizer.swift; sourceTree = "<group>"; };
 		4B5AF63E63B85506F7F169F9 /* ClearbitSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearbitSource.swift; sourceTree = "<group>"; };
 		50D298FD00C310D0EF60F799 /* IdentityResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityResolver.swift; sourceTree = "<group>"; };
+		5624D6B843022F3E83AEF39F /* DuckDuckGoSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuckDuckGoSource.swift; sourceTree = "<group>"; };
 		56605D3FFDA7F1FA949DABF3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		5ED8D6C0517E1AE6081E879C /* SVGRasterizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SVGRasterizer.swift; sourceTree = "<group>"; };
 		681346B29861440FC8ECDB60 /* ContactLogoiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoiOSApp.swift; sourceTree = "<group>"; };
@@ -349,6 +352,7 @@
 				4B5AF63E63B85506F7F169F9 /* ClearbitSource.swift */,
 				F54AE3ACB7FFE84AB4A3AC6C /* CompaniesLogoSource.swift */,
 				A97E49B99E2F0F2577E6AFDD /* ContactLogoCacheSource.swift */,
+				5624D6B843022F3E83AEF39F /* DuckDuckGoSource.swift */,
 				D79CC86B84746C889E1B7462 /* FaviconSource.swift */,
 				F76CD478E2D5D4BA13025422 /* GoogleFaviconV2Source.swift */,
 				C98D5B3CD005C6DA5DB36B57 /* HTTPRetry.swift */,
@@ -566,6 +570,7 @@
 				7B2F55EB61AAA8853A737099 /* ContactsProvider.swift in Sources */,
 				C1FCCD7148A8844104DE19AC /* DefaultSources.swift in Sources */,
 				A965E0E97A8B9CD17293BC0D /* DomainDeriver.swift in Sources */,
+				CDF33F84CAD918D43C0E80C6 /* DuckDuckGoSource.swift in Sources */,
 				522DB2D63ABA91D22F31E79F /* FaviconSource.swift in Sources */,
 				3C46C9CF19FF9F9C87269F1D /* GenericBlocklist.swift in Sources */,
 				84954D30FB86F61CE535E354 /* GoogleFaviconV2Source.swift in Sources */,
@@ -609,6 +614,7 @@
 				A11808266B0D9CDD5E977B89 /* ContactsProvider.swift in Sources */,
 				5C0BFA7FEFCD6A82F8A3C079 /* DefaultSources.swift in Sources */,
 				AE8B9779BA31A084B3007032 /* DomainDeriver.swift in Sources */,
+				0374A33C90631926844B59A6 /* DuckDuckGoSource.swift in Sources */,
 				0B2C4DBAFB29F40E88F2ACB4 /* FaviconSource.swift in Sources */,
 				8B84083B3475B3FE01286A5B /* GenericBlocklist.swift in Sources */,
 				96B1D9E6969B5289CF2662E0 /* GoogleFaviconV2Source.swift in Sources */,

@@ -5,7 +5,7 @@ on macOS, iOS, Android, and the web. Official site: [ContactLogo.com](https://co
 
 This repository previously used two names for the same job (BadgeBook and
 Crest). Those names are retired. GitHub is
-[`jaywedgeworth22/ContactLogo`](https://github.com/jaywedgeworth22/ContactLogo)
+[`Simple-With-Us/ContactLogo`](https://github.com/Simple-With-Us/ContactLogo)
 (renamed from `jaywedgeworth22/BadgeBook`; old URLs redirect).  Local checkout:
 `~/Code/ContactLogo`.
 

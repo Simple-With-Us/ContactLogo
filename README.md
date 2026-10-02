@@ -5,7 +5,7 @@ and suggests matching logos for you to review.  Approved updates can replace a
 grey monogram with a recognizable brand mark.
 
 **Site:** [ContactLogo.com](https://contactlogo.com)
-**Repo:** [jaywedgeworth22/ContactLogo](https://github.com/jaywedgeworth22/ContactLogo)
+**Repo:** [Simple-With-Us/ContactLogo](https://github.com/Simple-With-Us/ContactLogo)
 **From:** [Simple With Us](https://simplewithus.com/)
 
 Three shells, one engine:

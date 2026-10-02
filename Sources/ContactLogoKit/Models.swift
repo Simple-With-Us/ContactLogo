@@ -56,7 +56,7 @@ public enum SourceKind: String, Sendable, Codable {
     case brandfetch, logodev, wikimedia, googleCSE, googleScrape
     case simpleIcons, favicon, preferred, companiesLogo, manual
     case contactLogoCache
-    case appleTouchIcon, clearbit, googleFaviconV2, socialAvatar, unavatar, unavatarPersonal
+    case appleTouchIcon, clearbit, duckduckgo, googleFaviconV2, socialAvatar, unavatar, unavatarPersonal
 
     public var displayName: String {
         switch self {
@@ -73,6 +73,7 @@ public enum SourceKind: String, Sendable, Codable {
         case .contactLogoCache: return "Cache"
         case .appleTouchIcon: return "Apple Touch Icon"
         case .clearbit: return "Clearbit"
+        case .duckduckgo: return "DuckDuckGo"
         case .googleFaviconV2: return "Google Favicon"
         case .socialAvatar: return "Social Profile"
         case .unavatar: return "Unavatar"

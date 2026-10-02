@@ -100,27 +100,53 @@ public struct LogoDevSource: LogoSource, Sendable {
 
     public func candidates(forBrandName name: String) async throws -> [LogoCandidate] {
         guard !token.isEmpty else { throw LogoSourceError.misconfigured("Logo.dev token missing") }
+
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return [] }
+
+        // 1. Try api.logo.dev/search first (works with secret keys or mock endpoints)
         var components = URLComponents(string: "https://api.logo.dev/search")
-        components?.queryItems = [URLQueryItem(name: "q", value: name)]
-        guard let url = components?.url else { return [] }
-        let data: Data
-        do {
-            data = try await HTTPRetry.withRateLimitRetry {
-                try await self.get(url, bearer: token)
+        components?.queryItems = [URLQueryItem(name: "q", value: clean)]
+        if let url = components?.url {
+            let data: Data?
+            do {
+                data = try await HTTPRetry.withRateLimitRetry {
+                    try await self.get(url, bearer: token)
+                }
+            } catch {
+                data = nil
             }
-        } catch let error as LogoSourceError where error == .notFound {
-            return []
+            if let data, let hits = try? JSONDecoder().decode([SearchResult].self, from: data), !hits.isEmpty {
+                var out: [LogoCandidate] = []
+                for hit in hits.prefix(3) {
+                    guard let domain = hit.domain,
+                          NameNormalizer.passesSimilarity(query: clean, brandName: hit.name ?? "") else { continue }
+                    out.append(contentsOf: try await candidates(forDomain: domain))
+                }
+                if !out.isEmpty { return out }
+            }
         }
-        guard let hits = try? JSONDecoder().decode([SearchResult].self, from: data) else {
-            return []
+
+        // 2. Direct img.logo.dev/name lookup (works with publishable pk_ tokens when /search is forbidden)
+        let encodedName = clean.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? clean
+        var imgComponents = URLComponents(string: "https://img.logo.dev/name/\(encodedName)")
+        imgComponents?.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "size", value: "512"),
+            URLQueryItem(name: "format", value: "png"),
+            URLQueryItem(name: "fallback", value: "404")
+        ]
+        if let imgURL = imgComponents?.url {
+            return [
+                LogoCandidate(
+                    source: .logodev,
+                    imageURL: imgURL,
+                    assetType: "icon",
+                    altText: clean
+                )
+            ]
         }
-        var out: [LogoCandidate] = []
-        for hit in hits.prefix(3) {
-            guard let domain = hit.domain,
-                  NameNormalizer.passesSimilarity(query: name, brandName: hit.name ?? "") else { continue }
-            out.append(contentsOf: try await candidates(forDomain: domain))
-        }
-        return out
+        return []
     }
 
     public func candidates(forDomain domain: String) async throws -> [LogoCandidate] {

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-12  
 **Reviewer:** Antigravity (AG)  
-**Repository:** `jaywedgeworth22/ContactLogo` (`CL`)  
+**Repository:** `Simple-With-Us/ContactLogo` (`CL`)  
 **Scope:** macOS native, iOS native, Android native, Web/PWA, Matching Engine, Data Safety, Observability  
 
 ---

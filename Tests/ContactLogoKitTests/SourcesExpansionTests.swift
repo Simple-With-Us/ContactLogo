@@ -57,10 +57,35 @@ final class SourcesExpansionTests: XCTestCase {
         XCTAssertEqual(personal?.imageURL.absoluteString, "https://unavatar.io/alex@example.com?fallback=false")
     }
 
+    func testDuckDuckGoSourceGeneratesDomainURL() async throws {
+        let source = DuckDuckGoSource()
+        let candidates = try await source.candidates(forDomain: "github.com")
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0].source, .duckduckgo)
+        XCTAssertEqual(candidates[0].imageURL.absoluteString, "https://icons.duckduckgo.com/ip3/github.com.ico")
+    }
+
+    func testBrandfetchSourceUsesDefaultClientIDWhenUnset() async throws {
+        let source = BrandfetchSource()
+        let candidates = try await source.candidates(forDomain: "example.com")
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0].source, .brandfetch)
+        XCTAssertTrue(candidates[0].imageURL.absoluteString.contains("c=\(BrandfetchSource.defaultClientID)"))
+    }
+
+    func testLogoDevSourcePublishableKeyBrandNameLookup() async throws {
+        let source = LogoDevSource(token: "pk_test_12345")
+        let candidates = try await source.candidates(forBrandName: "Stripe")
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0].source, .logodev)
+        XCTAssertEqual(candidates[0].imageURL.absoluteString, "https://img.logo.dev/name/Stripe?token=pk_test_12345&size=512&format=png&fallback=404")
+    }
+
     func testSourceKindDisplayNames() {
         XCTAssertEqual(SourceKind.brandfetch.displayName, "Brandfetch")
         XCTAssertEqual(SourceKind.logodev.displayName, "Logo.dev")
         XCTAssertEqual(SourceKind.clearbit.displayName, "Clearbit")
+        XCTAssertEqual(SourceKind.duckduckgo.displayName, "DuckDuckGo")
         XCTAssertEqual(SourceKind.appleTouchIcon.displayName, "Apple Touch Icon")
         XCTAssertEqual(SourceKind.googleFaviconV2.displayName, "Google Favicon")
         XCTAssertEqual(SourceKind.socialAvatar.displayName, "Social Profile")
