@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "start": "node server.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/app.test.ts src/csp.test.ts src/app.dom.test.ts src/styles.presentation.test.ts src/engine/*.test.ts src/observability/*.test.ts src/sw-update.test.ts server.test.mjs"
+    "test": "node --experimental-strip-types --test src/app.test.ts src/csp.test.ts src/app.dom.test.ts src/styles.presentation.test.ts src/engine/*.test.ts src/observability/*.test.ts src/sw-update.test.ts scripts/infisical-settings.test.ts server.test.mjs",
+    "settings:pull": "node --experimental-strip-types scripts/sync-infisical-env.ts"
   },
   "dependencies": {
     "@datadog/browser-logs": "^6.33.0",
