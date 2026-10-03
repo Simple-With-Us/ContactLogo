@@ -27,6 +27,7 @@ local.properties
 # Secrets — never commit API keys
 .env
 .env.*
+!.env.example
 secrets.json
 
 # Local contact-scan work dirs (AddressBook PII — never commit)

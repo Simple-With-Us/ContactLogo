@@ -1,3 +1,15 @@
+/**
+ * Web runtime settings: per-user BYO keys and preferences.
+ *
+ * BOUNDARY (Infisical sole-source-of-truth, see INFISICAL.md at repo root):
+ * this module is the PER-USER store — values the user types into the web
+ * Settings page live in localStorage (or a session fallback) and are
+ * explicitly out of scope for Infisical.  The APP-LEVEL defaults this file
+ * falls back to (`readEnv`) come from build-time env whose sole source of
+ * truth is the Infisical ContactLogo project; `npm run settings:pull`
+ * materializes them into `.env.local`, and Vercel production env is synced
+ * from the same project's prod environment.
+ */
 const GOOGLE_KEY = "contactlogo.googleClientId";
 const BRANDFETCH_KEY = "contactlogo.brandfetchClientId";
 const LOGODEV_KEY = "contactlogo.logodevToken";

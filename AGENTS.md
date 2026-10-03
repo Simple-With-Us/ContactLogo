@@ -75,3 +75,24 @@ for this lane (matches the Autorotate Android handling); a separate future
 rename PR will need to decide whether to align Android with the `.ios` suffix
 convention.
 
+## Infisical sole source of truth
+
+Infisical is the sole source of truth for ContactLogo's app-level settings:
+secrets, env config, and tunable knobs.  The full contract, key inventory,
+and per-user boundary live in [INFISICAL.md](INFISICAL.md) — read it before
+touching any setting, credential, or build-time env var.
+
+- Infisical project `ContactLogo`, envs `dev`/`staging`/`prod`.  Never invent,
+  guess, or commit secret values; document keys as "to be filled by admin".
+- The web app is a static Vite SPA: the loader runs at provisioning time.
+  `npm run settings:pull` (in `web/`, with `INFISICAL_CLIENT_ID` /
+  `INFISICAL_CLIENT_SECRET` from the operator's secret store) writes
+  `.env.local` from Infisical; Vercel production env is a synced copy of
+  the prod environment.  The client (`web/scripts/infisical-settings.ts`)
+  is a vendored equivalent of the fleet-shared `createInfisicalSettings`.
+- Per-user settings stay out of Infisical: web Settings-page values live in
+  localStorage, native credentials in the Keychain, native scan prefs in
+  UserDefaults.  Native apps are single-user — the local user is the admin.
+- No secret values in code, logs, PR bodies, or chat — names and metadata
+  only.  Two visible spaces between sentences in all prose.
+
