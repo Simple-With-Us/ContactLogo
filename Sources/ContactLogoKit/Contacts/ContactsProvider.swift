@@ -256,23 +256,23 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         var out: [ContactIdentity] = []
         let request = CNContactFetchRequest(keysToFetch: Self.keys)
         try store.enumerateContacts(with: request) { contact, _ in
-            if let identity = Self.identity(from: contact, requireCandidateShape: true) {
+            if let identity = Self.identity(from: contact) {
                 out.append(identity)
             }
         }
         return out
     }
 
-    /// One contact by identifier, for per-row Retry. Skips the enumerate-time
-    /// people-only filter so a row already in the queue can be rematched.
+    /// One contact by identifier, for per-row Retry without re-enumerating the
+    /// address book.
     public func fetchCandidate(id: String) async -> ContactIdentity? {
         guard let contact = try? store.unifiedContact(withIdentifier: id, keysToFetch: Self.keys) else {
             return nil
         }
-        return Self.identity(from: contact, requireCandidateShape: false)
+        return Self.identity(from: contact)
     }
 
-    private static func identity(from contact: CNContact, requireCandidateShape: Bool) -> ContactIdentity? {
+    private static func identity(from contact: CNContact) -> ContactIdentity? {
         let given = contact.givenName.trimmingCharacters(in: .whitespaces)
         let family = contact.familyName.trimmingCharacters(in: .whitespaces)
         let org = contact.organizationName.trimmingCharacters(in: .whitespaces)
