@@ -16,8 +16,8 @@
     "settings:pull": "node --experimental-strip-types scripts/sync-infisical-env.ts"
   },
   "dependencies": {
-    "@datadog/browser-logs": "^6.33.0",
-    "@datadog/browser-rum-slim": "^6.33.0",
+    "@datadog/browser-logs": "^7.0.0",
+    "@datadog/browser-rum-slim": "^7.0.0",
     "@sentry/browser": "^10.74.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
