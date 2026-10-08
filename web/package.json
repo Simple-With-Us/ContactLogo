@@ -21,7 +21,7 @@
     "@sentry/browser": "^10.74.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "dd-trace": "^5.80.0"
+    "dd-trace": "^6.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
