@@ -1,42 +1,22 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ],
+  "extends": ["config:recommended"],
   "dependencyDashboard": true,
   "minimumReleaseAge": "5 days",
-  "ignorePaths": [
-    "**/node_modules/**",
-    "backups/**"
-  ],
+  "ignorePaths": ["**/node_modules/**", "backups/**"],
   "packageRules": [
     {
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "pin",
-        "digest"
-      ],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "groupName": "non-major dependencies",
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": false
     },
     {
-      "matchUpdateTypes": [
-        "major"
-      ],
+      "matchUpdateTypes": ["major"],
       "automerge": false,
-      "labels": [
-        "dependencies",
-        "major"
-      ]
+      "labels": ["dependencies", "major"]
     }
   ],
-  "vulnerabilityAlerts": {
-    "labels": [
-      "security"
-    ],
-    "minimumReleaseAge": null
-  }
+  "vulnerabilityAlerts": { "labels": ["security"], "minimumReleaseAge": null }
 }
