@@ -82,7 +82,8 @@ secrets, env config, and tunable knobs.  The full contract, key inventory,
 and per-user boundary live in [INFISICAL.md](INFISICAL.md) — read it before
 touching any setting, credential, or build-time env var.
 
-- Infisical project `ContactLogo`, envs `dev`/`staging`/`prod`.  Never invent,
+- Infisical project `ContactLogo`, env `prod` only (`dev` and `staging` are
+  being retired; `settings:pull` refuses any other env).  Never invent,
   guess, or commit secret values; document keys as "to be filled by admin".
 - The web app is a static Vite SPA: the loader runs at provisioning time.
   `npm run settings:pull` (in `web/`, with `INFISICAL_CLIENT_ID` /

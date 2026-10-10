@@ -6,7 +6,9 @@ contract.  See also the "Infisical sole source of truth" section in
 [AGENTS.md](AGENTS.md).
 
 - **Infisical project:** `ContactLogo` (`8a0ae9aa-8b67-443e-943d-c55a767dab50`)
-- **Environments:** `dev`, `staging`, `prod`
+- **Environments:** `prod` only (owner directive 2026-10-10: `dev` and `staging`
+  are being retired).  `npm run settings:pull` and the Cursor boot script read
+  `prod` and refuse any other `--env` or `INFISICAL_ENV`.
 - **Rule:** two visible spaces between sentences in all prose.  No secret
   values in code, logs, PR bodies, or chat — names and metadata only.
 
@@ -26,14 +28,14 @@ environment (production), both synced from Infisical.
 | `LOGODEV_TOKEN` | Logo.dev image CDN token (`?token=`) | **Secret** | To be filled by admin |
 | `SENTRY_DSN` | Sentry DSN for the web app | **Secret** | To be filled by admin |
 | `SENTRY_ENV` | Sentry environment tag | Config | To be filled by admin |
-| `SENTRY_TRACES_SAMPLE_RATE` | Traces sample rate (code default `0.2`) | Knob | In dev |
+| `SENTRY_TRACES_SAMPLE_RATE` | Traces sample rate (code default `0.2`) | Knob | In prod |
 | `SENTRY_REPLAY_ENABLED` | `false`/`0` disables Session Replay | Knob | To be filled by admin |
-| `SENTRY_REPLAY_SESSION_SAMPLE_RATE` | Baseline replay rate (code default `0.1`) | Knob | In dev |
-| `SENTRY_REPLAY_ERROR_SAMPLE_RATE` | On-error replay rate (code default `1.0`) | Knob | In dev |
+| `SENTRY_REPLAY_SESSION_SAMPLE_RATE` | Baseline replay rate (code default `0.1`) | Knob | In prod |
+| `SENTRY_REPLAY_ERROR_SAMPLE_RATE` | On-error replay rate (code default `1.0`) | Knob | In prod |
 | `DD_APPLICATION_ID` | Datadog browser RUM application id | Public | To be filled by admin |
 | `DD_CLIENT_TOKEN` | Datadog browser RUM client token | Public client token | To be filled by admin |
-| `DD_SITE` | Datadog site (code default `us5.datadoghq.com`) | Config | In dev |
-| `DD_SERVICE` | Datadog service name (code default `contactlogo-web`) | Config | In dev |
+| `DD_SITE` | Datadog site (code default `us5.datadoghq.com`) | Config | In prod |
+| `DD_SERVICE` | Datadog service name (code default `contactlogo-web`) | Config | In prod |
 | `DD_ENV` | Datadog env tag | Config | To be filled by admin |
 | `DD_VERSION` | Datadog version tag | Config | To be filled by admin |
 | `DD_REQUIRE` | `1` forces Datadog init even outside production | Knob | To be filled by admin |
@@ -103,7 +105,7 @@ scope:
 ## How to rotate or change a value
 
 1. Change the value in the Infisical `ContactLogo` project (dashboard or
-   CLI), in the right environment.
+   CLI), in the `prod` environment.
 2. Local dev: re-run `npm run settings:pull` in `web/` (needs
    `INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` in the environment —
    from the operator's secret store, never committed).
