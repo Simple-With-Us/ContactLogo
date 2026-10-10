@@ -41,6 +41,14 @@ if [[ -z "${INFISICAL_CLIENT_ID:-}" || -z "${INFISICAL_CLIENT_SECRET:-}" ]]; the
   exit 0
 fi
 
+# Owner directive 2026-10-10: Infisical prod is the only environment (dev and
+# staging are being retired).  Default to it and refuse anything else.
+INFISICAL_ENV="${INFISICAL_ENV:-prod}"
+if [[ "${INFISICAL_ENV}" != "prod" ]]; then
+  echo "[cursor-cloud-start] INFISICAL_ENV must be prod (dev and staging are retired); refusing to load." >&2
+  exit 1
+fi
+
 if [[ -z "${INFISICAL_PROJECT_ID:-}" || -z "${INFISICAL_ENV:-}" ]]; then
   echo "[cursor-cloud-start] Infisical project coordinates missing in ${INFISICAL_ENV_FILE}; skipping secret load."
   echo "[cursor-cloud-start] Required: INFISICAL_PROJECT_ID, INFISICAL_ENV (and optionally INFISICAL_DOMAIN)."

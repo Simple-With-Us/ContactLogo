@@ -14,23 +14,21 @@
  *
  * Usage:
  *   INFISICAL_CLIENT_ID=... INFISICAL_CLIENT_SECRET=... \
- *     node --experimental-strip-types scripts/sync-infisical-env.ts [--env dev]
+ *     node --experimental-strip-types scripts/sync-infisical-env.ts
+ *
+ * Prod is the only environment: `--env` and `INFISICAL_ENV` accept `prod` and
+ * nothing else (the dev and staging environments are retired).
  *
  * The machine-identity credentials must come from the operator's secret
  * store — never commit them.  Values are never printed; only key names.
  */
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolveInfisicalEnvironment } from "./infisical-environment.ts";
 import { createInfisicalSettings } from "./infisical-settings.ts";
 
 // Keep in sync with the key inventory in INFISICAL.md.
 const PROJECT_ID = "8a0ae9aa-8b67-443e-943d-c55a767dab50";
-
-function parseEnvFlag(argv: string[]): string {
-  const idx = argv.indexOf("--env");
-  if (idx !== -1 && argv[idx + 1]) return argv[idx + 1] as string;
-  return process.env.INFISICAL_ENV ?? "dev";
-}
 
 function quote(value: string): string {
   // .env files: quote when the value contains whitespace or a quote.
@@ -41,7 +39,7 @@ function quote(value: string): string {
 }
 
 async function main(): Promise<void> {
-  const environment = parseEnvFlag(process.argv.slice(2));
+  const environment = resolveInfisicalEnvironment(process.argv.slice(2));
   const settings = createInfisicalSettings({
     projectId: PROJECT_ID,
     environment,
