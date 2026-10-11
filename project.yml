@@ -11,7 +11,9 @@ options:
 packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa.git
-    from: "8.58.4"
+    # 9.30.x Package@swift-6.2.swift depends on KSCrash by git revision; SPM
+    # rejects that when the root requirement is version-based (`from:`).
+    revision: "b539e098293067be54fa5cf1f11d9e16cdbba94a" # 9.30.0
 
 settings:
   base:
