@@ -107,18 +107,20 @@ export default defineConfig(({ command }): UserConfig => {
   const release = resolveSentryRelease(sentryReleaseEnv());
   const authToken = sentryAuthToken();
   const uploadSourceMaps = Boolean(authToken && release);
+  const vercelSha = (process.env.VERCEL_GIT_COMMIT_SHA ?? "").trim();
+  const githubSha = (process.env.GITHUB_SHA ?? "").trim();
   return {
     root: ".",
     publicDir: "public",
     define: {
       ...datadogDefines(source),
-      "import.meta.env.VITE_SENTRY_RELEASE": JSON.stringify(release),
-      "import.meta.env.VERCEL_GIT_COMMIT_SHA": JSON.stringify(
-        (process.env.VERCEL_GIT_COMMIT_SHA ?? "").trim(),
-      ),
-      "import.meta.env.GITHUB_SHA": JSON.stringify(
-        (process.env.GITHUB_SHA ?? "").trim(),
-      ),
+      ...(release
+        ? {
+            "import.meta.env.VITE_SENTRY_RELEASE": JSON.stringify(release),
+            "import.meta.env.VERCEL_GIT_COMMIT_SHA": JSON.stringify(vercelSha),
+            "import.meta.env.GITHUB_SHA": JSON.stringify(githubSha),
+          }
+        : {}),
     },
     plugins: [
       logoCachePlugin(),

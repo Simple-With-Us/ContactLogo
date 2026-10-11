@@ -7,11 +7,12 @@
  * Vanilla Vite (not React) — same helper pattern as DealDex/BotFleet
  * using @sentry/browser.
  *
- * - release from VITE_SENTRY_RELEASE / VERCEL_GIT_COMMIT_SHA / GITHUB_SHA
+ * - release from VERCEL_GIT_COMMIT_SHA / GITHUB_SHA
  * - Session Replay 100% on error, 10% baseline session
  * - maskAllText / blockAllMedia (address-book UI)
  * - User Feedback widget (consumer web UI)
- * - sendDefaultPii false; no contact names in telemetry
+ * - dataCollection baseline preserves the v10 sendDefaultPii:false
+ *   behavior; no contact names in telemetry
  * - enableLogs plus console error/warn and one boot log (no PII)
  */
 
@@ -68,11 +69,24 @@ export function startSentry(): void {
     dsn,
     environment: env,
     release: release || undefined,
-    sendDefaultPii: false,
+    // Sentry v11 removed sendDefaultPii; dataCollection below keeps the
+    // restrictive v10 default (no PII) per the v10-to-v11 migration guide.
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: {
+        request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+        response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      },
+      httpBodies: [],
+      urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      graphQL: { document: false, variables: false },
+    },
     tracesSampleRate: Number.isFinite(tracesSampleRate)
       ? Math.min(Math.max(tracesSampleRate, 0), 1)
       : 0.2,
-    enableLogs: true,
     replaysSessionSampleRate:
       !replayDisabled && Number.isFinite(replaysSessionSampleRate)
         ? replaysSessionSampleRate

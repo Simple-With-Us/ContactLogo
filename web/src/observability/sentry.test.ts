@@ -108,6 +108,13 @@ test("web Sentry sets a release and emits logs when a DSN is present", () => {
   assert.match(viteSrc, /SENTRY_AUTH_TOKEN/);
   assert.match(viteSrc, /filesToDeleteAfterUpload/);
   assert.match(viteSrc, /project:\s*"contactlogo"/);
+  assert.match(viteSrc, /\.\.\.\(release\s*\?/);
+  const ciSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/ci.yml"),
+    "utf8",
+  );
+  assert.match(ciSrc, /cli\.sentry\.dev\/install/);
+  assert.match(ciSrc, /upload-proguard/);
   const syncSrc = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "../../scripts/sync-infisical-env.ts"),
     "utf8",

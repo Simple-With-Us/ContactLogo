@@ -16,6 +16,11 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "Hold TypeScript 7 until typescript-eslint supports it (peers typescript <6.1; TS 7.0 has no JS API — fleet decision).",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
     }
   ],
   "vulnerabilityAlerts": { "labels": ["security"], "minimumReleaseAge": null }
