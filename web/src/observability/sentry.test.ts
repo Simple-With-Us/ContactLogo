@@ -39,6 +39,7 @@ test("Android native Sentry inits masked Replay and profiling", () => {
   assert.match(gradle, /id\("io\.sentry\.android\.gradle"\)/);
   assert.match(gradle, /autoUploadProguardMapping/);
   assert.match(gradle, /System\.getenv\("SENTRY_DSN"\)/);
+  assert.match(gradle, /androidx\.fragment:fragment-ktx/);
 });
 
 test("sentry configures subtle feedback integration", () => {
