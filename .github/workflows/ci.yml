@@ -158,7 +158,7 @@ jobs:
           fi
           if ! command -v sentry-cli >/dev/null 2>&1; then
             curl -sL https://sentry.io/get-cli/ | bash >/dev/null 2>&1 || true
-            export PATH="${HOME}/.local/bin:${HOME}/.sentry-cli:${PATH}"
+            export PATH="${HOME}/.sentry/bin:${HOME}/.local/bin:${HOME}/.sentry-cli:${PATH}"
           fi
           if ! command -v sentry-cli >/dev/null 2>&1; then
             echo "::warning::sentry-cli missing; skipping mapping upload"
