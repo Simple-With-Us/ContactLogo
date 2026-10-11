@@ -117,7 +117,7 @@ sentry {
     authToken.set(sentryAuthToken)
     includeProguardMapping.set(true)
     autoUploadProguardMapping.set(sentryAutoUpload)
-    includeSourceContext.set(uploadSentrySymbols)
+    includeSourceContext.set(sentryAutoUpload)
     autoUploadSourceContext.set(sentryAutoUpload)
     ignoredBuildTypes.set(setOf("debug"))
     autoInstallation {
