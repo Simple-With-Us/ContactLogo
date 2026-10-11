@@ -41,11 +41,12 @@ settings:
     INFOPLIST_KEY_CFBundleDisplayName: "ContactLogo"
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     GENERATE_INFOPLIST_FILE: YES
-    # Native Sentry. Empty unless xcodebuild/CI passes SENTRY_DSN=...
-    # Do not put a live DSN in this file or in Info.plist.
-    # iOS (contactlogo): inject Infisical SENTRY_DSN into SENTRY_DSN.
-    # Mac (contactlogo-macos): inject Infisical SENTRY_DSN_MACOS into SENTRY_DSN.
-    SENTRY_DSN: ""
+    # Native Sentry.  Empty unless the environment / xcodebuild passes
+    # SENTRY_DSN=...  Do not put a live DSN in this file or in Info.plist.
+    # iOS (contactlogo): inject Infisical / Actions secret SENTRY_DSN.
+    # Mac (contactlogo-macos): inject Infisical / Actions secret
+    # SENTRY_DSN_MACOS into this same SENTRY_DSN build setting.
+    SENTRY_DSN: "${SENTRY_DSN}"
 
 targets:
   ContactLogoKit:

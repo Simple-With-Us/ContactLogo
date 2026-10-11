@@ -39,6 +39,9 @@ jobs:
         run: npm test
 
       - name: Build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
         run: npm run build
 
   kit:
@@ -63,8 +66,17 @@ jobs:
         include:
           - target: ContactLogoiOS
             destination: "generic/platform=iOS Simulator"
+            sentry_app: contactlogo
+            sentry_secret: SENTRY_DSN
           - target: ContactLogoMac
             destination: "platform=macOS"
+            sentry_app: contactlogo-mac
+            sentry_secret: SENTRY_DSN_MACOS
+    env:
+      # iOS: Actions secret SENTRY_DSN.  Mac: SENTRY_DSN_MACOS.  Empty
+      # stays dark (Cocoa no-ops).  GitHub masks the value in logs.
+      SENTRY_DSN: ${{ secrets[matrix.sentry_secret] }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -90,11 +102,16 @@ jobs:
             -destination "${{ matrix.destination }}" \
             -derivedDataPath .build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGNING_REQUIRED=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            SENTRY_DSN="${SENTRY_DSN}"
+
+      - name: Upload dSYMs to Sentry
+        run: bash scripts/ios-fleet/upload-sentry-dsyms.sh --app "${{ matrix.sentry_app }}" --search .build/DerivedData
 
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: Apps/ContactLogoAndroid
@@ -113,14 +130,18 @@ jobs:
           packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v6
-        with:
-          build-root-directory: Apps/ContactLogoAndroid
 
       - name: Assemble debug
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Assemble release
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload test report
         if: failure()

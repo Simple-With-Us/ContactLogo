@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.sentry.android.gradle")
 }
 
 android {
@@ -91,11 +92,31 @@ dependencies {
     implementation("io.coil-kt:coil-svg:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.google.android.play:app-update:2.1.0")
-    // Crash + ANR only.  Mapping upload plugin skipped (AGP 8.5); consumer rules ship with the AAR.
+    // Crash + ANR + Replay + profiling.  Mapping upload is the Gradle plugin below.
     implementation("io.sentry:sentry-android:8.59.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
+}
+
+val sentryAuthToken = (System.getenv("SENTRY_AUTH_TOKEN") ?: "").trim()
+val uploadSentrySymbols = sentryAuthToken.isNotEmpty()
+
+sentry {
+    org.set("simple-with-us")
+    projectName.set("contactlogo")
+    authToken.set(sentryAuthToken)
+    includeProguardMapping.set(true)
+    autoUploadProguardMapping.set(uploadSentrySymbols)
+    includeSourceContext.set(uploadSentrySymbols)
+    autoUploadSourceContext.set(uploadSentrySymbols)
+    ignoredBuildTypes.set(setOf("debug"))
+    autoInstallation {
+        enabled.set(false)
+    }
+    tracingInstrumentation {
+        enabled.set(false)
+    }
 }

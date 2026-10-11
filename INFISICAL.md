@@ -26,7 +26,10 @@ environment (production), both synced from Infisical.
 | `GOOGLE_CONTACTS_CLIENT_ID` | Google OAuth client id for the Contacts import | Public client id | To be filled by admin |
 | `BRANDFETCH_CLIENT_ID` | Brandfetch Logo Link CDN client id (`?c=`) | Public client id | To be filled by admin |
 | `LOGODEV_TOKEN` | Logo.dev image CDN token (`?token=`) | **Secret** | To be filled by admin |
-| `SENTRY_DSN` | Sentry DSN for the web app | **Secret** | To be filled by admin |
+| `SENTRY_DSN` | Sentry DSN for the web app (`VITE_SENTRY_DSN`) and iOS/Android native inject | **Secret** | To be filled by admin |
+| `SENTRY_DSN_WEB` | Infisical twin of the web DSN (same value as `VITE_SENTRY_DSN`) | **Secret** | To be filled by admin |
+| `SENTRY_DSN_MACOS` | macOS native DSN, injected into Info.plist `SENTRY_DSN` at archive | **Secret** | To be filled by admin |
+| `SENTRY_AUTH_TOKEN` | Build-only (`project:releases`).  Vite plugin, dSYM, Android mappings.  Never `VITE_`-prefixed | **Secret** | To be filled by admin |
 | `SENTRY_ENV` | Sentry environment tag | Config | To be filled by admin |
 | `SENTRY_TRACES_SAMPLE_RATE` | Traces sample rate (code default `0.2`) | Knob | In prod |
 | `SENTRY_REPLAY_ENABLED` | `false`/`0` disables Session Replay | Knob | To be filled by admin |

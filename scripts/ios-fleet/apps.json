@@ -1,0 +1,18 @@
+{
+  "apps": {
+    "contactlogo": {
+      "displayName": "ContactLogo iOS",
+      "bundleId": "com.contactlogo.ios",
+      "scheme": "ContactLogoiOS",
+      "sentryProject": "contactlogo",
+      "sentryDsnSecret": "SENTRY_DSN"
+    },
+    "contactlogo-mac": {
+      "displayName": "ContactLogo macOS",
+      "bundleId": "com.contactlogo.macos",
+      "scheme": "ContactLogoMac",
+      "sentryProject": "contactlogo-macos",
+      "sentryDsnSecret": "SENTRY_DSN_MACOS"
+    }
+  }
+}
