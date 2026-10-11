@@ -105,15 +105,20 @@ dependencies {
 
 val sentryAuthToken = (System.getenv("SENTRY_AUTH_TOKEN") ?: "").trim()
 val uploadSentrySymbols = sentryAuthToken.isNotEmpty()
+val sentryOrg = (System.getenv("SENTRY_ORG") ?: "simple-with-us").trim()
+// GitHub Actions must not fail the APK when the token is missing or
+// scoped to another org (ship-testflight contract).  Local / Play
+// ships still auto-upload when SENTRY_AUTH_TOKEN is set.
+val sentryAutoUpload = uploadSentrySymbols && System.getenv("GITHUB_ACTIONS") != "true"
 
 sentry {
-    org.set("simple-with-us")
-    projectName.set("contactlogo")
+    org.set(sentryOrg)
+    projectName.set(System.getenv("SENTRY_PROJECT")?.trim().orEmpty().ifEmpty { "contactlogo" })
     authToken.set(sentryAuthToken)
     includeProguardMapping.set(true)
-    autoUploadProguardMapping.set(uploadSentrySymbols)
+    autoUploadProguardMapping.set(sentryAutoUpload)
     includeSourceContext.set(uploadSentrySymbols)
-    autoUploadSourceContext.set(uploadSentrySymbols)
+    autoUploadSourceContext.set(sentryAutoUpload)
     ignoredBuildTypes.set(setOf("debug"))
     autoInstallation {
         enabled.set(false)

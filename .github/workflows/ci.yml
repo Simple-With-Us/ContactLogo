@@ -143,6 +143,37 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: ./gradlew assembleRelease --no-daemon
 
+      - name: Upload Sentry mappings
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: simple-with-us
+          SENTRY_PROJECT: contactlogo
+        run: |
+          set +e
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+            echo "SENTRY_AUTH_TOKEN unset; skipping mapping upload"
+            exit 0
+          fi
+          if ! command -v sentry-cli >/dev/null 2>&1; then
+            curl -sL https://sentry.io/get-cli/ | bash >/dev/null 2>&1 || true
+            export PATH="${HOME}/.local/bin:${HOME}/.sentry-cli:${PATH}"
+          fi
+          if ! command -v sentry-cli >/dev/null 2>&1; then
+            echo "::warning::sentry-cli missing; skipping mapping upload"
+            exit 0
+          fi
+          mapping="app/build/outputs/mapping/release/mapping.txt"
+          if [ ! -f "$mapping" ]; then
+            echo "::warning::$mapping missing; skipping mapping upload"
+            exit 0
+          fi
+          echo "Uploading R8 mapping (token length ${#SENTRY_AUTH_TOKEN})"
+          sentry-cli sourcemaps upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" "$mapping"
+          if [ $? -ne 0 ]; then
+            echo "::warning::sentry mapping upload failed; leaving job green"
+          fi
+          exit 0
+
       - name: Upload test report
         if: failure()
         uses: actions/upload-artifact@v7
