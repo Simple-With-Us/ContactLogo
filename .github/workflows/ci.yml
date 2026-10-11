@@ -8,7 +8,9 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # macos-15 sits in a long org queue; cancelling in-progress drops the
+  # iOS/kit jobs before they ever get a runner.
+  cancel-in-progress: false
 
 permissions:
   contents: read
