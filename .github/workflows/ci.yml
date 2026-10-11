@@ -170,7 +170,8 @@ jobs:
             exit 0
           fi
           echo "Uploading R8 mapping (token length ${#SENTRY_AUTH_TOKEN})"
-          sentry-cli sourcemaps upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" "$mapping"
+          # sentry-cli 2.x (same pin as sentry-deploy.yml) uses upload-proguard.
+          sentry-cli upload-proguard --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" "$mapping"
           if [ $? -ne 0 ]; then
             echo "::warning::sentry mapping upload failed; leaving job green"
           fi

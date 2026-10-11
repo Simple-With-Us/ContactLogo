@@ -38,8 +38,8 @@ export function startSentry(): void {
     "production";
 
   const release = resolveSentryRelease({
-    VITE_SENTRY_RELEASE: import.meta.env.VITE_SENTRY_RELEASE,
-    VERCEL_GIT_COMMIT_SHA: import.meta.env.VERCEL_GIT_COMMIT_SHA,
+    VERCEL_GIT_COMMIT_SHA:
+      import.meta.env.VERCEL_GIT_COMMIT_SHA || import.meta.env.VITE_SENTRY_RELEASE,
     GITHUB_SHA: import.meta.env.GITHUB_SHA,
   });
 

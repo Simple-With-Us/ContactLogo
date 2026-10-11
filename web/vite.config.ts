@@ -90,12 +90,10 @@ function sentryAuthToken(): string {
 }
 
 function sentryReleaseEnv(): {
-  VITE_SENTRY_RELEASE?: string;
   VERCEL_GIT_COMMIT_SHA?: string;
   GITHUB_SHA?: string;
 } {
   return {
-    VITE_SENTRY_RELEASE: process.env.VITE_SENTRY_RELEASE,
     VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
     GITHUB_SHA: process.env.GITHUB_SHA,
   };

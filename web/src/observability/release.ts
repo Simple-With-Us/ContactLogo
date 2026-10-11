@@ -1,12 +1,11 @@
 /**
  * Shared Sentry release name for the web SPA.
  *
- * Prefer an explicit `VITE_SENTRY_RELEASE`, then the Vercel git SHA, then
- * the GitHub Actions SHA.  Empty means the SDK omits `release` (local/CI
- * without a deploy identity).
+ * Uses the fleet deploy identity already present on Vercel and GitHub
+ * Actions (`VERCEL_GIT_COMMIT_SHA`, then `GITHUB_SHA`).  Empty means the
+ * SDK omits `release` (local builds without a deploy identity).
  */
 export type ReleaseEnvSource = {
-  VITE_SENTRY_RELEASE?: string;
   VERCEL_GIT_COMMIT_SHA?: string;
   GITHUB_SHA?: string;
 };
@@ -16,9 +15,5 @@ function trimEnv(value: string | undefined): string {
 }
 
 export function resolveSentryRelease(source: ReleaseEnvSource): string {
-  return (
-    trimEnv(source.VITE_SENTRY_RELEASE) ||
-    trimEnv(source.VERCEL_GIT_COMMIT_SHA) ||
-    trimEnv(source.GITHUB_SHA)
-  );
+  return trimEnv(source.VERCEL_GIT_COMMIT_SHA) || trimEnv(source.GITHUB_SHA);
 }

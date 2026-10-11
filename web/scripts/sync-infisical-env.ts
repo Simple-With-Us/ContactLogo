@@ -67,7 +67,11 @@ async function main(): Promise<void> {
     ];
     // Never invent a VITE_ twin for build-only tokens.  Vite inlines every
     // VITE_* key into the browser bundle.
-    const noVitePrefix = new Set(["SENTRY_AUTH_TOKEN"]);
+    const noVitePrefix = new Set([
+      "SENTRY_AUTH_TOKEN",
+      "SENTRY_DSN_MACOS",
+      "SENTRY_DSN_WEB",
+    ]);
     for (const name of names) {
       const value = quote(all[name] ?? "");
       lines.push(`${name}=${value}`);

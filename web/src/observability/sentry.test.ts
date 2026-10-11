@@ -113,4 +113,6 @@ test("web Sentry sets a release and emits logs when a DSN is present", () => {
     "utf8",
   );
   assert.match(syncSrc, /noVitePrefix[\s\S]*SENTRY_AUTH_TOKEN/);
+  assert.match(syncSrc, /SENTRY_DSN_MACOS/);
+  assert.match(syncSrc, /SENTRY_DSN_WEB/);
 });

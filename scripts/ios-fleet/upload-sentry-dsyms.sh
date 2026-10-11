@@ -37,7 +37,7 @@ load_sentry_auth() {
   fi
   local keys="${HOME}/.secrets/global-api-keys"
   if [[ -f "$keys" ]]; then
-    SENTRY_AUTH_TOKEN="$(grep -m1 '^SENTRY_AUTH_TOKEN=' "$keys" | cut -d= -f2- | tr -d '"' | tr -d '\r')"
+    SENTRY_AUTH_TOKEN="$(grep -m1 '^SENTRY_AUTH_TOKEN=' "$keys" | cut -d= -f2- | tr -d '"' | tr -d '\r' || true)"
     export SENTRY_AUTH_TOKEN
   fi
 }
