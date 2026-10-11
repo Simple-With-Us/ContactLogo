@@ -79,7 +79,8 @@ if ! command -v sentry-cli >/dev/null 2>&1; then
     log "warning: sentry-cli install failed; continuing without upload"
     exit 0
   fi
-  export PATH="${HOME}/.sentry-cli:${PATH}:/opt/homebrew/bin"
+  # Legacy v3 installer writes to ~/.sentry/bin/sentry-cli.
+  export PATH="${HOME}/.sentry/bin:${PATH}:/opt/homebrew/bin"
 fi
 if ! command -v sentry-cli >/dev/null 2>&1; then
   log "warning: sentry-cli still missing; skipping artifact upload"
