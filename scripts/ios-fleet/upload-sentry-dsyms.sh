@@ -10,7 +10,7 @@
 #   scripts/ios-fleet/upload-sentry-dsyms.sh --app contactlogo-mac --archive path/to.xcarchive
 #
 # Env (names only):
-#   SENTRY_AUTH_TOKEN  org/project:releases (Actions / Infisical / ~/.secrets)
+#   SENTRY_AUTH_TOKEN  org/project:releases (Actions / Infisical)
 #   SENTRY_ORG         default simple-with-us
 set -euo pipefail
 
@@ -32,13 +32,10 @@ sentry_project_for_app() {
 }
 
 load_sentry_auth() {
+  # Runtime credentials come from the process env (CI / Infisical).
+  # ~/.secrets is handoff-only and is not read here.
   if [[ -n "${SENTRY_AUTH_TOKEN:-}" ]]; then
     return 0
-  fi
-  local keys="${HOME}/.secrets/global-api-keys"
-  if [[ -f "$keys" ]]; then
-    SENTRY_AUTH_TOKEN="$(grep -m1 '^SENTRY_AUTH_TOKEN=' "$keys" | cut -d= -f2- | tr -d '"' | tr -d '\r' || true)"
-    export SENTRY_AUTH_TOKEN
   fi
 }
 
