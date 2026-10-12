@@ -7,14 +7,17 @@
  * Vanilla Vite (not React) — same helper pattern as DealDex/BotFleet
  * using @sentry/browser.
  *
+ * - release from VERCEL_GIT_COMMIT_SHA / GITHUB_SHA
  * - Session Replay 100% on error, 10% baseline session
  * - maskAllText / blockAllMedia (address-book UI)
  * - User Feedback widget (consumer web UI)
  * - dataCollection baseline preserves the v10 sendDefaultPii:false
  *   behavior; no contact names in telemetry
+ * - enableLogs plus console error/warn and one boot log (no PII)
  */
 
 import * as Sentry from "@sentry/browser";
+import { resolveSentryRelease } from "./release.ts";
 
 let initialized = false;
 
@@ -34,6 +37,12 @@ export function startSentry(): void {
     (import.meta.env.VITE_SENTRY_ENV as string | undefined)?.trim() ||
     (import.meta.env.MODE as string | undefined) ||
     "production";
+
+  const release = resolveSentryRelease({
+    VERCEL_GIT_COMMIT_SHA:
+      import.meta.env.VERCEL_GIT_COMMIT_SHA || import.meta.env.VITE_SENTRY_RELEASE,
+    GITHUB_SHA: import.meta.env.GITHUB_SHA,
+  });
 
   const tracesSampleRate = Number(
     (import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE as string | undefined)?.trim() ??
@@ -59,6 +68,7 @@ export function startSentry(): void {
   Sentry.init({
     dsn,
     environment: env,
+    release: release || undefined,
     // Sentry v11 removed sendDefaultPii; dataCollection below keeps the
     // restrictive v10 default (no PII) per the v10-to-v11 migration guide.
     dataCollection: {
@@ -97,6 +107,7 @@ export function startSentry(): void {
     },
     integrations: [
       Sentry.browserTracingIntegration(),
+      Sentry.consoleLoggingIntegration({ levels: ["error", "warn"] }),
       Sentry.feedbackIntegration({
         colorScheme: "system",
         autoInject: false,
@@ -117,6 +128,13 @@ export function startSentry(): void {
   });
 
   initialized = true;
+  try {
+    Sentry.logger.info("contactlogo.web.boot", {
+      release: release || "unknown",
+    });
+  } catch {
+    // Telemetry must never break boot.
+  }
 }
 
 export function sentryStarted(): boolean {

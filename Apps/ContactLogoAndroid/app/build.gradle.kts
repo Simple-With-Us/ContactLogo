@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.sentry.android.gradle")
 }
 
 android {
@@ -80,6 +81,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.activity:activity-compose:1.13.0")
+    // lintVitalRelease: Activity Result APIs require Fragment 1.3+.
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -91,11 +94,36 @@ dependencies {
     implementation("io.coil-kt:coil-svg:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.google.android.play:app-update:2.1.0")
-    // Crash + ANR only.  Mapping upload plugin skipped (AGP 8.5); consumer rules ship with the AAR.
+    // Crash + ANR + Replay + profiling.  Mapping upload is the Gradle plugin below.
     implementation("io.sentry:sentry-android:8.59.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
+}
+
+val sentryAuthToken = (System.getenv("SENTRY_AUTH_TOKEN") ?: "").trim()
+val uploadSentrySymbols = sentryAuthToken.isNotEmpty()
+val sentryOrg = (System.getenv("SENTRY_ORG") ?: "simple-with-us").trim()
+// GitHub Actions must not fail the APK when the token is missing or
+// scoped to another org (ship-testflight contract).  Local / Play
+// ships still auto-upload when SENTRY_AUTH_TOKEN is set.
+val sentryAutoUpload = uploadSentrySymbols && System.getenv("GITHUB_ACTIONS") != "true"
+
+sentry {
+    org.set(sentryOrg)
+    projectName.set(System.getenv("SENTRY_PROJECT")?.trim().orEmpty().ifEmpty { "contactlogo" })
+    authToken.set(sentryAuthToken)
+    includeProguardMapping.set(true)
+    autoUploadProguardMapping.set(sentryAutoUpload)
+    includeSourceContext.set(sentryAutoUpload)
+    autoUploadSourceContext.set(sentryAutoUpload)
+    ignoredBuildTypes.set(setOf("debug"))
+    autoInstallation {
+        enabled.set(false)
+    }
+    tracingInstrumentation {
+        enabled.set(false)
+    }
 }

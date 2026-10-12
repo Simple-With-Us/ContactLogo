@@ -1,8 +1,8 @@
 name: Sentry Deploy
 
 # Additive only: after a green CI run on main, attach a production *deploy*
-# record to the release version the Next.js bundler plugin already created
-# (full git SHA == Coolify SOURCE_COMMIT). Does NOT call `releases new` —
+# record to the release the Vite plugin already created (full git SHA ==
+# VERCEL_GIT_COMMIT_SHA / GITHUB_SHA).  Does NOT call `releases new` —
 # one of bundler plugin OR action-release, not both fighting.
 #
 # Soft-fail: sentry-cli errors warn and exit 0 so this never blocks merges.
@@ -46,7 +46,7 @@ jobs:
             exit 0
           fi
           echo "Recording production deploy for release=${VERSION} project=${SENTRY_PROJECT}"
-          # Coolify may still be uploading the release via withSentryConfig; retry briefly.
+          # Vercel may still be uploading the release via sentryVitePlugin; retry briefly.
           ok=0
           for i in 1 2 3 4 5; do
             npx --yes @sentry/cli@2.58.6 releases deploys "$VERSION" new -e production
