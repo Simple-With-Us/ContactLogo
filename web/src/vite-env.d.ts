@@ -11,6 +11,9 @@ interface ImportMetaEnv {
   readonly VITE_BRANDFETCH_CLIENT_ID?: string;
   readonly VITE_LOGODEV_TOKEN?: string;
   readonly VITE_SENTRY_DSN?: string;
+  readonly VITE_SENTRY_RELEASE?: string;
+  readonly VERCEL_GIT_COMMIT_SHA?: string;
+  readonly GITHUB_SHA?: string;
   readonly VITE_SENTRY_ENV?: string;
   readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string;
   readonly VITE_SENTRY_REPLAY_ENABLED?: string;

@@ -1,9 +1,11 @@
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin, type UserConfig } from "vite";
 import { handleLogoGet } from "./src/engine/logo-cache.ts";
 import {
   assertDatadogPublicConfig,
   type DatadogEnvSource,
 } from "./src/observability/config.ts";
+import { resolveSentryRelease } from "./src/observability/release.ts";
 
 function logoCachePlugin(): Plugin {
   const serve = async (req: { method?: string; url?: string; headers: NodeJS.Dict<string | string[]> }, res: {
@@ -83,19 +85,66 @@ function datadogDefines(source: DatadogEnvSource): Record<string, string> {
   return defines;
 }
 
+function sentryAuthToken(): string {
+  return (process.env.SENTRY_AUTH_TOKEN ?? "").trim();
+}
+
+function sentryReleaseEnv(): {
+  VERCEL_GIT_COMMIT_SHA?: string;
+  GITHUB_SHA?: string;
+} {
+  return {
+    VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
+    GITHUB_SHA: process.env.GITHUB_SHA,
+  };
+}
+
 export default defineConfig(({ command }): UserConfig => {
   const source = publicDatadogSource();
   if (command === "build") {
     assertDatadogPublicConfig(source);
   }
+  const release = resolveSentryRelease(sentryReleaseEnv());
+  const authToken = sentryAuthToken();
+  const uploadSourceMaps = Boolean(authToken && release);
+  const vercelSha = (process.env.VERCEL_GIT_COMMIT_SHA ?? "").trim();
+  const githubSha = (process.env.GITHUB_SHA ?? "").trim();
   return {
     root: ".",
     publicDir: "public",
-    define: datadogDefines(source),
-    plugins: [logoCachePlugin()],
+    define: {
+      ...datadogDefines(source),
+      ...(release
+        ? {
+            "import.meta.env.VITE_SENTRY_RELEASE": JSON.stringify(release),
+            "import.meta.env.VERCEL_GIT_COMMIT_SHA": JSON.stringify(vercelSha),
+            "import.meta.env.GITHUB_SHA": JSON.stringify(githubSha),
+          }
+        : {}),
+    },
+    plugins: [
+      logoCachePlugin(),
+      ...(uploadSourceMaps
+        ? [
+            sentryVitePlugin({
+              org: "simple-with-us",
+              project: "contactlogo",
+              authToken,
+              telemetry: false,
+              release: { name: release },
+              sourcemaps: {
+                filesToDeleteAfterUpload: ["./dist/**/*.map"],
+              },
+            }),
+          ]
+        : []),
+    ],
     build: {
       outDir: "dist",
       emptyOutDir: true,
+      // Maps stay off unless we can upload and delete them.  Public dist
+      // must not ship source maps.
+      sourcemap: uploadSourceMaps,
     },
   };
 });

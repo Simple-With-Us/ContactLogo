@@ -19,7 +19,17 @@ enum SentryTelemetry {
 
         SentrySDK.start { options in
             options.dsn = dsn
+            #if DEBUG
+            options.environment = "debug"
+            #else
             options.environment = "production"
+            #endif
+            let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "0"
+            let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "0"
+            options.releaseName = "\(version)+\(build)"
+            options.dist = build
             options.tracesSampleRate = 0.2
             options.configureProfiling = {
                 $0.sessionSampleRate = 0.1

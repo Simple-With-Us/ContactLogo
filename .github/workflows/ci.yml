@@ -8,7 +8,9 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # macos-15 sits in a long org queue; cancelling in-progress drops the
+  # iOS/kit jobs before they ever get a runner.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -39,6 +41,9 @@ jobs:
         run: npm test
 
       - name: Build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
         run: npm run build
 
   kit:
@@ -63,8 +68,17 @@ jobs:
         include:
           - target: ContactLogoiOS
             destination: "generic/platform=iOS Simulator"
+            sentry_app: contactlogo
+            sentry_secret: SENTRY_DSN
           - target: ContactLogoMac
             destination: "platform=macOS"
+            sentry_app: contactlogo-mac
+            sentry_secret: SENTRY_DSN_MACOS
+    env:
+      # iOS: Actions secret SENTRY_DSN.  Mac: SENTRY_DSN_MACOS.  Empty
+      # stays dark (Cocoa no-ops).  GitHub masks the value in logs.
+      SENTRY_DSN: ${{ secrets[matrix.sentry_secret] }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -90,11 +104,16 @@ jobs:
             -destination "${{ matrix.destination }}" \
             -derivedDataPath .build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGNING_REQUIRED=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            SENTRY_DSN="${SENTRY_DSN}"
+
+      - name: Upload dSYMs to Sentry
+        run: bash scripts/ios-fleet/upload-sentry-dsyms.sh --app "${{ matrix.sentry_app }}" --search .build/DerivedData
 
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: Apps/ContactLogoAndroid
@@ -113,14 +132,50 @@ jobs:
           packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v6
-        with:
-          build-root-directory: Apps/ContactLogoAndroid
 
       - name: Assemble debug
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Assemble release
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload Sentry mappings
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: simple-with-us
+          SENTRY_PROJECT: contactlogo
+        run: |
+          set +e
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+            echo "SENTRY_AUTH_TOKEN unset; skipping mapping upload"
+            exit 0
+          fi
+          if ! command -v sentry-cli >/dev/null 2>&1; then
+            SENTRY_INSTALL_DIR="${HOME}/.local/bin" curl -fsSL https://cli.sentry.dev/install | bash >/dev/null 2>&1 || true
+            export PATH="${HOME}/.local/bin:${HOME}/.sentry/bin:${HOME}/.sentry-cli:${PATH}"
+          fi
+          if ! command -v sentry-cli >/dev/null 2>&1; then
+            echo "::warning::sentry-cli missing; skipping mapping upload"
+            exit 0
+          fi
+          mapping="app/build/outputs/mapping/release/mapping.txt"
+          if [ ! -f "$mapping" ]; then
+            echo "::warning::$mapping missing; skipping mapping upload"
+            exit 0
+          fi
+          echo "Uploading R8 mapping (token length ${#SENTRY_AUTH_TOKEN})"
+          # sentry-cli 2.x (same pin as sentry-deploy.yml) uses upload-proguard.
+          sentry-cli upload-proguard --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" "$mapping"
+          if [ $? -ne 0 ]; then
+            echo "::warning::sentry mapping upload failed; leaving job green"
+          fi
+          exit 0
 
       - name: Upload test report
         if: failure()
