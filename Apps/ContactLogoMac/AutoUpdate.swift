@@ -66,16 +66,16 @@ enum AutoUpdateAvailability: Equatable {
 /// app.  If the owner is using ContactLogo at that moment, the install waits
 /// until they switch away.
 ///
-/// The class itself is not @MainActor (Swift 6: the App struct's nonisolated
-/// init must be able to read `shared` for @ObservedObject); every member
-/// that touches AppKit, Sparkle, or the published state is @MainActor, so
-/// the class is effectively MainActor-confined and @unchecked Sendable is
-/// sound.  That also lets the KVO callback hop back to the main actor.
+/// Swift 6 notes: the class is not @MainActor so the App struct's nonisolated
+/// init can read `shared` for @ObservedObject.  @Published stays non-isolated
+/// too and is only ever written on the main thread (via DispatchQueue.main
+/// from the KVO callback); the @unchecked Sendable is sound because every
+/// mutation is main-thread-confined.
 final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @unchecked Sendable {
     static let shared = AppUpdater()
 
     let availability: AutoUpdateAvailability
-    @MainActor @Published private(set) var canCheckForUpdates = false
+    @Published private(set) var canCheckForUpdates = false
 
     private var controller: SPUStandardUpdaterController?
     private var canCheckObservation: NSKeyValueObservation?
@@ -96,12 +96,14 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @uncheck
         self.controller = controller
         canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
             let canCheck = updater.canCheckForUpdates
-            Task { @MainActor in self?.canCheckForUpdates = canCheck }
+            DispatchQueue.main.async { [weak self] in
+                self?.canCheckForUpdates = canCheck
+            }
         }
         resignActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.installPendingUpdateIfIdle() }
+            self?.installPendingUpdateIfIdle()
         }
     }
 
@@ -122,7 +124,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @uncheck
         return true
     }
 
-    @MainActor private func installPendingUpdateIfIdle() {
+    private func installPendingUpdateIfIdle() {
         guard let install = pendingInstall, !NSApp.isActive else { return }
         pendingInstall = nil
         install()
