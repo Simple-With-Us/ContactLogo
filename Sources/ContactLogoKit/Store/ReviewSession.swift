@@ -30,7 +30,7 @@ public final class ReviewSession: ObservableObject {
     /// Parallel logo fetches during `scanAndMatch`.  iOS recommends ≤6 on
     /// cellular; higher values trip the per-process `NSURLSession` ceiling
     /// (board CL-145 / CL-160, audit N8).
-    public static let networkMatchConcurrencyLimit = 6
+    public nonisolated static let networkMatchConcurrencyLimit = 6
 
     public enum Stage: Equatable { case idle, scanning, matching(done: Int, total: Int), review, applying }
     public enum Bucket { case auto, review, notFound }
