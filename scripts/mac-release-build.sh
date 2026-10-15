@@ -335,12 +335,29 @@ package_dist() {
   echo "SHA-256:  $(sha_of "$ZIP_FILE")"
 }
 
+# Stapling phones home to Apple's ticket-delivery service, and that network hop
+# is flaky on CI runners (NSURLErrorDomain -1005 "The network connection was
+# lost" twice killed a release whose notarizations were both Accepted).
+# Stapling is idempotent, so retry it a few times before giving up.
+staple_with_retry() {
+  local target="$1" attempt
+  for attempt in 1 2 3 4 5; do
+    if /usr/bin/xcrun stapler staple "$target"; then
+      return 0
+    fi
+    echo "warning: stapling $target failed (attempt $attempt/5); retrying in 30s." >&2
+    sleep 30
+  done
+  echo "error: stapling $target failed after 5 attempts." >&2
+  return 1
+}
+
 release_dist() {
   package_dist
   notarize_file "$ZIP_FILE"
   # Stapling writes Apple's ticket into the bundle, which is what lets a Mac
   # that is offline, or behind a firewall, still open it without a warning.
-  /usr/bin/xcrun stapler staple "$APP_BUNDLE"
+  staple_with_retry "$APP_BUNDLE"
   # What a downloaded copy will face: Gatekeeper must accept the stapled app.
   /usr/sbin/spctl --assess --type execute -vv "$APP_BUNDLE"
   # The zip that was submitted holds the unstapled bundle, so it is rebuilt
@@ -348,7 +365,7 @@ release_dist() {
   write_zip
   build_dmg
   notarize_file "$DMG_FILE"
-  /usr/bin/xcrun stapler staple "$DMG_FILE"
+  staple_with_retry "$DMG_FILE"
   /usr/sbin/spctl --assess --type open --context context:primary-signature -vv "$DMG_FILE"
   local zip_sha dmg_sha
   zip_sha="$(write_sha_file "$ZIP_FILE")"
