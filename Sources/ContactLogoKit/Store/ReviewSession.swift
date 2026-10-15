@@ -78,6 +78,12 @@ public final class ReviewSession: ObservableObject {
     /// 14,975 contacts are personal entries with no business signals —
     /// see a sample below".  Refreshed on every `scanAndMatch`.
     @Published public internal(set) var sampleDroppedContacts: [SampleDroppedContact] = []
+    /// Counts-only report from the latest `scanAndMatch`.  Nil until one runs.
+    public internal(set) var lastScanReport: ScanRunReport?
+    /// Shells set this to forward `lastScanReport` off-device.  The kit does
+    /// not import Sentry.  The report has counts and an authorization label
+    /// only.
+    public var recordScanTelemetry: ((ScanRunReport) -> Void)?
     /// 2026-09-21 — when the engine filter rejects a contact BEFORE scoring,
     /// the reason is captured here so the Diagnostic screen can group them.
     /// Defined at top level (ReviewQueueStore.swift) so it can be persisted.
@@ -391,6 +397,11 @@ public final class ReviewSession: ObservableObject {
     /// finished are published with `lastError = .scanIncomplete`.
     public func requestCancel() { cancelRequested = true }
 
+    func publishScan(_ report: ScanRunReport) {
+        lastScanReport = report
+        recordScanTelemetry?(report)
+    }
+
     /// Returns true when matching ran to completion, false otherwise.  A
     /// cancelled run that finished some rows publishes them as the queue and
     /// sets `lastError = .scanIncomplete`; a thrown scan sets `.scanFailed`.
@@ -399,6 +410,8 @@ public final class ReviewSession: ObservableObject {
         lastError = nil
         cancelRequested = false
         #if canImport(Contacts)
+        let started = Date()
+        var authorizationLabel = "unknown"
         stage = .scanning
         // Stamp the store as it is *before* matching.  A token captured after
         // a long run could hide mutations that happened while we were away.
@@ -407,6 +420,13 @@ public final class ReviewSession: ObservableObject {
         let provider = contactsProviderForTesting ?? CNContactsProvider()
         do {
             guard try await provider.requestAccess() else {
+                publishScan(ScanRunReport(
+                    fetched: 0,
+                    classified: 0,
+                    dropped: 0,
+                    authorization: "access_denied",
+                    elapsedSeconds: Date().timeIntervalSince(started)
+                ))
                 stage = .idle
                 return false
             }
@@ -417,6 +437,7 @@ public final class ReviewSession: ObservableObject {
             // OR `state == .heuristic(_)`).
             let diag = await provider.limitedAccessDiagnosis()
             limitedAccessState = diag
+            authorizationLabel = diag.telemetryLabel
             switch diag {
             case .definite, .heuristic: limitedAccessGranted = true
             // Access is full here; a small database means the contacts are
@@ -514,6 +535,14 @@ public final class ReviewSession: ObservableObject {
             protectedPersonCount = protectedCount
             businessTargetsCount = businessTargets.count
             affiliatedTargetsCount = affiliatedTargets.count
+            let classified = businessTargets.count + affiliatedTargets.count
+            publishScan(ScanRunReport(
+                fetched: contacts.count,
+                classified: classified,
+                dropped: contacts.count - classified,
+                authorization: authorizationLabel,
+                elapsedSeconds: Date().timeIntervalSince(started)
+            ))
 
             enum ScanTarget {
                 case business(ContactIdentity)
@@ -639,6 +668,15 @@ public final class ReviewSession: ObservableObject {
             _ = persistReviewQueue()
             return true
         } catch {
+            if lastScanReport == nil {
+                publishScan(ScanRunReport(
+                    fetched: 0,
+                    classified: 0,
+                    dropped: 0,
+                    authorization: authorizationLabel,
+                    elapsedSeconds: Date().timeIntervalSince(started)
+                ))
+            }
             stage = .idle
             lastError = .scanFailed(underlying: error.localizedDescription)
             return false

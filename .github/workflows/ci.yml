@@ -108,6 +108,9 @@ jobs:
             DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
             SENTRY_DSN="${SENTRY_DSN}"
 
+      - name: Refuse an unsubstituted Sentry DSN
+        run: bash scripts/ios-fleet/check-built-sentry-dsn.sh .build/DerivedData
+
       - name: Upload dSYMs to Sentry
         run: bash scripts/ios-fleet/upload-sentry-dsyms.sh --app "${{ matrix.sentry_app }}" --search .build/DerivedData
 
