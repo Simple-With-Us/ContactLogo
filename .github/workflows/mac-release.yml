@@ -15,7 +15,8 @@ name: Mac Release (Sparkle)
 #       only the GH_FALLBACK path.
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8  The App Store Connect API key;
 #       notarytool signs in with it.  Canonical home is Fleet Secrets
-#       (Fleet-OPS, prod, /asc); same-named repository secrets as the copy.
+#       (Fleet-OPS, prod, /asc), loaded at runtime by the dedicated step
+#       below; same-named repository secrets are only the GH_FALLBACK path.
 #   SPARKLE_ED_PRIVATE_KEY  The EdDSA key that signs each update archive,
 #       same-named repository secret (fresh keypair generated 2026-10-15;
 #       the public half is committed in scripts/mac-release-build.sh).
@@ -61,10 +62,9 @@ jobs:
     if: github.event.repository.fork == false
     runs-on: macos-15
     timeout-minutes: 60
-    env:
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    # ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 are loaded by the
+    # "Load App Store Connect key" step below (Fleet Secrets, Fleet-OPS
+    # prod /asc) into $GITHUB_ENV; they are deliberately not set here.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -84,6 +84,21 @@ jobs:
         env:
           GH_FALLBACK_MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
           GH_FALLBACK_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+
+      - name: Load App Store Connect key (Fleet Secrets via Infisical)
+        if: github.event_name != 'pull_request'
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
+          secret-path: /asc
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          GH_FALLBACK_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GH_FALLBACK_ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
 
       - name: Load signing secrets (Infisical, then repository secrets)
         if: github.event_name != 'pull_request'
@@ -190,8 +205,8 @@ jobs:
         if: steps.gate.outputs.publish == 'true'
         env:
           NOTARY_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
-          NOTARY_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          NOTARY_KEY_ID: ${{ env.ASC_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ env.ASC_ISSUER_ID }}
         run: scripts/mac-release-build.sh --release
 
       - name: Upload Sentry debug files

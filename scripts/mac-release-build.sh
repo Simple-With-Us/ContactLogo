@@ -119,7 +119,7 @@ write_sparkle_plist_entries() {
     || /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $feed" "$INFO_PLIST"
   /usr/libexec/PlistBuddy -c "Set :SUPublicEDKey $SPARKLE_PUBLIC_ED_KEY" "$INFO_PLIST" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_ED_KEY" "$INFO_PLIST"
-  for key in SUEnableAutomaticChecks SUAutomaticallyUpdate SUAllowsAutomaticUpdates SUVerifyUpdateBeforeExtraction; do
+  for key in SUEnableAutomaticChecks SUAutomaticallyUpdate SUAllowsAutomaticUpdates SUVerifyUpdateBeforeExtraction SUEnableInstallerLauncherService; do
     /usr/libexec/PlistBuddy -c "Set :$key true" "$INFO_PLIST" 2>/dev/null \
       || /usr/libexec/PlistBuddy -c "Add :$key bool true" "$INFO_PLIST"
   done
