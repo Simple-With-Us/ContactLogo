@@ -181,25 +181,7 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     /// reported honestly to callers via `visibleContactCountIsExact`, which
     /// is false when the stop fired and the true total may be larger.
     public func visibleContactCount() async -> Int {
-        #if canImport(Contacts)
-        let keys: [CNKeyDescriptor] = [CNContactIdentifierKey as CNKeyDescriptor]
-        let request = CNContactFetchRequest(keysToFetch: keys)
-        var count = 0
-        do {
-            try store.enumerateContacts(with: request) { _, stop in
-                count += 1
-                // `stop.pointee = true` halts the entire enumeration, not just the
-                // current callback.  Without this the "1,000 contact bound" was a
-                // no-op — every contact still ran, doubling scan cost.
-                if count > Self.visibilityBound { stop.pointee = true }
-            }
-        } catch {
-            return 0
-        }
-        return count
-        #else
-        return 0
-        #endif
+        await visibleContactCountSnapshot().count
     }
 
     /// Enumeration ceiling.  Identifier-only enumeration is cheap, so this is
@@ -210,7 +192,36 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     /// False when `visibleContactCount()` tripped the enumeration bound and
     /// the device may hold more than the returned number.
     public func visibleContactCountIsExact() async -> Bool {
-        await visibleContactCount() < Self.visibilityBound
+        await visibleContactCountSnapshot().isExact
+    }
+
+    /// One identifier-only pass — shared by `visibleContactCount` and
+    /// `visibleContactCountIsExact` so the Diagnostic screen never runs
+    /// two full enumerations or disagrees with itself.
+    private func visibleContactCountSnapshot() async -> (count: Int, isExact: Bool) {
+        #if canImport(Contacts)
+        let keys: [CNKeyDescriptor] = [CNContactIdentifierKey as CNKeyDescriptor]
+        let request = CNContactFetchRequest(keysToFetch: keys)
+        var count = 0
+        var isExact = true
+        do {
+            try store.enumerateContacts(with: request) { _, stop in
+                count += 1
+                // `stop.pointee = true` halts the entire enumeration, not just the
+                // current callback.  Without this the "1,000 contact bound" was a
+                // no-op — every contact still ran, doubling scan cost.
+                if count > Self.visibilityBound {
+                    stop.pointee = true
+                    isExact = false
+                }
+            }
+        } catch {
+            return (0, true)
+        }
+        return (count, isExact)
+        #else
+        return (0, true)
+        #endif
     }
 
     /// Enumeration keys for a full scan.

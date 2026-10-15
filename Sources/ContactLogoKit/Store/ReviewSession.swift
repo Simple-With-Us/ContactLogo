@@ -27,6 +27,11 @@ public enum ReviewSessionError: Error, Equatable, Sendable {
 /// High-confidence rows start selected; guessed domains never do.
 @MainActor
 public final class ReviewSession: ObservableObject {
+    /// Parallel logo fetches during `scanAndMatch`.  iOS recommends ≤6 on
+    /// cellular; higher values trip the per-process `NSURLSession` ceiling
+    /// (board CL-145 / CL-160, audit N8).
+    public nonisolated static let networkMatchConcurrencyLimit = 6
+
     public enum Stage: Equatable { case idle, scanning, matching(done: Int, total: Int), review, applying }
     public enum Bucket { case auto, review, notFound }
 
@@ -543,10 +548,7 @@ public final class ReviewSession: ObservableObject {
                 return false
             }
 
-            // iOS recommends a max of 6 concurrent network tasks on cellular.
-            // 8 trips Apple's per-process NSURLSession ceiling on small
-            // devices and shows up in Sentry as flaky background runs.
-            let maxConcurrency = 6
+            let maxConcurrency = Self.networkMatchConcurrencyLimit
             var indexedResults: [MatchResult?] = Array(repeating: nil, count: allTargets.count)
             var doneCount = 0
 
