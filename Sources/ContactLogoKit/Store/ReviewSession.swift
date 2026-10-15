@@ -409,6 +409,10 @@ public final class ReviewSession: ObservableObject {
     public func scanAndMatch() async -> Bool {
         lastError = nil
         cancelRequested = false
+        // Drop the previous run before this one can fail.  The catch below
+        // only publishes when this run has not already recorded a report, so
+        // a stale success would hide a later fetch error.
+        lastScanReport = nil
         #if canImport(Contacts)
         let started = Date()
         var authorizationLabel = "unknown"
@@ -668,6 +672,9 @@ public final class ReviewSession: ObservableObject {
             _ = persistReviewQueue()
             return true
         } catch {
+            // A report already published in this run (classification finished,
+            // then matching threw) stays.  A failure before that publish,
+            // including one that follows an older successful scan, fills in.
             if lastScanReport == nil {
                 publishScan(ScanRunReport(
                     fetched: 0,

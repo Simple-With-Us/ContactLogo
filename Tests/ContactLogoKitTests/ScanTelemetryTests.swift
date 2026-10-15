@@ -90,6 +90,33 @@ final class ScanTelemetryTests: XCTestCase {
         XCTAssertEqual(report.dropped, 0)
         XCTAssertEqual(report.authorization, "denied")
     }
+
+    /// Sentry review on PR #202: a later fetch error must replace the
+    /// previous run's report.  The catch only publishes when this run has
+    /// not already recorded one, so the stale report has to be cleared first.
+    @MainActor
+    func testLaterFetchFailureReplacesThePreviousReport() async {
+        let session = session(provider: FixtureProvider(
+            contacts: [ContactIdentity(id: "biz", displayName: "Walgreens", givenName: "Walgreens")]
+        ))
+        let recorded = ReportBox()
+        session.recordScanTelemetry = { recorded.reports.append($0) }
+
+        _ = await session.scanAndMatch()
+        let first = try XCTUnwrap(session.lastScanReport)
+        XCTAssertEqual(first.fetched, 1)
+
+        session.contactsProviderForTesting = FixtureProvider(contacts: [], state: .denied, explode: true)
+        let completed = await session.scanAndMatch()
+        XCTAssertFalse(completed)
+        let second = try XCTUnwrap(session.lastScanReport)
+        XCTAssertEqual(second.fetched, 0)
+        XCTAssertEqual(second.classified, 0)
+        XCTAssertEqual(second.dropped, 0)
+        XCTAssertEqual(second.authorization, "denied")
+        XCTAssertEqual(recorded.reports.count, 2)
+        XCTAssertEqual(recorded.reports.last?.authorization, "denied")
+    }
 }
 
 private final class ReportBox: @unchecked Sendable {
