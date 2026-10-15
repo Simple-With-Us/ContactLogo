@@ -66,11 +66,13 @@ enum AutoUpdateAvailability: Equatable {
 /// app.  If the owner is using ContactLogo at that moment, the install waits
 /// until they switch away.
 ///
-/// Swift 6 notes: the class is not @MainActor so the App struct's nonisolated
-/// init can read `shared` for @ObservedObject.  @Published stays non-isolated
-/// too and is only ever written on the main thread (via DispatchQueue.main
-/// from the KVO callback); the @unchecked Sendable is sound because every
-/// mutation is main-thread-confined.
+/// Swift 6 notes: SPUUpdaterDelegate is a @MainActor protocol in Sparkle 2.10,
+/// so the compiler infers @MainActor isolation for this class's members from
+/// the conformance — no explicit annotation needed.  `shared` stays
+/// nonisolated, which is what lets the App struct's nonisolated init read it
+/// for @ObservedObject.  The KVO and NotificationCenter callbacks are
+/// @Sendable, so they hop back with Task { @MainActor in ... }.
+/// @unchecked Sendable is sound because every member is MainActor-confined.
 final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @unchecked Sendable {
     static let shared = AppUpdater()
 
@@ -94,16 +96,19 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @uncheck
                                                       updaterDelegate: self,
                                                       userDriverDelegate: nil)
         self.controller = controller
-        canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
-            let canCheck = updater.canCheckForUpdates
-            DispatchQueue.main.async { [weak self] in
-                self?.canCheckForUpdates = canCheck
+        // Note: the KVO handler is a @Sendable closure, and SPUUpdater is a
+        // @MainActor type (Sparkle 2.10), so the value is re-read on the main
+        // actor instead of captured from the handler's parameter.
+        canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.canCheckForUpdates = self.controller?.updater.canCheckForUpdates ?? false
             }
         }
         resignActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.installPendingUpdateIfIdle()
+            Task { @MainActor [weak self] in self?.installPendingUpdateIfIdle() }
         }
     }
 
