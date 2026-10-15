@@ -17,7 +17,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Check For Updates…") {
-                    updater.checkForUpdates()
+                    Task { @MainActor in updater.checkForUpdates() }
                 }
                 .disabled(!updater.canCheckForUpdates)
             }

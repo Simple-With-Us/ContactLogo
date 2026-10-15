@@ -37,7 +37,7 @@ struct ContactLogoMacApp: App {
             // update itself it does nothing (see AutoUpdateAvailability).
             CommandGroup(after: .appInfo) {
                 Button("Check For Updates…") {
-                    updater.checkForUpdates()
+                    Task { @MainActor in updater.checkForUpdates() }
                 }
                 .disabled(!updater.canCheckForUpdates)
             }
