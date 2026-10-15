@@ -8,9 +8,19 @@ import ContactLogoKit
 /// launched from Finder never have set.
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
+    @ObservedObject private var updater = AppUpdater.shared
 
     var body: some View {
         Form {
+            Section("Updates") {
+                Text("Automatic updates: \(AppUpdater.shared.availability.summary)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Check For Updates…") {
+                    updater.checkForUpdates()
+                }
+                .disabled(!updater.canCheckForUpdates)
+            }
             Section("Brandfetch") {
                 SecureField("Client ID", text: $settings.brandfetchClientID)
                     .onChange(of: settings.brandfetchClientID) { settings.save() }
