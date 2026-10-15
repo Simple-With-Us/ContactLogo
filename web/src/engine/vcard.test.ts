@@ -493,6 +493,45 @@ test("Issue #75: secondary corporate website on vCard resolves domain when prima
   assert.equal(res?.via, "website");
 });
 
+test("CL-159: vCard TYPE=WORK URL ranks before TYPE=HOME for domain selection", () => {
+  const card = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    "FN:Widget Co",
+    "URL;TYPE=HOME:https://twitter.com/widgetco",
+    "URL;TYPE=WORK:https://widgetco.example",
+    "END:VCARD",
+  ].join("\r\n");
+  const contacts = parseVcard(card);
+  assert.equal(contacts.length, 1);
+  assert.deepEqual(contacts[0]?.websites, [
+    "https://widgetco.example",
+    "https://twitter.com/widgetco",
+  ]);
+  assert.equal(contacts[0]?.website, "https://widgetco.example");
+  const res = resolveIdentity(contacts[0]!, "Widget Co");
+  assert.equal(res?.domain, "widgetco.example");
+  assert.equal(res?.via, "website");
+});
+
+test("CL-159: vCard 2.1 bare EMAIL;WORK: ranks before unlabeled personal email", () => {
+  const card = [
+    "BEGIN:VCARD",
+    "VERSION:2.1",
+    "FN:Acme Consulting",
+    "EMAIL:contact@gmail.com",
+    "EMAIL;WORK:contact@acme.example",
+    "END:VCARD",
+  ].join("\r\n");
+  const contacts = parseVcard(card);
+  assert.equal(contacts.length, 1);
+  assert.deepEqual(contacts[0]?.emails, ["contact@acme.example", "contact@gmail.com"]);
+  assert.equal(contacts[0]?.email, "contact@acme.example");
+  const res = resolveIdentity(contacts[0]!, "Acme");
+  assert.equal(res?.domain, "acme.example");
+  assert.equal(res?.via, "email");
+});
+
 test("Issue #75: synthesizeProperties exports all emails, phones, and websites", () => {
   const contact: BookContact = {
     id: "test-id",
