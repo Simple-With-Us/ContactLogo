@@ -345,8 +345,10 @@ staple_with_retry() {
     if /usr/bin/xcrun stapler staple "$target"; then
       return 0
     fi
-    echo "warning: stapling $target failed (attempt $attempt/5); retrying in 30s." >&2
-    sleep 30
+    if [[ "$attempt" -lt 5 ]]; then
+      echo "warning: stapling $target failed (attempt $attempt/5); retrying in 30s." >&2
+      sleep 30
+    fi
   done
   echo "error: stapling $target failed after 5 attempts." >&2
   return 1
