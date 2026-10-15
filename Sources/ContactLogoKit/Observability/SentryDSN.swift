@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(os)
 import os
+#endif
 
 /// What `SentryTelemetry.start` should do with the Info.plist `SENTRY_DSN` value.
 ///
@@ -54,8 +56,12 @@ public enum SentryDSN {
         case .absent, .ready(_):
             return
         }
+        #if canImport(os)
         Logger(subsystem: "com.contactlogo", category: "sentry")
             .fault("\(message, privacy: .public)")
+        #else
+        FileHandle.standardError.write(Data((message + "\n").utf8))
+        #endif
         #if DEBUG
         assertionFailure(message)
         #endif
