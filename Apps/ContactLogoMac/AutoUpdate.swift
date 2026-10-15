@@ -68,8 +68,10 @@ enum AutoUpdateAvailability: Equatable {
 ///
 /// The class itself is not @MainActor (Swift 6: the App struct's nonisolated
 /// init must be able to read `shared` for @ObservedObject); every member
-/// that touches AppKit, Sparkle, or the published state is @MainActor.
-final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
+/// that touches AppKit, Sparkle, or the published state is @MainActor, so
+/// the class is effectively MainActor-confined and @unchecked Sendable is
+/// sound.  That also lets the KVO callback hop back to the main actor.
+final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @unchecked Sendable {
     static let shared = AppUpdater()
 
     let availability: AutoUpdateAvailability
