@@ -175,6 +175,26 @@ test("Issue #75: personToBookContact preserves multiple emails, phones, and webs
   assert.equal(res?.domain, "stripe.com");
 });
 
+test("CL-159: personToBookContact prefers work-labeled URL over home for domain", () => {
+  const person: Person = {
+    resourceName: "people/100",
+    names: [{ displayName: "Widget Co" }],
+    urls: [
+      { value: "https://twitter.com/widgetco", type: "home" },
+      { value: "https://widgetco.example", type: "work" },
+    ],
+  };
+  const contact = personToBookContact(person);
+  assert.deepEqual(contact?.websites, [
+    "https://widgetco.example",
+    "https://twitter.com/widgetco",
+  ]);
+  assert.equal(contact?.website, "https://widgetco.example");
+  const res = resolveIdentity(contact!, "Widget Co");
+  assert.equal(res?.domain, "widgetco.example");
+  assert.equal(res?.via, "website");
+});
+
 test("Issue #72: deleteGoogleContactPhoto calls :deleteContactPhoto endpoint", async () => {
   let calledUrl = "";
   let calledMethod = "";
