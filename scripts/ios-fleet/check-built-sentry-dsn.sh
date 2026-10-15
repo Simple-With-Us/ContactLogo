@@ -21,12 +21,35 @@ sentry_dsn_status() {
   printf 'present\n'
 }
 
+# iOS bundles keep Info.plist at the app root.  macOS bundles keep it
+# under Contents.  Framework plists are not app plists and are ignored.
+app_info_plists() {
+  local root="$1"
+  find "$root" \( -path '*.app/Info.plist' -o -path '*.app/Contents/Info.plist' \) -print
+}
+
 self_test() {
   [[ "$(sentry_dsn_status '$(SENTRY_DSN)')" == "placeholder" ]]
   [[ "$(sentry_dsn_status '${SENTRY_DSN}')" == "placeholder" ]]
   [[ "$(sentry_dsn_status 'https://$(SENTRY_DSN)@example/1')" == "placeholder" ]]
   [[ "$(sentry_dsn_status '')" == "absent" ]]
   [[ "$(sentry_dsn_status 'https://public@example.ingest.sentry.io/1')" == "present" ]]
+
+  local tmp found expected
+  tmp="$(mktemp -d)"
+  mkdir -p \
+    "$tmp/ios/ContactLogo.app" \
+    "$tmp/mac/ContactLogo.app/Contents" \
+    "$tmp/kit/ContactLogoKit.framework/Versions/A/Resources"
+  : > "$tmp/ios/ContactLogo.app/Info.plist"
+  : > "$tmp/mac/ContactLogo.app/Contents/Info.plist"
+  : > "$tmp/kit/ContactLogoKit.framework/Versions/A/Resources/Info.plist"
+  found="$(app_info_plists "$tmp" | sort)"
+  expected="$(printf '%s\n%s\n' \
+    "$tmp/ios/ContactLogo.app/Info.plist" \
+    "$tmp/mac/ContactLogo.app/Contents/Info.plist" | sort)"
+  rm -rf "$tmp"
+  [[ "$found" == "$expected" ]]
   printf 'check-built-sentry-dsn: self-test ok\n'
 }
 
@@ -65,7 +88,7 @@ while IFS= read -r plist; do
       fail=1
       ;;
   esac
-done < <(find "$root" -path '*.app/Info.plist' -print)
+done < <(app_info_plists "$root")
 
 if [[ "$found" -eq 0 ]]; then
   printf 'no built Info.plist under %s\n' "$root" >&2
