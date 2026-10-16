@@ -45,7 +45,7 @@ final class ScanTelemetryTests: XCTestCase {
     }
 
     @MainActor
-    func testScanReportCountsFetchedClassifiedAndDropped() async {
+    func testScanReportCountsFetchedClassifiedAndDropped() async throws {
         let contacts = [
             ContactIdentity(id: "biz", displayName: "Walgreens", givenName: "Walgreens"),
             ContactIdentity(id: "person", displayName: "Maya Chen", givenName: "Maya", familyName: "Chen"),
@@ -68,7 +68,7 @@ final class ScanTelemetryTests: XCTestCase {
     }
 
     @MainActor
-    func testDeniedAccessStillEmitsAReport() async {
+    func testDeniedAccessStillEmitsAReport() async throws {
         let session = session(provider: FixtureProvider(contacts: [], allowAccess: false))
         _ = await session.scanAndMatch()
         let report = try XCTUnwrap(session.lastScanReport)
@@ -80,7 +80,7 @@ final class ScanTelemetryTests: XCTestCase {
     }
 
     @MainActor
-    func testThrownFetchStillEmitsAReport() async {
+    func testThrownFetchStillEmitsAReport() async throws {
         let session = session(provider: FixtureProvider(contacts: [], state: .denied, explode: true))
         let completed = await session.scanAndMatch()
         XCTAssertFalse(completed)
@@ -95,7 +95,7 @@ final class ScanTelemetryTests: XCTestCase {
     /// previous run's report.  The catch only publishes when this run has
     /// not already recorded one, so the stale report has to be cleared first.
     @MainActor
-    func testLaterFetchFailureReplacesThePreviousReport() async {
+    func testLaterFetchFailureReplacesThePreviousReport() async throws {
         let session = session(provider: FixtureProvider(
             contacts: [ContactIdentity(id: "biz", displayName: "Walgreens", givenName: "Walgreens")]
         ))
