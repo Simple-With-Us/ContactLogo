@@ -22,10 +22,25 @@ sentry_dsn_status() {
 }
 
 # iOS bundles keep Info.plist at the app root.  macOS bundles keep it
-# under Contents.  Framework plists are not app plists and are ignored.
+# under Contents.  Only our own app bundles are interesting: a dependency
+# can ship a nested helper app inside a framework (Sparkle's Updater.app
+# lives in Sparkle.framework/Versions/B/), and a helper app legitimately
+# has no SENTRY_DSN key.  Pruning frameworks, xcframeworks, resolved
+# SourcePackages and the standard embedded-app directories keeps the
+# check pointed at the bundles this build actually produced.
 app_info_plists() {
   local root="$1"
-  find "$root" \( -path '*.app/Info.plist' -o -path '*.app/Contents/Info.plist' \) -print
+  find "$root" \
+    \( -type d \( \
+      -name '*.framework' \
+      -o -name '*.xcframework' \
+      -o -name 'SourcePackages' \
+      -o -name 'PlugIns' \
+      -o -name 'XPCServices' \
+      -o -name 'LoginItems' \
+      -o -name 'Extensions' \
+    \) -prune \) -o \
+    \( -path '*.app/Info.plist' -o -path '*.app/Contents/Info.plist' \) -print
 }
 
 self_test() {
@@ -40,10 +55,16 @@ self_test() {
   mkdir -p \
     "$tmp/ios/ContactLogo.app" \
     "$tmp/mac/ContactLogo.app/Contents" \
-    "$tmp/kit/ContactLogoKit.framework/Versions/A/Resources"
+    "$tmp/kit/ContactLogoKit.framework/Versions/A/Resources" \
+    "$tmp/sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework/Versions/B/Updater.app/Contents" \
+    "$tmp/ios/ContactLogo.app/PlugIns/Widget.app" \
+    "$tmp/mac/ContactLogo.app/Contents/Library/LoginItems/Helper.app/Contents"
   : > "$tmp/ios/ContactLogo.app/Info.plist"
   : > "$tmp/mac/ContactLogo.app/Contents/Info.plist"
   : > "$tmp/kit/ContactLogoKit.framework/Versions/A/Resources/Info.plist"
+  : > "$tmp/sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework/Versions/B/Updater.app/Contents/Info.plist"
+  : > "$tmp/ios/ContactLogo.app/PlugIns/Widget.app/Info.plist"
+  : > "$tmp/mac/ContactLogo.app/Contents/Library/LoginItems/Helper.app/Contents/Info.plist"
   found="$(app_info_plists "$tmp" | sort)"
   expected="$(printf '%s\n%s\n' \
     "$tmp/ios/ContactLogo.app/Info.plist" \
