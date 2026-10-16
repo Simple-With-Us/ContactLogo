@@ -47,7 +47,10 @@ jobs:
         run: npm run build
 
   kit:
-    runs-on: macos-latest
+    # macos-latest was starving for hours while macos-15 runners still
+    # picked up the apple matrix on the same workflow; keep kit on the
+    # same pool so swift test is not the only job stuck queued.
+    runs-on: macos-15
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7

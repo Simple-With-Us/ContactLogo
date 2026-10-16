@@ -14,6 +14,13 @@ packages:
     # 9.30.x Package@swift-6.2.swift depends on KSCrash by git revision; SPM
     # rejects that when the root requirement is version-based (`from:`).
     revision: "b539e098293067be54fa5cf1f11d9e16cdbba94a" # 9.30.0
+  # 2026-10-15 — Sparkle 2: every merge to main ships a signed Mac release
+  # and installed copies update themselves (docs/AUTO-UPDATE.md, the fleet
+  # pattern piloted by CodeCaps and live in HogHunter).  Mac target only:
+  # Sparkle is AppKit-only and must never link into the iOS companion.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.10.0
 
 settings:
   base:
@@ -118,6 +125,10 @@ targets:
       - target: ContactLogoKitMac
       - package: Sentry
         product: Sentry
+      # Sparkle 2 self-update (Mac only).  Xcode embeds the framework into
+      # Contents/Frameworks; scripts/mac-release-build.sh asserts that.
+      - package: Sparkle
+        product: Sparkle
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.contactlogo.macos

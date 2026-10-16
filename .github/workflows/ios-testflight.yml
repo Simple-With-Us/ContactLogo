@@ -1,0 +1,136 @@
+name: ContactLogo iOS TestFlight
+
+# Auto-ship: every merge to main that touches the iOS app archives and uploads
+# to TestFlight.  workflow_dispatch keeps the manual lane (optional build
+# number, optional upload).  The CL_IOS_TESTFLIGHT_ENABLED repo variable and
+# the main-ref gate stay in force for both events.
+#
+# Secrets (names only; no value is ever printed): ASC_KEY_ID, ASC_ISSUER_ID,
+# ASC_KEY_P8 (App Store Connect API key, canonical home Fleet Secrets
+# Fleet-OPS prod /asc), IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD (Apple
+# Distribution certificate, canonical home Fleet Secrets Fleet-OPS prod
+# /mac-certs).  Both are loaded at runtime from Fleet Secrets by the
+# dedicated steps below via the Simple-With-Us org machine identity;
+# nothing is copied into the ContactLogo project or repository secrets.
+# CL_APPLE_ID (repo variable) is the App Store Connect numeric app ID.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Apps/ContactLogoiOS/**'
+      - 'Sources/**'
+      - 'project.yml'
+      - 'scripts/ios-*'
+      - 'scripts/validate-ios-release.py'
+      - '.github/workflows/ios-testflight.yml'
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Unique numeric build number (blank uses UTC timestamp YYYYMMDDHHMM)'
+        required: false
+        type: string
+      upload:
+        description: 'Upload the validated export to App Store Connect'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contactlogo-ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main' && vars.CL_IOS_TESTFLIGHT_ENABLED == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      CL_BUILD_NUMBER_INPUT: ${{ inputs.build_number }}
+      CL_APPLE_ID: ${{ vars.CL_APPLE_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Push ships always upload; a manual dispatch keeps its input.
+      - name: Resolve ship flags
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "CL_TESTFLIGHT_UPLOAD=true" >> "$GITHUB_ENV"
+          else
+            echo "CL_TESTFLIGHT_UPLOAD=${{ inputs.upload }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Validate release inputs and tools
+        run: |
+          set -euo pipefail
+          build_number="${CL_BUILD_NUMBER_INPUT:-$(date -u +%Y%m%d%H%M)}"
+          [[ "$build_number" =~ ^[1-9][0-9]{0,17}$ ]] || { echo '::error::Build number must be valid digits without leading zero.'; exit 1; }
+          echo "CL_BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+          xcodebuild -version
+          xcode_major="$(xcodebuild -version | awk 'NR==1 {split($2, parts, "."); print parts[1]}')"
+          [[ "$xcode_major" -ge 26 ]] || { echo '::error::Stable Xcode 26 or later is required.'; exit 1; }
+          NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+
+      - name: Load App Store Connect key (Fleet Secrets via Infisical)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
+          secret-path: /asc
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+
+      - name: Load Apple Distribution certificate (Fleet Secrets via Infisical)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD
+          required: IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD
+          project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
+          secret-path: /mac-certs
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+
+      - name: Load Sentry secrets (best effort, Infisical then repository secrets)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: SENTRY_DSN SENTRY_AUTH_TOKEN
+          project-id: ${{ secrets.INFISICAL_PROJECT_ID }}
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GH_FALLBACK_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Stage ASC key and prepare signing
+        run: |
+          set +o xtrace
+          set -euo pipefail
+          printf '%s\n' "$ASC_KEY_P8" | bash "$GITHUB_WORKSPACE/scripts/ios-stage-asc-key.sh"
+          ASC_KEY_PATH="$(sed -n 's/^ASC_KEY_PATH=//p' "$GITHUB_ENV" | tail -n 1)"
+          export ASC_KEY_PATH
+          bash "$GITHUB_WORKSPACE/scripts/ios-appstore-gm-prepare.sh"
+
+      - name: Archive, validate, export, and optionally upload
+        run: bash scripts/ios-testflight-release.sh
+
+      - name: Remove runner signing material
+        if: always()
+        run: |
+          set +o xtrace
+          set -euo pipefail
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/app-signing-kc-pass" "$HOME/.secrets/ios-distribution.p12" "$HOME/.secrets/appstore-connect.env"
+          if [[ -n "${ASC_KEY_PATH:-}" && "$ASC_KEY_PATH" == "$RUNNER_TEMP"/asc-signing.*/AuthKey.p8 ]]; then
+            rm -rf "$(dirname "$ASC_KEY_PATH")"
+          fi
+          # altool staging copy (AuthKey_<KEY_ID>.p8); remove only the file this
+          # run staged.  Avoid `rm -rf` of the directory -- other runs on the
+          # shared runner may have unrelated keys there.
+          if [[ -n "${ASC_KEY_ID:-}" ]]; then
+            rm -f "${HOME}/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          fi

@@ -24,5 +24,15 @@
     <array>
         <string>group.com.contactlogo</string>
     </array>
+    <!-- Sparkle 2 (2026-10-15): a sandboxed app needs the InstallerLauncher
+         mach-lookup exceptions or updates download but never install.  The
+         launcher service registers as <bundle-id>-spks / <bundle-id>-spki.
+         Requires SUEnableInstallerLauncherService=YES in Info.plist, which
+         scripts/mac-release-build.sh writes. -->
+    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+    <array>
+        <string>com.contactlogo.macos-spks</string>
+        <string>com.contactlogo.macos-spki</string>
+    </array>
 </dict>
 </plist>
