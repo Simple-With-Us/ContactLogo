@@ -91,6 +91,25 @@ public enum LimitedAccessState: Sendable, Equatable {
         if case .definite = self { return true }
         return false
     }
+
+    /// Stable token for scan telemetry.  The associated counts stay on
+    /// `ScanRunReport.fetched` and friends, not in this string.
+    public var telemetryLabel: String {
+        switch self {
+        case .open:
+            return "open"
+        case .definite:
+            return "limited"
+        case .heuristic:
+            return "heuristic"
+        case .fullAccessSmallDatabase:
+            return "full_access_small_database"
+        case .denied:
+            return "denied"
+        case .restricted:
+            return "restricted"
+        }
+    }
 }
 
 #if canImport(Contacts)
@@ -263,15 +282,28 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         ]
     }
 
-    public func fetchCandidates() async throws -> [ContactIdentity] {
+    /// Maps an enumeration to identities.  `fetchCandidates()` is this plus
+    /// the system store.  Tests pass a seeded enumerator so a truncated
+    /// yield fails without a simulator or Contacts permission.
+    internal static func fetchCandidates(
+        enumerating enumerate: (CNContactFetchRequest, (CNContact) -> Void) throws -> Void
+    ) rethrows -> [ContactIdentity] {
+        let request = CNContactFetchRequest(keysToFetch: keys)
         var out: [ContactIdentity] = []
-        let request = CNContactFetchRequest(keysToFetch: Self.keys)
-        try store.enumerateContacts(with: request) { contact, _ in
-            if let identity = Self.identity(from: contact) {
+        try enumerate(request) { contact in
+            if let identity = identity(from: contact) {
                 out.append(identity)
             }
         }
         return out
+    }
+
+    public func fetchCandidates() async throws -> [ContactIdentity] {
+        try Self.fetchCandidates { request, yield in
+            try store.enumerateContacts(with: request) { contact, _ in
+                yield(contact)
+            }
+        }
     }
 
     /// One contact by identifier, for per-row Retry without re-enumerating the

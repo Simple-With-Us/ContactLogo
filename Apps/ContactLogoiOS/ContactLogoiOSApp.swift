@@ -15,6 +15,9 @@ struct ContactLogoiOSApp: App {
         SentryTelemetry.start()
         let settings = SettingsStore()
         let session = ReviewSession(settings: settings)
+        session.recordScanTelemetry = { report in
+            SentryTelemetry.record(scan: report)
+        }
         _settingsStore = StateObject(wrappedValue: settings)
         _model = StateObject(wrappedValue: session)
 

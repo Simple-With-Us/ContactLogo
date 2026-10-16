@@ -1,17 +1,27 @@
 import Foundation
 import Sentry
+import ContactLogoKit
 
 /// Native Sentry crash reporting and telemetry for ContactLogo iOS.
 ///
 /// DSN is read only from Info.plist (`SENTRY_DSN`).  There is no hardcoded
-/// fallback — missing or empty skips init so a leaked default cannot be
-/// pointed at the wrong project.
+/// fallback.  Empty skips init so a leaked default cannot be pointed at the
+/// wrong project.  An unsubstituted `$(SENTRY_DSN)` placeholder fails loudly
+/// and does not start the SDK.
 enum SentryTelemetry {
     static func start() {
-        let dsn = (Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        guard !dsn.isEmpty else { return }
+        let raw = Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String
+        let outcome = SentryDSN.outcome(for: raw)
+        let dsn: String
+        switch outcome {
+        case .absent:
+            return
+        case .unresolvedPlaceholder, .malformed:
+            SentryDSN.reportUnusable(outcome)
+            return
+        case .ready(let value):
+            dsn = value
+        }
 
         SentrySDK.start { options in
             options.dsn = dsn
@@ -56,6 +66,34 @@ enum SentryTelemetry {
                 }
                 return event
             }
+        }
+    }
+
+    /// Counts-only scan event.  A breadcrumb is attached to the next error.
+    /// The message is what shows up when no error follows, which is the
+    /// usual case for a scan that merely returned the wrong number.
+    static func record(scan report: ScanRunReport) {
+        let crumb = Breadcrumb()
+        crumb.level = .info
+        crumb.category = "contactlogo.scan"
+        crumb.type = "info"
+        crumb.message = "scan"
+        let data: [String: Any] = [
+            "fetched": report.fetched,
+            "classified": report.classified,
+            "dropped": report.dropped,
+            "authorization": report.authorization,
+            "elapsed_seconds": report.elapsedSeconds,
+        ]
+        crumb.data = data
+        SentrySDK.addBreadcrumb(crumb)
+        SentrySDK.capture(message: "contactlogo.scan") { scope in
+            scope.setLevel(.info)
+            scope.setTag(value: report.authorization, key: "scan.authorization")
+            scope.setExtra(value: report.fetched, key: "scan.fetched")
+            scope.setExtra(value: report.classified, key: "scan.classified")
+            scope.setExtra(value: report.dropped, key: "scan.dropped")
+            scope.setExtra(value: report.elapsedSeconds, key: "scan.elapsed_seconds")
         }
     }
 }

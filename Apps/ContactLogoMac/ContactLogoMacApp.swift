@@ -11,8 +11,12 @@ struct ContactLogoMacApp: App {
     init() {
         SentryTelemetry.start()
         let settings = SettingsStore()
+        let session = ReviewSession(settings: settings)
+        session.recordScanTelemetry = { report in
+            SentryTelemetry.record(scan: report)
+        }
         _settingsStore = StateObject(wrappedValue: settings)
-        _model = StateObject(wrappedValue: ReviewSession(settings: settings))
+        _model = StateObject(wrappedValue: session)
     }
 
     var body: some Scene {

@@ -77,6 +77,37 @@ final class ContactEnumerationKeyTests: XCTestCase {
         )
     }
 
+    /// `fetchCandidates()` is `fetchCandidates(enumerating:)` plus the system
+    /// store.  The enumerator is the mock: forty real `CNMutableContact`s
+    /// plus one empty card.  A truncation, or putting image bytes back on
+    /// the request, fails here without a simulator.
+    func testFetchCandidatesKeepsEverySeededContact() throws {
+        let seeded: [CNMutableContact] = (0..<40).map { index in
+            let contact = CNMutableContact()
+            contact.givenName = "Seed"
+            contact.familyName = "Contact\(index)"
+            contact.organizationName = "Brand \(index)"
+            return contact
+        }
+        let identities = try CNContactsProvider.fetchCandidates { request, yield in
+            let described = request.keysToFetch.map { "\($0)" }
+            XCTAssertFalse(
+                described.contains(CNContactImageDataKey),
+                "fetchCandidates must not request image bytes"
+            )
+            XCTAssertTrue(described.contains(CNContactImageDataAvailableKey))
+            for contact in seeded {
+                yield(contact)
+            }
+            yield(CNMutableContact())
+        }
+        XCTAssertEqual(identities.count, seeded.count)
+        XCTAssertEqual(
+            identities.compactMap(\.familyName).sorted(),
+            seeded.map(\.familyName).sorted()
+        )
+    }
+
     private func url(for relativePath: String) -> URL {
         // Tests run from the package root under SwiftPM.
         URL(fileURLWithPath: #filePath)
