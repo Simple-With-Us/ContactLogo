@@ -1,0 +1,14 @@
+{
+  "repository": "Simple-With-Us/ContactLogo",
+  "teamId": "team_l3mWAejl1E08y8ijku5DpBE6",
+  "projectId": "prj_jVLCCFZxItW389Nl7rAgtvynb0WJ",
+  "repoId": 1335323144,
+  "rootDirectory": "web",
+  "ciWorkflows": [
+    "CI",
+    "E2E smoke"
+  ],
+  "watch": [
+    "web/**"
+  ]
+}
