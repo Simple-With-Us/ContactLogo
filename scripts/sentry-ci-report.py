@@ -66,6 +66,7 @@ APP = "contactlogo"
 # listed here have no `schedule:` trigger and will simply be skipped for the
 # check-in step (they can still send a failure event on other trigger types).
 CRON_SCHEDULES = {
+    "Vercel production catch-up": "41 * * * *",
     "Simple Icons liveness": "17 14 * * 1",
 }
 
@@ -305,7 +306,7 @@ def main() -> int:
                 "status": checkin_status,
                 "monitor_config": {
                     "schedule": {"type": "crontab", "value": cron_expr},
-                    "checkin_margin": 15,
+                    "checkin_margin": 75 if workflow_name.casefold() == "vercel production catch-up" else 15,
                     "max_runtime": 60,
                     "timezone": "UTC",
                 },
