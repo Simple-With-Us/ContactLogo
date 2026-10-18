@@ -73,7 +73,18 @@ wf_code = "\n".join(code_lines(wf))
 on_block = block(wf, "on:", 0)
 push_block = block(on_block, "  push:", 2)
 
-check("branches: [main]" in push_block, "push trigger is limited to main")
+# Exact match, not a substring:  exactly one `branches:` key under push (a
+# `branches-ignore:` or a second key fails too), written as the one-item flow
+# list `[main]`.  A block-style list or any extra branch fails the check.
+branch_lines = [
+    ln.split("#", 1)[0].rstrip()
+    for ln in push_block.splitlines()
+    if ln.strip().startswith("branches")
+]
+check(
+    len(branch_lines) == 1 and re.fullmatch(r"\s*branches:\s*\[\s*main\s*\]", branch_lines[0]) is not None,
+    "push trigger is limited to main (exactly `branches: [main]`)",
+)
 for needed in (
     "Apps/ContactLogoMac/**",
     "Apps/ContactLogoMacAppStore/**",
