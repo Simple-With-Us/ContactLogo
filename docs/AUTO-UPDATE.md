@@ -59,3 +59,52 @@ Every release is a GitHub release with its own appcast; rolling back is publishi
 ## iOS TestFlight
 
 `ios-testflight.yml` mirrors the HogHunter lane: `xcodegen` + `xcodebuild archive` of the `ContactLogoiOS` scheme (bundle `com.contactlogo`, team `CC8UTF7ATG`, automatic signing with `-allowProvisioningUpdates`), identity validation via `scripts/validate-ios-release.py`, export, and `altool` upload to the App Store Connect app named by the `CL_APPLE_ID` repo variable.  Push ships always upload; manual dispatch keeps its `upload` input.  The workflow is inert until the `CL_IOS_TESTFLIGHT_ENABLED` repo variable is set to `true`.
+
+## Mac TestFlight
+
+Owner ask, Sat, Oct 17, 2026 (CL-203): a merge to `main` that changes the Mac app also uploads a fresh TestFlight build of ContactLogo for Mac, with no human step.  Sparkle and TestFlight are two channels for two audiences and both run on the same merge: Sparkle updates the copies installed from the signed GitHub release, TestFlight feeds the Mac App Store Connect record (ASC app 6804248235, bundle `com.contactlogo.macos`, internal testing).
+
+### What Happens
+
+1. A PR merges to `main` and touches `Apps/ContactLogoMac/`, `Apps/ContactLogoMacAppStore/`, `Sources/`, `project.yml`, or the ship tooling.
+2. `.github/workflows/mac-testflight.yml` starts.  A cheap Linux job runs `scripts/ios-scheduled-ship-gate.sh`; a push or a manual dispatch always passes it.
+3. The macOS job loads the App Store Connect key, the Apple Distribution certificate and the Mac installer certificate from Fleet Secrets (Fleet-OPS, `prod`, `/asc` and `/mac-certs`), imports the certificates into a throwaway keychain, and runs `scripts/ios-fleet/ship-testflight.sh contactlogo-mac`.
+4. The ship script regenerates the project with XcodeGen, installs the `ContactLogo for Mac AppStore` profile (`scripts/mac-install-appstore-profiles.sh`), archives the `ContactLogoMacAppStore` scheme, wraps the archive into a signed installer package (`scripts/mac-export-appstore-pkg.sh`), uploads it with `altool`, declares export compliance, and publishes the What to Test note.
+5. Marketing version is `1.0.N` with N one higher than anything App Store Connect holds for the Mac platform; the build number is the UTC time, `YYYYMMDDHHMM`.
+
+The ship script keeps its own limits: one TestFlight build per app per hour, and a skip when `HEAD` was already shipped.  No workflow sets `IOS_TF_MIN_INTERVAL_SEC`; the `force_ship` dispatch input is a per-run choice that defaults to off.  An hourly `schedule:` tick catches a merge that landed inside the hour of the previous ship, and a bot merge, which GitHub does not turn into a push event.  The tick ships only when a Mac source path changed since the last successful ship, so a web, Android or iOS-only commit never produces a Mac build.
+
+A run on any ref other than `main`, or a dispatch with `validate_only`, builds the signed package and has App Store Connect validate it (`altool --validate-app`) without uploading.
+
+### Why The App Store Build Is A Separate Target
+
+`ContactLogoMacAppStore` compiles the same sources and uses the same bundle id, Info.plist and assets as `ContactLogoMac`, with two differences:
+
+- It does not link Sparkle.  The Mac App Store forbids a self-updating app, and Sparkle's `Autoupdate` and `Updater.app` executables are not sandboxed, which App Store Connect rejects.  `Apps/ContactLogoMacAppStore/AutoUpdateStub.swift` replaces `AutoUpdate.swift` and defines the same two names (`AppUpdater`, `AutoUpdateAvailability`), so no call site changes.  Settings shows "Automatic updates: Off" and "Check For Updates…" stays greyed out.
+- Its entitlements (`ContactLogoMacAppStore.entitlements`) drop the Sparkle InstallerLauncher mach-lookup exceptions.  Keep the two entitlement files in step for everything else.
+
+Developer ID releases still ship the `ContactLogoMac` target from `mac-release.yml`.
+
+### Signing
+
+Xcode's provisioning service (`developerservices2.apple.com`) answers the fleet App Store Connect key with HTTP 401, so automatic signing cannot work on a hosted runner (found on Socratic-Trade 2026-09-30).  Release for the App Store target therefore signs manually: `CODE_SIGN_IDENTITY = Apple Distribution` and `PROVISIONING_PROFILE_SPECIFIER = ContactLogo for Mac AppStore`, a `MAC_APP_STORE` profile that holds the `group.com.contactlogo` App Group and the Apple Distribution and Mac Installer Distribution certificates.  `scripts/ios-fleet/mac-appstore-profiles.json` maps the bundle id to that profile name and `scripts/mac-install-appstore-profiles.sh` downloads it over the App Store Connect REST API.
+
+The package is built with `productbuild`, not `xcodebuild -exportArchive`, which hangs on `productsign` on hosted runners (CodeCaps #95).
+
+Renewal: the profile and both certificates expire on 2027-06-30.  When the fleet renews the certificates, create a new `MAC_APP_STORE` profile named `ContactLogo for Mac AppStore` for `com.contactlogo.macos` with the renewed Apple Distribution and Mac Installer Distribution certificates (the developer portal, or `POST /v1/profiles` through `scripts/ios-fleet/asc-api.mjs`).  A missing or expired profile fails the ship in `mac-install-appstore-profiles.sh` with a message that says so.
+
+### The Vendored Ship Tooling
+
+`scripts/ios-fleet/` holds the fleet ship script and its client, vendored because a hosted runner has no `/Users/jay/apps/ios-fleet`: `ship-testflight.sh` (the Socratic-Trade copy, plus the macOS manual-signing path described in its header), `asc-api.mjs` (the central client, unchanged), the two `ExportOptions` plists, `apps.json` (the ship registry) and `mac-appstore-profiles.json`.  `scripts/ios-fleet.sha256` pins all of them; `bash scripts/ios-fleet-pin.sh --update` refreshes the pin, and the change lands in a reviewed PR.  CI (`ship-tooling`) and the ship job both check the pin.
+
+`scripts/check-mac-testflight-contract.py` runs in CI and fails when the workflow, `project.yml`, the registry and the profile map stop agreeing (a trigger path dropped, Sparkle linked into the store target, a profile name that no longer matches).
+
+### Checking A Ship
+
+- `gh workflow view mac-testflight.yml` must say `active`.  If the workflow is ever disabled, merges stop reaching TestFlight silently.
+- The run's summary lists the marketing version, the build number, and the ship-gate decision.  `ship-gate: skip` is normal inside the hour of a previous ship; the hourly tick ships it later.
+- `node scripts/ios-fleet/asc-api.mjs GET "/v1/builds?filter[app]=6804248235&sort=-uploadedDate&limit=3"` (with the App Store Connect credentials in the environment) lists the newest builds; the newest should be `VALID` and recent.
+
+### Owner Actions
+
+- The Mac record needs an internal TestFlight group with the owner in it for the build to appear in the TestFlight app on the Mac.  App Store Connect shows the build either way.

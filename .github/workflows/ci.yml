@@ -77,6 +77,15 @@ jobs:
             destination: "platform=macOS"
             sentry_app: contactlogo-mac
             sentry_secret: SENTRY_DSN_MACOS
+          # The Sparkle-free Mac App Store / TestFlight build (CL-203).  A
+          # compile break here would be a green PR followed by a failed ship,
+          # so it is built on every pull request.  Its dSYMs are not uploaded:
+          # the ContactLogoMac row already uploads the same sources' symbols.
+          - target: ContactLogoMacAppStore
+            destination: "platform=macOS"
+            sentry_app: contactlogo-mac
+            sentry_secret: SENTRY_DSN_MACOS
+            skip_dsym_upload: true
     env:
       # iOS: Actions secret SENTRY_DSN.  Mac: SENTRY_DSN_MACOS.  Empty
       # stays dark (Cocoa no-ops).  GitHub masks the value in logs.
@@ -118,7 +127,41 @@ jobs:
         run: bash scripts/ios-fleet/check-built-sentry-dsn.sh .build/DerivedData
 
       - name: Upload dSYMs to Sentry
+        if: ${{ !matrix.skip_dsym_upload }}
         run: bash scripts/ios-fleet/upload-sentry-dsyms.sh --app "${{ matrix.sentry_app }}" --search .build/DerivedData
+
+  # The Mac TestFlight pipeline (CL-203): the vendored ship tooling still
+  # matches its pin, the scheduled-ship gate behaves, the shell scripts parse,
+  # and the workflow, project spec, registry and profile map still agree.
+  # Linux only; no secrets, no Xcode, no App Store Connect.
+  ship-tooling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Ship tooling matches its pin
+        run: bash scripts/ios-fleet-pin.sh --check
+
+      - name: Shell scripts parse
+        run: |
+          set -e
+          for f in scripts/ios-fleet/ship-testflight.sh scripts/ios-scheduled-ship-gate.sh \
+                   scripts/ios-collect-ship-logs.sh scripts/ios-stage-asc-key.sh \
+                   scripts/mac-appstore-gm-prepare.sh scripts/mac-export-appstore-pkg.sh \
+                   scripts/mac-install-appstore-profiles.sh scripts/ios-fleet-pin.sh; do
+            bash -n "$f"
+            echo "parses: $f"
+          done
+          node --check scripts/ios-fleet/asc-api.mjs
+
+      - name: Scheduled ship gate tests
+        run: bash scripts/test-ios-scheduled-ship-gate.sh
+
+      - name: Mac TestFlight contract
+        run: python3 scripts/check-mac-testflight-contract.py
 
   android:
     runs-on: ubuntu-latest

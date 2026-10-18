@@ -8,11 +8,18 @@
       "sentryDsnSecret": "SENTRY_DSN"
     },
     "contactlogo-mac": {
-      "displayName": "ContactLogo macOS",
+      "displayName": "ContactLogo for Mac",
       "bundleId": "com.contactlogo.macos",
-      "scheme": "ContactLogoMac",
+      "appleId": 6804248235,
+      "platform": "macOS",
+      "scheme": "ContactLogoMacAppStore",
+      "projectRel": "ContactLogo.xcodeproj",
+      "xcodegenDir": ".",
+      "marketingVersionDefault": "1.0.0",
+      "appstoreProfilesMap": "scripts/ios-fleet/mac-appstore-profiles.json",
       "sentryProject": "contactlogo-macos",
-      "sentryDsnSecret": "SENTRY_DSN_MACOS"
+      "sentryDsnSecret": "SENTRY_DSN_MACOS",
+      "notes": "ContactLogo for Mac, Mac App Store / TestFlight build (Sparkle-free ContactLogoMacAppStore target).  Developer ID releases ship from mac-release.yml.  ASC app 6804248235, team CC8UTF7ATG."
     }
   }
 }

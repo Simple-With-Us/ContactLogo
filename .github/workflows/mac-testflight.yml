@@ -1,0 +1,347 @@
+name: Mac TestFlight
+
+# CL-203 (2026-10-17): every merge to main that changes the Mac app becomes a
+# TestFlight build of ContactLogo for Mac, with no human step.  The Developer ID
+# / Sparkle release (mac-release.yml) is a different channel: it reaches the
+# owner's installed copies through the appcast, while this one reaches the Mac
+# App Store Connect record (ASC app 6804248235, bundle com.contactlogo.macos,
+# internal TestFlight).  Both run on the same merge.
+#
+# What ships is the ContactLogoMacAppStore target: the same sources as the
+# Sparkle build minus Sparkle (the Mac App Store forbids a self-updating app and
+# rejects Sparkle's unsandboxed helpers).  It signs MANUALLY with Apple
+# Distribution and the "ContactLogo for Mac AppStore" profile, because Xcode's
+# provisioning service rejects the fleet App Store Connect key.  See
+# docs/AUTO-UPDATE.md, Mac TestFlight.
+#
+# The ship goes through scripts/ios-fleet/ship-testflight.sh, the fleet script,
+# with its defaults: one TestFlight build per app per hour, and a same-HEAD
+# skip.  Nothing here sets IOS_TF_MIN_INTERVAL_SEC or passes --force-ship as a
+# standing value; the force_ship input below is a per-run choice and defaults to
+# false.  Marketing version 1.0.N (+1 per upload) and the build number (UTC
+# YYYYMMDDHHMM) come from the script, and the mandatory What to Test note is
+# published (IOS_TF_RELEASE_NOTES=1).
+#
+# WHY THERE IS A `schedule:` TRIGGER
+#   The one-hour rate gate skips a merge that lands inside the window of the
+#   previous ship, and a skipped push never ships later by itself.  The hourly
+#   tick finds that merge: scripts/ios-scheduled-ship-gate.sh passes only when
+#   Apps/ContactLogoMac/, Apps/ContactLogoMacAppStore/, Sources/ or project.yml
+#   changed since the last successful ship, so a web, Android or iOS-only commit
+#   never produces a Mac build.  The gate runs on a cheap Linux runner; the
+#   macOS job starts only when it votes to ship.  It also covers a bot merge,
+#   which GitHub does not turn into a push event.
+#
+# Ship state (the last ship's time and sha) lives in ~/.cache/ios-fleet and is
+# kept between runs with actions/cache, because a hosted runner starts empty.
+#
+# Only main uploads.  A run on any other ref, or with validate_only, archives
+# and builds the signed package and asks App Store Connect to validate it
+# (altool --validate-app) without uploading anything.
+#
+# Secrets (names only; no value is ever printed), all read at runtime from Fleet
+# Secrets through the Simple-With-Us org machine identity:
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8            Fleet-OPS prod /asc
+#   IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD       Fleet-OPS prod /mac-certs
+#                                                    (Apple Distribution)
+#   MAC_INSTALLER_P12_BASE64, MAC_INSTALLER_P12_PASSWORD
+#                                                    Fleet-OPS prod /mac-certs
+#                                                    (3rd Party Mac Developer Installer)
+#   SENTRY_DSN_MACOS, SENTRY_AUTH_TOKEN              ContactLogo project, best effort
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Apps/ContactLogoMac/**'
+      - 'Apps/ContactLogoMacAppStore/**'
+      - 'Sources/**'
+      - 'project.yml'
+      - 'scripts/ios-fleet/**'
+      - 'scripts/ios-fleet-pin.sh'
+      - 'scripts/ios-fleet.sha256'
+      - 'scripts/ios-scheduled-ship-gate.sh'
+      - 'scripts/ios-stage-asc-key.sh'
+      - 'scripts/ios-collect-ship-logs.sh'
+      - 'scripts/mac-appstore-gm-prepare.sh'
+      - 'scripts/mac-export-appstore-pkg.sh'
+      - 'scripts/mac-install-appstore-profiles.sh'
+      - '.github/actions/infisical-secrets/**'
+      - '.github/workflows/mac-testflight.yml'
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      validate_only:
+        description: 'Build the signed package and have App Store Connect validate it; upload nothing'
+        required: false
+        default: false
+        type: boolean
+      force_ship:
+        description: 'Bypass the one-hour rate gate and the same-HEAD skip for THIS run only'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# One TestFlight ship at a time, in merge order.  A queued run waits for the
+# running one rather than replacing it, so two uploads can never race for a
+# marketing version.
+concurrency:
+  group: contactlogo-mac-testflight
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Ship gate
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_ship: ${{ steps.gate.outputs.should_ship }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The gate diffs HEAD against the sha of the last successful ship,
+          # which can be many commits back.  A shallow clone makes that range
+          # uncomputable.
+          fetch-depth: 0
+
+      - name: Restore ship state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ios-fleet
+          key: ios-fleet-contactlogo-mac-${{ github.run_id }}
+          restore-keys: |
+            ios-fleet-contactlogo-mac-
+
+      - name: Scheduled ship gate (skip unless the Mac app changed)
+        id: gate
+        run: |
+          bash scripts/ios-scheduled-ship-gate.sh \
+            --event "${{ github.event_name }}" \
+            --path-prefix 'Apps/ContactLogoMac/' \
+            --path-prefix 'Apps/ContactLogoMacAppStore/' \
+            --path-prefix 'Sources/' \
+            --path-prefix 'project.yml' \
+            --repo-root "$GITHUB_WORKSPACE" \
+            contactlogo-mac
+
+  ship:
+    name: Mac App Store archive and TestFlight upload
+    needs: gate
+    if: needs.gate.outputs.should_ship == '1'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      # Only main uploads.  Anything else validates and uploads nothing.
+      SHIP_MODE: ${{ (github.ref == 'refs/heads/main' && inputs.validate_only != true) && 'ship' || 'validate' }}
+      FORCE_SHIP: ${{ inputs.force_ship == true && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The release note is built from the commit range since the last
+          # ship, and CFBundleVersion logic reads history.  Depth 1 would leave
+          # the range uncomputable.
+          fetch-depth: 0
+
+      - name: Restore ship state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ios-fleet
+          key: ios-fleet-contactlogo-mac-${{ github.run_id }}
+          restore-keys: |
+            ios-fleet-contactlogo-mac-
+
+      - name: Verify the in-repo ship tooling pin
+        run: bash scripts/ios-fleet-pin.sh --check
+
+      # A cancelled ship can leave archive.lockdir in the saved state, and the
+      # next ship would then wait for it and give up (CodeCaps hit this).  The
+      # concurrency group already guarantees no other ship is running.
+      - name: Clear a stale archive lock from the restored state
+        run: |
+          rm -rf "$HOME/.cache/ios-fleet/archive.lockdir"
+          mkdir -p "$HOME/.cache/ios-fleet"
+          ls -1 "$HOME/.cache/ios-fleet" | sed 's/^/ship state: /'
+
+      - name: Assert stable Xcode 26 or later and a non-beta host
+        run: |
+          set -euo pipefail
+          echo "DEVELOPER_DIR=${DEVELOPER_DIR}"
+          xcodebuild -version
+          case "$DEVELOPER_DIR" in
+            *[Bb]eta*) echo "::error::DEVELOPER_DIR resolves to a beta Xcode: $DEVELOPER_DIR"; exit 1 ;;
+          esac
+          major="$(xcodebuild -version | awk 'NR==1 {split($2, parts, "."); print parts[1]}')"
+          [[ "$major" -ge 26 ]] || { echo "::error::Xcode 26 or later is required for App Store uploads (found $major)."; exit 1; }
+          # Apple stamps BuildMachineOSBuild into the package.  A beta host
+          # (a trailing letter after the digits, such as 26A5406e) is Invalid Binary.
+          os="$(sw_vers -productVersion)"
+          build="$(sw_vers -buildVersion)"
+          echo "macOS ${os} (${build})"
+          if echo "$build" | grep -Eq '[0-9][a-z]$'; then
+            echo "::error::macOS ${os} build ${build} is a beta host.  App Store Connect rejects these as Invalid Binary."
+            exit 1
+          fi
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Load App Store Connect key (Fleet Secrets via Infisical)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
+          secret-path: /asc
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          GH_FALLBACK_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GH_FALLBACK_ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+
+      - name: Load Apple Distribution certificate (Fleet Secrets via Infisical)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD
+          required: IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD
+          project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
+          secret-path: /mac-certs
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_IOS_DIST_P12_BASE64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          GH_FALLBACK_IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+
+      - name: Load Mac installer certificate (Fleet Secrets via Infisical)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: MAC_INSTALLER_P12_BASE64 MAC_INSTALLER_P12_PASSWORD
+          required: MAC_INSTALLER_P12_BASE64 MAC_INSTALLER_P12_PASSWORD
+          project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
+          secret-path: /mac-certs
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+
+      - name: Load Sentry secrets (best effort, Infisical then repository secrets)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: SENTRY_DSN_MACOS SENTRY_AUTH_TOKEN
+          project-id: ${{ secrets.INFISICAL_PROJECT_ID }}
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_SENTRY_DSN_MACOS: ${{ secrets.SENTRY_DSN_MACOS }}
+          GH_FALLBACK_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Stage the App Store Connect key and import the signing identities
+        run: |
+          set +o xtrace
+          set -euo pipefail
+          printf '%s\n' "$ASC_KEY_P8" | bash "$GITHUB_WORKSPACE/scripts/ios-stage-asc-key.sh"
+          ASC_KEY_PATH="$(sed -n 's/^ASC_KEY_PATH=//p' "$GITHUB_ENV" | tail -n 1)"
+          export ASC_KEY_PATH
+          bash "$GITHUB_WORKSPACE/scripts/mac-appstore-gm-prepare.sh"
+
+      # No IOS_TF_MIN_INTERVAL_SEC here, and --force-ship only when someone
+      # chose it for this one run.  The standing limit is the fleet script's
+      # DEFAULT_MIN_INTERVAL_SEC (one hour); editing it is the owner's call.
+      - name: Ship ContactLogo for Mac
+        id: ship
+        env:
+          IOS_TF_RELEASE_NOTES: "1"   # Owner 2026-09-08: What to Test is mandatory
+          MAC_MANUAL_SIGN: "1"        # App Store profile, no Xcode provisioning service
+        run: |
+          set +o xtrace
+          set -euo pipefail
+          # The Mac build injects the macOS DSN as SENTRY_DSN.
+          if [ -n "${SENTRY_DSN_MACOS:-}" ]; then
+            export SENTRY_DSN="$SENTRY_DSN_MACOS"
+          fi
+          args=(contactlogo-mac --repo-root "$GITHUB_WORKSPACE")
+          if [ "$SHIP_MODE" = "validate" ]; then
+            echo "[mac-testflight] validate mode: build the signed package, upload nothing"
+            args+=(--export-only)
+          fi
+          if [ "$FORCE_SHIP" = "true" ]; then
+            echo "[mac-testflight] force_ship was chosen for this run only"
+            args+=(--force-ship)
+          fi
+          bash scripts/ios-fleet/ship-testflight.sh "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/ship.log"
+
+      - name: Have App Store Connect validate the package (validate mode)
+        if: env.SHIP_MODE == 'validate'
+        run: |
+          set +o xtrace
+          set -euo pipefail
+          pkg="$(sed -n 's/^\[ios-ship\] Package ready: //p' "$RUNNER_TEMP/ship.log" | tail -n 1)"
+          [ -n "$pkg" ] && [ -f "$pkg" ] || { echo "::error::no package to validate"; exit 1; }
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          chmod 700 "$key_dir"
+          ln -sf "$ASC_KEY_PATH" "$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          echo "validating $(basename "$pkg") ($(wc -c < "$pkg") bytes)"
+          xcrun altool --validate-app -f "$pkg" -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee "$RUNNER_TEMP/validate.log"
+
+      - name: Summarize
+        if: always()
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          {
+            echo "### Mac TestFlight"
+            echo
+            echo "- Mode: \`${SHIP_MODE}\` (event \`${EVENT_NAME}\`, ref \`${REF_NAME}\`)"
+            if [ -f "$RUNNER_TEMP/ship.log" ]; then
+              grep -E 'marketing=|ship-gate:|tf-ready:|Package ready|upload submitted|TestFlight internal testers' "$RUNNER_TEMP/ship.log" | sed 's/^\[ios-ship\] /- /' | head -20
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Saved even when the ship failed or was cancelled, but only for a real
+      # ship: a validate run records nothing, so it must not move the state.
+      - name: Save ship state
+        if: always() && env.SHIP_MODE == 'ship'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ios-fleet
+          key: ios-fleet-contactlogo-mac-${{ github.run_id }}
+
+      # Xcode's archive and export logs reach the job log, but its
+      # .xcdistributionlogs do not.  Collect both on failure, redact the ASC and
+      # Sentry identifiers, and refuse to upload anything holding key material.
+      - name: Collect ship logs (failure only)
+        id: shiplogs
+        if: failure()
+        run: bash scripts/ios-collect-ship-logs.sh "$RUNNER_TEMP/ship-logs"
+
+      - name: Upload ship logs (failure only)
+        if: failure() && steps.shiplogs.outputs.safe == '1'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mac-ship-logs-${{ github.run_id }}
+          path: ${{ runner.temp }}/ship-logs
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Remove runner signing material
+        if: always()
+        run: |
+          set +o xtrace
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/app-signing-kc-pass" "$HOME/.secrets/ios-distribution.p12" "$HOME/.secrets/mac-installer.p12" "$HOME/.secrets/appstore-connect.env"
+          if [[ -n "${ASC_KEY_PATH:-}" && "$ASC_KEY_PATH" == "$RUNNER_TEMP"/asc-signing.*/AuthKey.p8 ]]; then
+            rm -rf "$(dirname "$ASC_KEY_PATH")"
+          fi
+          if [[ -n "${ASC_KEY_ID:-}" ]]; then
+            rm -f "${HOME}/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          fi
