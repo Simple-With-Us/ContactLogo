@@ -53,7 +53,7 @@ name: Mac TestFlight
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/mac-testflight-autoship]  # TEMP dev trigger, removed before merge
     paths:
       - 'Apps/ContactLogoMac/**'
       - 'Apps/ContactLogoMacAppStore/**'
