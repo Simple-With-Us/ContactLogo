@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Prepare the stable GitHub-hosted macOS runner to archive ContactLogo for Mac
 # for the Mac App Store and TestFlight.  Writes the App Store Connect
-# credentials file the fleet ship script reads, and imports two identities into
-# a throwaway keychain:
-#   - Apple Distribution                  (IOS_DIST_P12_*)    signs the app
-#   - 3rd Party Mac Developer Installer   (MAC_INSTALLER_P12_*) signs the package
+# credentials file the fleet ship script reads, and imports these identities
+# into a throwaway keychain:
+#   - Apple Distribution                  (IOS_DIST_P12_*)  signs the app
+#   - 3rd Party Mac Developer Installer   (MAC_APPSTORE_INSTALLER_P12_* or
+#                                          MAC_INSTALLER_P12_*)  signs the package
 # The App Store Connect key must already be staged by scripts/ios-stage-asc-key.sh
 # (ASC_KEY_PATH).  Never prints secret values.  Fails closed on a beta macOS host.
 set +o xtrace
@@ -28,8 +29,20 @@ fi
 : "${ASC_KEY_PATH:?ASC_KEY_PATH required; stage the key file first}"
 : "${IOS_DIST_P12_BASE64:?IOS_DIST_P12_BASE64 required}"
 : "${IOS_DIST_P12_PASSWORD:?IOS_DIST_P12_PASSWORD required}"
-: "${MAC_INSTALLER_P12_BASE64:?MAC_INSTALLER_P12_BASE64 required}"
-: "${MAC_INSTALLER_P12_PASSWORD:?MAC_INSTALLER_P12_PASSWORD required}"
+
+# The Mac installer certificate lives in Fleet-OPS /mac-certs under one of two
+# names (MAC_APPSTORE_INSTALLER_* or MAC_INSTALLER_*).  Import whichever are
+# present;  the identity check below requires a Mac App Store installer
+# identity among them.
+INSTALLER_NAMES=""
+for n in MAC_APPSTORE_INSTALLER MAC_INSTALLER; do
+  b64="${n}_P12_BASE64"
+  pw="${n}_P12_PASSWORD"
+  if [[ -n "${!b64:-}" && -n "${!pw:-}" ]]; then
+    INSTALLER_NAMES="${INSTALLER_NAMES} ${n}"
+  fi
+done
+[[ -n "$INSTALLER_NAMES" ]] || die "no Mac installer certificate in the environment (MAC_APPSTORE_INSTALLER_P12_* or MAC_INSTALLER_P12_*)"
 
 SECRETS_DIR="${HOME}/.secrets"
 mkdir -p "$SECRETS_DIR"
@@ -47,11 +60,15 @@ ENV_PATH="${SECRETS_DIR}/appstore-connect.env"
 chmod 600 "$ENV_PATH"
 
 DIST_P12="${SECRETS_DIR}/ios-distribution.p12"
-INST_P12="${SECRETS_DIR}/mac-installer.p12"
-trap 'rm -f "$DIST_P12" "$INST_P12"' EXIT
+INST_DIR="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mac-installer.XXXXXX")"
+trap 'rm -f "$DIST_P12"; rm -rf "$INST_DIR"' EXIT
 printf '%s' "$IOS_DIST_P12_BASE64" | base64 --decode > "$DIST_P12"
-printf '%s' "$MAC_INSTALLER_P12_BASE64" | base64 --decode > "$INST_P12"
-chmod 600 "$DIST_P12" "$INST_P12"
+chmod 600 "$DIST_P12"
+for n in $INSTALLER_NAMES; do
+  b64="${n}_P12_BASE64"
+  printf '%s' "${!b64}" | base64 --decode > "${INST_DIR}/${n}.p12"
+  chmod 600 "${INST_DIR}/${n}.p12"
+done
 
 KC_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 KC_PATH="${KC_DIR}/app-signing.keychain-db"
@@ -68,13 +85,21 @@ security unlock-keychain -p "$KC_PASS" "$KC_PATH"
 # hangs) on a hosted runner with a narrower -T list.  The keychain is created
 # for this job and deleted at its end.
 security import "$DIST_P12" -k "$KC_PATH" -P "$IOS_DIST_P12_PASSWORD" -A >/dev/null
-security import "$INST_P12" -k "$KC_PATH" -P "$MAC_INSTALLER_P12_PASSWORD" -A >/dev/null
-rm -f "$DIST_P12" "$INST_P12"
+for n in $INSTALLER_NAMES; do
+  pw="${n}_P12_PASSWORD"
+  security import "${INST_DIR}/${n}.p12" -k "$KC_PATH" -P "${!pw}" -A >/dev/null || die "could not import ${n}_P12_BASE64"
+done
+rm -f "$DIST_P12"
+rm -rf "$INST_DIR"
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC_PATH" >/dev/null
 security unlock-keychain -p "$KC_PASS" "$KC_PATH"
 security list-keychain -d user -s "$KC_PATH" login.keychain-db
 
-# Identity names only; never dump a p12.
+# Identity names only; never dump key material.  The kinds of identity the
+# keychain holds (the text before the colon in the certificate name) go to the
+# log, so a wrong secret is visible there.
+KINDS="$(security find-identity -v "$KC_PATH" | sed -nE 's/^ *[0-9]+\) [0-9A-F]{40} "([^:"]*):.*$/\1/p' | sort | uniq -c | tr -s ' ' | tr '\n' ';')"
+log "identities in the keychain: ${KINDS:-none}"
 if ! security find-identity -v -p codesigning "$KC_PATH" | grep -q 'Apple Distribution'; then
   die "imported keychain has no Apple Distribution identity"
 fi

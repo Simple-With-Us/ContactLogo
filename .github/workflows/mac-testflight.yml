@@ -57,7 +57,11 @@ on:
       - 'Apps/ContactLogoMacAppStore/**'
       - 'Sources/**'
       - 'project.yml'
-      - 'scripts/ios-fleet/**'
+      - 'scripts/ios-fleet/ship-testflight.sh'
+      - 'scripts/ios-fleet/asc-api.mjs'
+      - 'scripts/ios-fleet/apps.json'
+      - 'scripts/ios-fleet/ExportOptions-*.plist'
+      - 'scripts/ios-fleet/mac-appstore-profiles.json'
       - 'scripts/ios-fleet-pin.sh'
       - 'scripts/ios-fleet.sha256'
       - 'scripts/ios-scheduled-ship-gate.sh'
@@ -225,8 +229,7 @@ jobs:
       - name: Load Mac installer certificate (Fleet Secrets via Infisical)
         uses: ./.github/actions/infisical-secrets
         with:
-          names: MAC_INSTALLER_P12_BASE64 MAC_INSTALLER_P12_PASSWORD
-          required: MAC_INSTALLER_P12_BASE64 MAC_INSTALLER_P12_PASSWORD
+          names: MAC_APPSTORE_INSTALLER_P12_BASE64 MAC_APPSTORE_INSTALLER_P12_PASSWORD MAC_INSTALLER_P12_BASE64 MAC_INSTALLER_P12_PASSWORD
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /mac-certs
           client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
