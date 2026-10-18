@@ -104,6 +104,15 @@ jobs:
           restore-keys: |
             ios-fleet-contactlogo-
 
+      # A hosted runner is a fresh VM, so nothing else can be holding a ship lock.
+      # The fleet script keeps its archive and build-sequence locks as *.lockdir
+      # directories inside the cached state.  A run cancelled between mkdir and
+      # release would otherwise save its lock into the cache, and every later ship
+      # would restore it and wait out the lock timeout.  Drop them here, and again
+      # before the save below.
+      - name: Drop stale ship locks from restored state
+        run: find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
+
       # Runs FIRST so a scheduled tick with nothing to ship costs seconds.
       # push and workflow_dispatch always vote ship (the paths filter or an
       # explicit dispatch already expressed intent); only the cron is gated.
@@ -211,6 +220,10 @@ jobs:
             args+=(--export-only)
           fi
           bash scripts/ios-ship-testflight.sh ${args[@]+"${args[@]}"}
+
+      - name: Drop ship locks before saving state
+        if: ${{ always() && steps.gate.outputs.should_ship == '1' }}
+        run: find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
 
       # Saved even when the ship step failed or the run was cancelled, but only on
       # ticks that actually tried to ship (a no-op tick changes no state).
