@@ -1,18 +1,35 @@
 {
+  "teamId": "CC8UTF7ATG",
   "apps": {
     "contactlogo": {
-      "displayName": "ContactLogo iOS",
-      "bundleId": "com.contactlogo.ios",
+      "displayName": "ContactLogo",
+      "bundleId": "com.contactlogo",
+      "appleId": 6804247582,
+      "platform": "iOS",
       "scheme": "ContactLogoiOS",
+      "projectRel": "ContactLogo.xcodeproj",
+      "xcodegenDir": ".",
+      "marketingVersionDefault": "1.0.0",
       "sentryProject": "contactlogo",
-      "sentryDsnSecret": "SENTRY_DSN"
+      "sentryDsnSecret": "SENTRY_DSN",
+      "notes": "ContactLogo iOS app.  AppleId 6804247582.  Team CC8UTF7ATG.  ASC SKU contactlogo.  Bundle id is com.contactlogo (project.yml and the ASC record agree).",
+      "publicBetaLink": "https://testflight.apple.com/join/HRzFDeA1",
+      "updateFeedUrl": null
     },
     "contactlogo-mac": {
-      "displayName": "ContactLogo macOS",
+      "displayName": "ContactLogo for Mac",
       "bundleId": "com.contactlogo.macos",
+      "appleId": 6804248235,
+      "platform": "macOS",
       "scheme": "ContactLogoMac",
+      "projectRel": "ContactLogo.xcodeproj",
+      "xcodegenDir": ".",
+      "marketingVersionDefault": "1.0.0",
       "sentryProject": "contactlogo-macos",
-      "sentryDsnSecret": "SENTRY_DSN_MACOS"
+      "sentryDsnSecret": "SENTRY_DSN_MACOS",
+      "notes": "ContactLogo macOS app.  Registry entry only:  this repo ships the Mac app through mac-release.yml (Sparkle), not through the TestFlight workflow.",
+      "publicBetaLink": "https://testflight.apple.com/join/xsPB27gf",
+      "updateFeedUrl": "https://github.com/Simple-With-Us/ContactLogo/releases/latest/download/appcast.xml"
     }
   }
 }

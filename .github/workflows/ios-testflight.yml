@@ -1,39 +1,72 @@
 name: ContactLogo iOS TestFlight
 
-# Auto-ship: every merge to main that touches the iOS app archives and uploads
-# to TestFlight.  workflow_dispatch keeps the manual lane (optional build
-# number, optional upload).  The CL_IOS_TESTFLIGHT_ENABLED repo variable and
-# the main-ref gate stay in force for both events.
+# Auto-ship (CL-204): a merge to main that touches the iOS app's native tree
+# archives and uploads a fresh TestFlight build with no human step.  This is the
+# fleet pipeline (Usage-Monitor, Socratic.Trade, CodeCaps), not a custom script:
+#
+#   scripts/ios-ship-testflight.sh -> scripts/ios-fleet/ship-testflight.sh
+#
+# The fleet script owns everything the old custom release script did not:
+#   - the marketing version:  1.0.<N+1>, where N is the highest 1.0.N already in
+#     App Store Connect (project.yml stays 1.0.0 and is never the source);
+#   - a unique build number (UTC YYYYMMDDHHmm);
+#   - the rate gate (a minimum interval per app) and the same-HEAD skip, both at
+#     the script defaults.  Never set IOS_TF_MIN_INTERVAL_SEC or any other gate
+#     override as a standing value in this file;
+#   - ensure-tf-ready (export compliance on the build this run uploaded) and the
+#     mandatory What to Test notes (IOS_TF_RELEASE_NOTES=1, AGENT-SYNC template).
+# Nothing here depends on a repository variable.  The old CL_IOS_TESTFLIGHT_ENABLED
+# and CL_APPLE_ID gates were never set, so every push skipped in one second and
+# the last build stayed 1.0.3.  The numeric app id now lives in
+# scripts/ios-fleet/apps.json.
+#
+# Triggers
+#   push to main, filtered to the native tree (and the ship tooling itself);
+#   workflow_dispatch (optionally archive + export only, no upload);
+#   schedule, a catch-up for the case the push path cannot cover:  a merge that
+#   landed inside the rate window is skipped by the ship script, and a merge by
+#   github-actions[bot] fires no push run at all (GitHub's recursion guard).  The
+#   cron carries no `paths:` filter of its own, so scripts/ios-fleet/
+#   scheduled-ship-gate.sh decides first:  it ships only when the app's own source
+#   tree changed since the last successful ship, and a tick with nothing to ship
+#   ends in seconds.
+#
+# Ship state (last-ship sha and time, build sequence cache) lives in
+# ~/.cache/ios-fleet, which a hosted runner starts empty every job.  It is
+# restored and saved through actions/cache; without it the rate gate and the
+# same-HEAD skip would see "no prior ship" on every run.
 #
 # Secrets (names only; no value is ever printed): ASC_KEY_ID, ASC_ISSUER_ID,
-# ASC_KEY_P8 (App Store Connect API key, canonical home Fleet Secrets
-# Fleet-OPS prod /asc), IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD (Apple
-# Distribution certificate, canonical home Fleet Secrets Fleet-OPS prod
-# /mac-certs).  Both are loaded at runtime from Fleet Secrets by the
-# dedicated steps below via the Simple-With-Us org machine identity;
-# nothing is copied into the ContactLogo project or repository secrets.
-# CL_APPLE_ID (repo variable) is the App Store Connect numeric app ID.
+# ASC_KEY_P8 (App Store Connect API key, canonical home Fleet Secrets Fleet-OPS
+# prod /asc), IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD (Apple Distribution
+# certificate, canonical home Fleet-OPS prod /mac-certs).  Both are loaded at
+# runtime by the dedicated steps below via the Simple-With-Us org machine
+# identity; same-named repository secrets are only the GH_FALLBACK_ path.
 on:
   push:
     branches: [main]
     paths:
       - 'Apps/ContactLogoiOS/**'
-      - 'Sources/**'
+      - 'Sources/ContactLogoKit/**'
       - 'project.yml'
-      - 'scripts/ios-*'
-      - 'scripts/validate-ios-release.py'
       - '.github/workflows/ios-testflight.yml'
+      - 'scripts/ios-ship-testflight.sh'
+      - 'scripts/ios-appstore-gm-prepare.sh'
+      - 'scripts/ios-stage-asc-key.sh'
+      - 'scripts/ios-fleet/**'
+      # The two Sentry helpers below run in ci.yml only; they are not ship tooling.
+      - '!scripts/ios-fleet/check-built-sentry-dsn.sh'
+      - '!scripts/ios-fleet/upload-sentry-dsyms.sh'
   workflow_dispatch:
     inputs:
-      build_number:
-        description: 'Unique numeric build number (blank uses UTC timestamp YYYYMMDDHHMM)'
-        required: false
-        type: string
-      upload:
-        description: 'Upload the validated export to App Store Connect'
-        required: true
-        default: false
+      export_only:
+        description: 'Archive + export the IPA only; do not upload (signing check)'
         type: boolean
+        default: false
+  schedule:
+    # Twice an hour, offset from the other fleet repos (Socratic.Trade '*/30',
+    # Congress.Trade '7,37', Usage-Monitor '13,43', CodeCaps '26,56').
+    - cron: '19,49 * * * *'
 
 permissions:
   contents: read
@@ -43,39 +76,79 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main' && vars.CL_IOS_TESTFLIGHT_ENABLED == 'true'
+  ship:
+    name: TestFlight archive + upload
+    if: github.event.repository.fork == false && github.ref == 'refs/heads/main'
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-      CL_BUILD_NUMBER_INPUT: ${{ inputs.build_number }}
-      CL_APPLE_ID: ${{ vars.CL_APPLE_ID }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The scheduled gate diffs HEAD against the sha recorded by the last
+          # successful ship, and the What to Test notes read `git log
+          # <last-ship>..HEAD`.  A depth-1 checkout makes both uncomputable.
+          fetch-depth: 0
 
-      # Push ships always upload; a manual dispatch keeps its input.
-      - name: Resolve ship flags
+      # Restore and save are separate steps (not the single actions/cache step)
+      # because actions/cache only saves in its post step, and the post step is
+      # skipped when the job fails.  A ship that uploaded and then failed later
+      # must still record its state, or the next tick would re-upload.
+      - name: Restore iOS ship state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ios-fleet
+          key: ios-fleet-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ios-fleet-contactlogo-
+
+      # Runs FIRST so a scheduled tick with nothing to ship costs seconds.
+      # push and workflow_dispatch always vote ship (the paths filter or an
+      # explicit dispatch already expressed intent); only the cron is gated.
+      - name: Scheduled ship gate (skip unless iOS code changed)
+        id: gate
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "CL_TESTFLIGHT_UPLOAD=true" >> "$GITHUB_ENV"
-          else
-            echo "CL_TESTFLIGHT_UPLOAD=${{ inputs.upload }}" >> "$GITHUB_ENV"
-          fi
+          bash "$GITHUB_WORKSPACE/scripts/ios-fleet/scheduled-ship-gate.sh" \
+            --event "${{ github.event_name }}" \
+            --path-prefix 'Apps/ContactLogoiOS/' \
+            --path-prefix 'Sources/ContactLogoKit/' \
+            --path-prefix 'project.yml' \
+            --repo-root "$GITHUB_WORKSPACE" \
+            contactlogo
 
-      - name: Validate release inputs and tools
+      - name: Assert stable Xcode 26 and a non-beta host OS
+        if: steps.gate.outputs.should_ship == '1'
         run: |
           set -euo pipefail
-          build_number="${CL_BUILD_NUMBER_INPUT:-$(date -u +%Y%m%d%H%M)}"
-          [[ "$build_number" =~ ^[1-9][0-9]{0,17}$ ]] || { echo '::error::Build number must be valid digits without leading zero.'; exit 1; }
-          echo "CL_BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+          echo "DEVELOPER_DIR=${DEVELOPER_DIR}"
           xcodebuild -version
+          case "$DEVELOPER_DIR" in
+            *[Bb]eta*)
+              echo "::error::DEVELOPER_DIR resolves to a beta Xcode: $DEVELOPER_DIR"
+              exit 1
+              ;;
+          esac
+          if xcodebuild -version | grep -qi beta; then
+            echo "::error::xcodebuild reports a beta Xcode toolchain"
+            exit 1
+          fi
           xcode_major="$(xcodebuild -version | awk 'NR==1 {split($2, parts, "."); print parts[1]}')"
           [[ "$xcode_major" -ge 26 ]] || { echo '::error::Stable Xcode 26 or later is required.'; exit 1; }
+          # Apple stamps BuildMachineOSBuild into the IPA.  A beta host (a
+          # trailing letter after the digits, e.g. 26A5406e) is Invalid Binary.
+          os="$(sw_vers -productVersion)"
+          build="$(sw_vers -buildVersion)"
+          echo "macOS ${os} (${build})"
+          if echo "$build" | grep -Eq '[0-9][a-z]$'; then
+            echo "::error::macOS ${os} build ${build} is a beta host.  App Store rejects these as INVALID_BINARY."
+            exit 1
+          fi
           NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
 
       - name: Load App Store Connect key (Fleet Secrets via Infisical)
+        if: steps.gate.outputs.should_ship == '1'
         uses: ./.github/actions/infisical-secrets
         with:
           names: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
@@ -84,8 +157,13 @@ jobs:
           secret-path: /asc
           client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          GH_FALLBACK_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GH_FALLBACK_ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
 
       - name: Load Apple Distribution certificate (Fleet Secrets via Infisical)
+        if: steps.gate.outputs.should_ship == '1'
         uses: ./.github/actions/infisical-secrets
         with:
           names: IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD
@@ -94,8 +172,12 @@ jobs:
           secret-path: /mac-certs
           client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_IOS_DIST_P12_BASE64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          GH_FALLBACK_IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
 
       - name: Load Sentry secrets (best effort, Infisical then repository secrets)
+        if: steps.gate.outputs.should_ship == '1'
         uses: ./.github/actions/infisical-secrets
         with:
           names: SENTRY_DSN SENTRY_AUTH_TOKEN
@@ -107,6 +189,7 @@ jobs:
           GH_FALLBACK_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Stage ASC key and prepare signing
+        if: steps.gate.outputs.should_ship == '1'
         run: |
           set +o xtrace
           set -euo pipefail
@@ -115,11 +198,31 @@ jobs:
           export ASC_KEY_PATH
           bash "$GITHUB_WORKSPACE/scripts/ios-appstore-gm-prepare.sh"
 
-      - name: Archive, validate, export, and optionally upload
-        run: bash scripts/ios-testflight-release.sh
+      - name: Ship ContactLogo to TestFlight
+        if: steps.gate.outputs.should_ship == '1'
+        env:
+          # Owner binding 2026-09-08:  What to Test is published on every upload.
+          IOS_TF_RELEASE_NOTES: "1"
+          EXPORT_ONLY_INPUT: ${{ inputs.export_only }}
+        run: |
+          args=()
+          if [ "${EXPORT_ONLY_INPUT:-false}" = "true" ]; then
+            echo "[ios-ship] export_only=true: archive + export the IPA, no upload"
+            args+=(--export-only)
+          fi
+          bash scripts/ios-ship-testflight.sh ${args[@]+"${args[@]}"}
+
+      # Saved even when the ship step failed or the run was cancelled, but only on
+      # ticks that actually tried to ship (a no-op tick changes no state).
+      - name: Save iOS ship state
+        if: ${{ always() && steps.gate.outputs.should_ship == '1' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ios-fleet
+          key: ios-fleet-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Remove runner signing material
-        if: always()
+        if: ${{ always() && steps.gate.outputs.should_ship == '1' }}
         run: |
           set +o xtrace
           set -euo pipefail
