@@ -4,6 +4,15 @@
 # runner has no /Users/jay/apps/ios-fleet, so the repo carries the script.
 # Deltas from the host copy, and only these:
 #   - CODE_SIGN_IDENTITY= override on the archive for APP_KEY=contactlogo (below).
+#   - macOS manual App Store signing for an app whose registry entry names a
+#     profile map (appstoreProfilesMap), used by contactlogo-mac (CL-203):  the
+#     Mac profile is installed over the App Store Connect REST API with
+#     scripts/mac-install-appstore-profiles.sh, the archive passes no
+#     provisioning-service flags, and the package is wrapped by
+#     scripts/mac-export-appstore-pkg.sh (productbuild) instead of
+#     xcodebuild -exportArchive, which hangs on productsign on hosted runners
+#     (CodeCaps #95).  An iOS app, or a Mac app with no map, is untouched.
+#   - contactlogo-mac reports to the Sentry project contactlogo-macos.
 #   - ASCII only:  the host copy has 20 em dashes and one arrow in comments and log
 #     lines.  They are now "--" and "->", so the file honours its own ASCII-only
 #     contract under Apple bash 3.2.  No logic changed.
@@ -209,7 +218,8 @@ sentry_project_for_app() {
     usage|usage-local) echo "usage-monitor" ;;
     dealdex) echo "dealdex" ;;
     autorotate|autorotate-mac) echo "autorotate" ;;
-    contactlogo|contactlogo-mac) echo "contactlogo" ;;
+    contactlogo) echo "contactlogo" ;;
+    contactlogo-mac) echo "contactlogo-macos" ;;
     botfleet|botfleet-mac) echo "botfleet" ;;
     fleetlink) echo "fleetlink" ;;
     codecaps|codecaps-mac) echo "codecaps" ;;
@@ -937,6 +947,63 @@ if [[ -n "${ASC_KEY_PATH:-}" && -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" 
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# MACOS MANUAL APP STORE SIGNING (CL-203)
+# ---------------------------------------------------------------------------
+# Xcode's provisioning service (developerservices2.apple.com) answers the fleet
+# App Store Connect API key with HTTP 401 NOT_AUTHORIZED while
+# api.appstoreconnect.apple.com accepts the same key (Socratic-Trade 2026-09-30),
+# so a hosted runner cannot let `xcodebuild -allowProvisioningUpdates` fetch a
+# Mac App Store profile.  Manual mode never asks Xcode's provisioning service
+# for anything:
+#   - <repo>/scripts/mac-install-appstore-profiles.sh downloads the MAC_APP_STORE
+#     profile named in the profile map and installs it
+#   - the project's Release configuration for the app target carries
+#     CODE_SIGN_STYLE=Manual, CODE_SIGN_IDENTITY="Apple Distribution" and
+#     PROVISIONING_PROFILE_SPECIFIER (per target, so SPM package targets are not
+#     handed a profile)
+#   - the archive passes no -allowProvisioningUpdates, no ASC auth flags and no
+#     CODE_SIGN_STYLE override
+#   - the archive is wrapped into a signed installer package by
+#     <repo>/scripts/mac-export-appstore-pkg.sh and uploaded with altool
+# On by default for a macOS app whose registry entry names an existing profile
+# map (apps.json "appstoreProfilesMap", or MAC_APPSTORE_PROFILES_MAP);
+# MAC_MANUAL_SIGN=1 requires it and MAC_MANUAL_SIGN=0 forces the automatic path.
+MANUAL_SIGN=0
+PROFILE_MAP=""
+if [[ "$PLATFORM" == "macOS" ]]; then
+  _mac_map_rel="$(json_get "$APP_KEY" appstoreProfilesMap || true)"
+  PROFILE_MAP="${MAC_APPSTORE_PROFILES_MAP:-}"
+  if [[ -z "$PROFILE_MAP" && -n "$_mac_map_rel" ]]; then
+    PROFILE_MAP="${REPO_ROOT}/${_mac_map_rel}"
+  fi
+  case "${MAC_MANUAL_SIGN:-}" in
+    1) MANUAL_SIGN=1 ;;
+    0) MANUAL_SIGN=0 ;;
+    *) [[ -n "$PROFILE_MAP" && -f "$PROFILE_MAP" ]] && MANUAL_SIGN=1 ;;
+  esac
+fi
+if [[ "$MANUAL_SIGN" -eq 1 ]]; then
+  [[ -n "$PROFILE_MAP" && -f "$PROFILE_MAP" ]] || die "macOS manual signing is on but the profile map is missing: ${PROFILE_MAP:-unset}"
+  _installer="${MAC_INSTALL_PROFILES_SCRIPT:-${REPO_ROOT}/scripts/mac-install-appstore-profiles.sh}"
+  [[ -f "$_installer" ]] || die "macOS manual signing needs ${_installer}"
+  log "manual App Store signing: skipping Xcode's provisioning service"
+  MAC_APPSTORE_PROFILES_MAP="$PROFILE_MAP" bash "$_installer" \
+    || die "could not install the App Store profile named in ${PROFILE_MAP}"
+  ASC_AUTH_FLAGS=()
+fi
+
+# Wrap the archived app in a signed installer package with productbuild.
+# Sets PACKAGE.
+mac_manual_export_pkg() {
+  local exporter="${MAC_EXPORT_PKG_SCRIPT:-${REPO_ROOT}/scripts/mac-export-appstore-pkg.sh}"
+  [[ -f "$exporter" ]] || die "macOS manual signing needs ${exporter}"
+  mkdir -p "$EXPORT_DIR"
+  PACKAGE="$(bash "$exporter" "$ARCHIVE_PATH" "$EXPORT_DIR" "$BUNDLE_ID" | tail -1)"
+  [[ -n "$PACKAGE" && -f "$PACKAGE" ]] || die "$(basename "$exporter") produced no package"
+  log "Package ready: $PACKAGE"
+}
+
 # One Mac hosts three Actions runners. Serialize archive/export so two
 # xcodebuild archives cannot thrash DerivedData / codesign at once.
 ARCHIVE_LOCK_DIR="${STATE_DIR}/archive.lockdir"
@@ -1040,6 +1107,24 @@ if [[ "${APP_KEY}" == "contactlogo" ]]; then
   ARCHIVE_IDENTITY_FLAGS+=(CODE_SIGN_IDENTITY=)
 fi
 
+if [[ "$MANUAL_SIGN" -eq 1 ]]; then
+  # Signing comes from the project's Release configuration (Manual + Apple
+  # Distribution + PROVISIONING_PROFILE_SPECIFIER).  A command-line
+  # CODE_SIGN_STYLE / PROVISIONING_PROFILE_SPECIFIER would also apply to the
+  # embedded framework and SPM package targets, which do not take a profile.
+  xcodebuild archive \
+    -project "$PROJECT_PATH" \
+    -scheme "$SCHEME" \
+    -configuration Release \
+    "${ARCHIVE_PLATFORM_FLAGS[@]}" \
+    -archivePath "$ARCHIVE_PATH" \
+    DEVELOPMENT_TEAM="$TEAM_ID" \
+    MARKETING_VERSION="$MARKETING" \
+    CURRENT_PROJECT_VERSION="$BUILD_NUM" \
+    ${SENTRY_DSN_FLAGS[@]:+"${SENTRY_DSN_FLAGS[@]}"} \
+    2>&1 | tee "${LOG_DIR}/archive.log"
+  ARCHIVE_RC="${PIPESTATUS[0]:-$?}"
+else
 xcodebuild archive \
   -project "$PROJECT_PATH" \
   -scheme "$SCHEME" \
@@ -1057,12 +1142,28 @@ xcodebuild archive \
   ${SENTRY_DSN_FLAGS[@]:+"${SENTRY_DSN_FLAGS[@]}"} \
   2>&1 | tee "${LOG_DIR}/archive.log"
 ARCHIVE_RC="${PIPESTATUS[0]:-$?}"
+fi
 set -e
 [[ $ARCHIVE_RC -eq 0 ]] || die "archive failed (rc=$ARCHIVE_RC); see ${LOG_DIR}/archive.log"
+if [[ "$MANUAL_SIGN" -eq 1 ]]; then
+  # Receipt only (non-fatal): which identity actually signed the archived app.
+  _archived_app="$(ls -d "${ARCHIVE_PATH}/Products/Applications/"*.app 2>/dev/null | head -1 || true)"
+  if [[ -n "$_archived_app" ]]; then
+    _authority="$(codesign -dvv "$_archived_app" 2>&1 | sed -n 's/^Authority=//p' | head -1 || true)"
+    log "archived app signed by: ${_authority:-unknown}"
+  fi
+fi
 upload_sentry_artifacts
 
 EXPORT_PLIST_UPLOAD="${FLEET_DIR}/ExportOptions-appstore.plist"
 EXPORT_PLIST_IPA="${FLEET_DIR}/ExportOptions-export-ipa.plist"
+
+if [[ "$EXPORT_ONLY" -eq 1 && "$PLATFORM" == "macOS" && "$MANUAL_SIGN" -eq 1 ]]; then
+  log "exporting package only (macOS manual signing)..."
+  mac_manual_export_pkg
+  log "Upload later: bash $0 $APP_KEY --upload-only \"$PACKAGE\""
+  exit 0
+fi
 
 if [[ "$EXPORT_ONLY" -eq 1 ]]; then
   log "exporting package only..."
@@ -1085,6 +1186,13 @@ if [[ "$EXPORT_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
+if [[ "$PLATFORM" == "macOS" && "$MANUAL_SIGN" -eq 1 ]]; then
+  # destination=upload needs an Xcode account, which manual mode does not have,
+  # and exportArchive hangs on productsign on hosted runners.  Build the package
+  # with productbuild and use altool (API key).
+  log "manual signing: building the package locally, then uploading with altool (api key)"
+  mac_manual_export_pkg
+else
 # Prefer: export with destination=upload (uses Xcode session OR ASC if configured in Xcode)
 log "exporting + uploading to App Store Connect..."
 mkdir -p "$EXPORT_DIR"
@@ -1126,6 +1234,7 @@ set -e
 
 PACKAGE="$(ls -1 "$EXPORT_DIR"/*.ipa "$EXPORT_DIR"/*.pkg 2>/dev/null | head -1 || true)"
 [[ -n "$PACKAGE" ]] || die "no IPA or PKG produced in $EXPORT_DIR"
+fi
 
 # Re-load secrets before altool: long xcodebuild sessions can leave ASC_*
 # unset under `set -u` even when AUTH_MODE was api_key at plan time.

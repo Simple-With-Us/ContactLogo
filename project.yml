@@ -83,6 +83,15 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEFINES_MODULE: YES
         GENERATE_INFOPLIST_FILE: YES
+      configs:
+        # CL-203: the Mac App Store archive runs with no provisioning service
+        # and no development certificate on the runner, so the embedded Kit
+        # framework signs with Apple Distribution like the app that embeds it
+        # (a framework takes no profile).  The Developer ID release script
+        # builds with CODE_SIGNING_ALLOWED=NO on the command line, which wins.
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
 
   ContactLogoiOS:
     type: application
@@ -146,6 +155,55 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Apps/ContactLogoMac/ContactLogoMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
+  # 2026-10-17 (CL-203) - Mac App Store / TestFlight build of the Mac app.
+  # Same sources, bundle id, Info.plist and assets as ContactLogoMac, but it
+  # never links Sparkle: the Mac App Store forbids a self-updating app, and
+  # Sparkle's Autoupdate and Updater.app executables are not sandboxed, so
+  # App Store Connect rejects an upload that contains them.  The one Sparkle
+  # file (AutoUpdate.swift) is replaced by Apps/ContactLogoMacAppStore/
+  # AutoUpdateStub.swift, which keeps the AppUpdater / AutoUpdateAvailability
+  # names the app code already calls, so no call site changes.  Developer ID
+  # releases (mac-release.yml) keep shipping the ContactLogoMac target.
+  #
+  # Release signs MANUALLY with Apple Distribution and the "ContactLogo for Mac
+  # AppStore" profile (scripts/ios-fleet/appstore-profiles.json maps the
+  # bundle id to that name; scripts/mac-install-appstore-profiles.sh installs
+  # it over the App Store Connect REST API).  Xcode's own provisioning service
+  # rejects the fleet API key, so automatic signing cannot work on a hosted
+  # runner.  Debug stays unsigned-friendly for CI.
+  ContactLogoMacAppStore:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Apps/ContactLogoMac
+        excludes:
+          - AutoUpdate.swift
+          - ContactLogoMac.entitlements
+      - path: Apps/ContactLogoMacAppStore
+    dependencies:
+      - target: ContactLogoKitMac
+      - package: Sentry
+        product: Sentry
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.contactlogo.macos
+        PRODUCT_NAME: "ContactLogo"
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_KEY_CFBundleDisplayName: "ContactLogo"
+        INFOPLIST_KEY_NSContactsUsageDescription: "ContactLogo scans your contacts to find company logos for businesses in your address book."
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Apps/ContactLogoMac/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Apps/ContactLogoMacAppStore/ContactLogoMacAppStore.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "ContactLogo for Mac AppStore"
+
 # xcodebuild requires -scheme (not -target) whenever -derivedDataPath is given,
 # and XcodeGen does not generate schemes unless they are declared here.
 schemes:
@@ -157,3 +215,7 @@ schemes:
     build:
       targets:
         ContactLogoMac: all
+  ContactLogoMacAppStore:
+    build:
+      targets:
+        ContactLogoMacAppStore: all

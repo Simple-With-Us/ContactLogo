@@ -21,13 +21,14 @@
       "bundleId": "com.contactlogo.macos",
       "appleId": 6804248235,
       "platform": "macOS",
-      "scheme": "ContactLogoMac",
+      "scheme": "ContactLogoMacAppStore",
       "projectRel": "ContactLogo.xcodeproj",
       "xcodegenDir": ".",
       "marketingVersionDefault": "1.0.0",
+      "appstoreProfilesMap": "scripts/ios-fleet/mac-appstore-profiles.json",
       "sentryProject": "contactlogo-macos",
       "sentryDsnSecret": "SENTRY_DSN_MACOS",
-      "notes": "ContactLogo macOS app.  Registry entry only:  this repo ships the Mac app through mac-release.yml (Sparkle), not through the TestFlight workflow.",
+      "notes": "ContactLogo for Mac, Mac App Store / TestFlight build (the Sparkle-free ContactLogoMacAppStore target), shipped by mac-testflight.yml (CL-203).  Developer ID releases ship from mac-release.yml (Sparkle).  ASC app 6804248235, team CC8UTF7ATG.",
       "publicBetaLink": "https://testflight.apple.com/join/xsPB27gf",
       "updateFeedUrl": "https://github.com/Simple-With-Us/ContactLogo/releases/latest/download/appcast.xml"
     }
