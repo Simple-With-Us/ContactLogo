@@ -6,7 +6,8 @@
 # Usage: bash scripts/ios-collect-ship-logs.sh <out-dir>
 #
 # Safety, fail closed:
-#   - values of ASC_KEY_ID, ASC_ISSUER_ID, SENTRY_DSN, SENTRY_DSN_MACOS, SENTRY_AUTH_TOKEN (read
+#   - values of ASC_KEY_ID, ASC_ISSUER_ID, SENTRY_DSN, SENTRY_DSN_MACOS, SENTRY_AUTH_TOKEN and the
+#     signing certificate blobs and passwords IOS_DIST_P12_*, MAC_APPSTORE_INSTALLER_P12_* (read
 #     from the environment, never printed) are replaced with [REDACTED:<NAME>]
 #     in every collected file
 #   - if any collected file still contains "PRIVATE KEY", the whole directory is
@@ -47,7 +48,11 @@ fi
 
 python3 - "$out" <<'PY'
 import os, sys
-names = ("ASC_KEY_ID", "ASC_ISSUER_ID", "SENTRY_DSN", "SENTRY_DSN_MACOS", "SENTRY_AUTH_TOKEN")
+names = (
+    "ASC_KEY_ID", "ASC_ISSUER_ID", "SENTRY_DSN", "SENTRY_DSN_MACOS", "SENTRY_AUTH_TOKEN",
+    "IOS_DIST_P12_BASE64", "IOS_DIST_P12_PASSWORD",
+    "MAC_APPSTORE_INSTALLER_P12_BASE64", "MAC_APPSTORE_INSTALLER_P12_PASSWORD",
+)
 pairs = [(os.environ.get(n, "").encode(), ("[REDACTED:%s]" % n).encode()) for n in names]
 pairs = [(v, r) for v, r in pairs if len(v) >= 4]
 changed = 0
