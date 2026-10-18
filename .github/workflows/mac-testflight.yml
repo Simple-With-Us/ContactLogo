@@ -25,7 +25,7 @@ name: Mac TestFlight
 # WHY THERE IS A `schedule:` TRIGGER
 #   The one-hour rate gate skips a merge that lands inside the window of the
 #   previous ship, and a skipped push never ships later by itself.  The hourly
-#   tick finds that merge: scripts/ios-scheduled-ship-gate.sh passes only when
+#   tick finds that merge: scripts/ios-fleet/scheduled-ship-gate.sh passes only when
 #   Apps/ContactLogoMac/, Apps/ContactLogoMacAppStore/, Sources/ or project.yml
 #   changed since the last successful ship, so a web, Android or iOS-only commit
 #   never produces a Mac build.  The gate runs on a cheap Linux runner; the
@@ -62,11 +62,11 @@ on:
       - 'scripts/ios-fleet/ship-testflight.sh'
       - 'scripts/ios-fleet/asc-api.mjs'
       - 'scripts/ios-fleet/apps.json'
+      - 'scripts/ios-fleet/scheduled-ship-gate.sh'
       - 'scripts/ios-fleet/ExportOptions-*.plist'
       - 'scripts/ios-fleet/mac-appstore-profiles.json'
       - 'scripts/ios-fleet-pin.sh'
       - 'scripts/ios-fleet.sha256'
-      - 'scripts/ios-scheduled-ship-gate.sh'
       - 'scripts/ios-stage-asc-key.sh'
       - 'scripts/ios-collect-ship-logs.sh'
       - 'scripts/mac-appstore-gm-prepare.sh'
@@ -119,14 +119,14 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ios-fleet
-          key: ios-fleet-contactlogo-mac-${{ github.run_id }}
+          key: ios-fleet-mac-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ios-fleet-contactlogo-mac-
+            ios-fleet-mac-contactlogo-
 
       - name: Scheduled ship gate (skip unless the Mac app changed)
         id: gate
         run: |
-          bash scripts/ios-scheduled-ship-gate.sh \
+          bash scripts/ios-fleet/scheduled-ship-gate.sh \
             --event "${{ github.event_name }}" \
             --path-prefix 'Apps/ContactLogoMac/' \
             --path-prefix 'Apps/ContactLogoMacAppStore/' \
@@ -158,20 +158,23 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ios-fleet
-          key: ios-fleet-contactlogo-mac-${{ github.run_id }}
+          key: ios-fleet-mac-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ios-fleet-contactlogo-mac-
+            ios-fleet-mac-contactlogo-
 
       - name: Verify the in-repo ship tooling pin
         run: bash scripts/ios-fleet-pin.sh --check
 
-      # A cancelled ship can leave archive.lockdir in the saved state, and the
-      # next ship would then wait for it and give up (CodeCaps hit this).  The
-      # concurrency group already guarantees no other ship is running.
-      - name: Clear a stale archive lock from the restored state
+      # The fleet script keeps its archive and build-sequence locks as *.lockdir
+      # directories inside the cached state.  A run cancelled between mkdir and
+      # release would save its lock, and every later ship would restore it and
+      # wait out the lock timeout (CodeCaps hit this).  A hosted runner is a
+      # fresh VM with no concurrent holder, so drop them here and again before
+      # the save below.
+      - name: Drop stale ship locks from restored state
         run: |
-          rm -rf "$HOME/.cache/ios-fleet/archive.lockdir"
           mkdir -p "$HOME/.cache/ios-fleet"
+          find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
           ls -1 "$HOME/.cache/ios-fleet" | sed 's/^/ship state: /'
 
       - name: Assert stable Xcode 26 or later and a non-beta host
@@ -313,6 +316,10 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Drop ship locks before saving state
+        if: always() && env.SHIP_MODE == 'ship'
+        run: find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
+
       # Saved even when the ship failed or was cancelled, but only for a real
       # ship: a validate run records nothing, so it must not move the state.
       - name: Save ship state
@@ -320,7 +327,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ios-fleet
-          key: ios-fleet-contactlogo-mac-${{ github.run_id }}
+          key: ios-fleet-mac-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Xcode's archive and export logs reach the job log, but its
       # .xcdistributionlogs do not.  Collect both on failure, redact the ASC and

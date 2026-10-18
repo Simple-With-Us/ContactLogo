@@ -12,7 +12,7 @@ Owner ruling, Tue, Sep 29, 2026: every fleet Mac app updates itself seamlessly, 
 
 Settings shows an "Automatic updates: On/Off" line and a **Check For Updates…** button.  The same command is in the app menu after About.
 
-The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.yml` archives and uploads to TestFlight on every merge to `main` that touches the iOS app (`Apps/ContactLogoiOS/**`, `Sources/`, `project.yml`, `scripts/ios-*`).  The `CL_IOS_TESTFLIGHT_ENABLED` repo variable and the main-ref gate stay in force; enable the variable once the App Store Connect app record exists and `CL_APPLE_ID` is set.
+The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.yml` archives and uploads to TestFlight on every merge to `main` that touches the iOS app (`Apps/ContactLogoiOS/**`, `Sources/ContactLogoKit/**`, `project.yml`, the ship tooling under `scripts/ios-fleet/`).  It needs no repository variable.  A scheduled catch-up (twice an hour, behind a path gate) ships a merge that landed inside the rate window.  See [iOS TestFlight](#ios-testflight).
 
 ## The Pieces
 
@@ -58,7 +58,15 @@ Every release is a GitHub release with its own appcast; rolling back is publishi
 
 ## iOS TestFlight
 
-`ios-testflight.yml` mirrors the HogHunter lane: `xcodegen` + `xcodebuild archive` of the `ContactLogoiOS` scheme (bundle `com.contactlogo`, team `CC8UTF7ATG`, automatic signing with `-allowProvisioningUpdates`), identity validation via `scripts/validate-ios-release.py`, export, and `altool` upload to the App Store Connect app named by the `CL_APPLE_ID` repo variable.  Push ships always upload; manual dispatch keeps its `upload` input.  The workflow is inert until the `CL_IOS_TESTFLIGHT_ENABLED` repo variable is set to `true`.
+`ios-testflight.yml` is the fleet pipeline (Usage-Monitor, Socratic.Trade, CodeCaps), not a custom script.  It calls `scripts/ios-ship-testflight.sh`, which runs the vendored `scripts/ios-fleet/ship-testflight.sh` for the app key `contactlogo` (bundle `com.contactlogo`, team `CC8UTF7ATG`, App Store Connect app `6804247582`, all in `scripts/ios-fleet/apps.json`).  That script owns the release rules:
+
+- **Version.**  The marketing version is `1.0.<N+1>`, where `N` is the highest `1.0.N` already in App Store Connect.  `MARKETING_VERSION` in `project.yml` stays `1.0.0` and is never the source.  The build number is the UTC minute stamp `YYYYMMDDHHmm`.
+- **Rate gate.**  One successful ship per app per interval (`DEFAULT_MIN_INTERVAL_SEC` in the script) and a skip when `HEAD` already shipped.  Both stay at the defaults;  never set `IOS_TF_MIN_INTERVAL_SEC` as a standing value.  The last-ship state lives in `~/.cache/ios-fleet` and is carried between hosted runs by `actions/cache`.
+- **Ready to install.**  After the upload it runs `ensure-tf-ready`, which declares export compliance on the build that run uploaded, and publishes the mandatory What to Test notes (`IOS_TF_RELEASE_NOTES=1`).
+- **Catch-up.**  `scripts/ios-fleet/scheduled-ship-gate.sh` lets the cron ship only when `Apps/ContactLogoiOS/`, `Sources/ContactLogoKit/` or `project.yml` changed since the last successful ship.
+- **Manual run.**  `workflow_dispatch` ships the current `main`;  its `export_only` input archives and exports without uploading, as a signing check.
+
+The ASC key is read at runtime from Fleet Secrets (Fleet-OPS, `prod`, `/asc`) and the Apple Distribution certificate from `/mac-certs`.  The signing identity is cleared on the archive (`CODE_SIGN_IDENTITY=`), so Automatic signing picks Apple Distribution on the hosted runner.  The in-app update manifest is not published from the hosted runner (`publish-ios-versions.sh` is a stand-in);  refresh it from the Mac if the update prompt should name the new build.
 
 ## Mac TestFlight
 
@@ -67,7 +75,7 @@ Owner ask, Sat, Oct 17, 2026 (CL-203): a merge to `main` that changes the Mac ap
 ### What Happens
 
 1. A PR merges to `main` and touches `Apps/ContactLogoMac/`, `Apps/ContactLogoMacAppStore/`, `Sources/`, `project.yml`, or the ship tooling.
-2. `.github/workflows/mac-testflight.yml` starts.  A cheap Linux job runs `scripts/ios-scheduled-ship-gate.sh`; a push or a manual dispatch always passes it.
+2. `.github/workflows/mac-testflight.yml` starts.  A cheap Linux job runs `scripts/ios-fleet/scheduled-ship-gate.sh`;  a push or a manual dispatch always passes it.
 3. The macOS job loads the App Store Connect key, the Apple Distribution certificate and the Mac installer certificate from Fleet Secrets (Fleet-OPS, `prod`, `/asc` and `/mac-certs`), imports the certificates into a throwaway keychain, and runs `scripts/ios-fleet/ship-testflight.sh contactlogo-mac`.
 4. The ship script regenerates the project with XcodeGen, installs the `ContactLogo for Mac AppStore` profile (`scripts/mac-install-appstore-profiles.sh`), archives the `ContactLogoMacAppStore` scheme, wraps the archive into a signed installer package (`scripts/mac-export-appstore-pkg.sh`), uploads it with `altool`, declares export compliance, and publishes the What to Test note.
 5. Marketing version is `1.0.N` with N one higher than anything App Store Connect holds for the Mac platform; the build number is the UTC time, `YYYYMMDDHHMM`.
@@ -95,9 +103,11 @@ Renewal: the profile and both certificates expire on 2027-06-30.  When the fleet
 
 ### The Vendored Ship Tooling
 
-`scripts/ios-fleet/` holds the fleet ship script and its client, vendored because a hosted runner has no `/Users/jay/apps/ios-fleet`: `ship-testflight.sh` (the Socratic-Trade copy, plus the macOS manual-signing path described in its header), `asc-api.mjs` (the central client, with one change:  the What to Test release stamp reads `Sun, Oct 18, 2026 at 9:05am`, the owner clock with no timezone abbreviation, as AGENT-SYNC writes it, where the central client still prints `AM CT`), the two `ExportOptions` plists, `apps.json` (the ship registry) and `mac-appstore-profiles.json`.  `scripts/ios-fleet.sha256` pins all of them; `bash scripts/ios-fleet-pin.sh --update` refreshes the pin, and the change lands in a reviewed PR.  CI (`ship-tooling`) and the ship job both check the pin.
+`scripts/ios-fleet/` holds the fleet ship tooling, vendored because a hosted runner has no `/Users/jay/apps/ios-fleet`, and both TestFlight lanes ship through it:  the iOS lane (`ios-testflight.yml`, CL-204) with app key `contactlogo`, and this one with `contactlogo-mac`.  `ship-testflight.sh` is the central script plus the ContactLogo deltas listed in its header:  the iOS archive identity override, and the macOS manual-signing path described above (active only for a macOS app whose `apps.json` entry names an `appstoreProfilesMap`).  `asc-api.mjs`, `scheduled-ship-gate.sh`, the two `ExportOptions` plists and `apps.json` (the ship registry) sit beside it, with `mac-appstore-profiles.json`.  `scripts/ios-fleet.sha256` pins all of them;  `bash scripts/ios-fleet-pin.sh --update` refreshes the pin, and the change lands in a reviewed PR.  CI (`ship-tooling`) and the Mac ship job both check the pin.
 
-`scripts/check-mac-testflight-contract.py` runs in CI and fails when the workflow, `project.yml`, the registry and the profile map stop agreeing (a trigger path dropped, Sparkle linked into the store target, a profile name that no longer matches).
+The two lanes keep separate ship-state caches (`ios-fleet-contactlogo-*` and `ios-fleet-mac-contactlogo-*`).  The key prefixes must not overlap:  a restore matches by prefix, and one lane restoring the other's snapshot would lose its own last-ship record and re-upload.
+
+`scripts/test-ios-scheduled-ship-gate.sh` exercises the gate offline against throwaway git repositories.  `scripts/check-mac-testflight-contract.py` runs in CI and fails when the workflow, `project.yml`, the registry and the profile map stop agreeing (a trigger path dropped, Sparkle linked into the store target, a profile name that no longer matches).
 
 ### Checking A Ship
 

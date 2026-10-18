@@ -1,8 +1,30 @@
 #!/usr/bin/env bash
+# VENDORED COPY of /Users/jay/apps/ios-fleet/ship-testflight.sh for ContactLogo's
+# GitHub-hosted TestFlight lane (.github/workflows/ios-testflight.yml).  A hosted
+# runner has no /Users/jay/apps/ios-fleet, so the repo carries the script.
+# Deltas from the host copy, and only these:
+#   - CODE_SIGN_IDENTITY= override on the archive for APP_KEY=contactlogo (below).
+#   - macOS manual App Store signing for an app whose registry entry names a
+#     profile map (appstoreProfilesMap), used by contactlogo-mac (CL-203):  the
+#     Mac profile is installed over the App Store Connect REST API with
+#     scripts/mac-install-appstore-profiles.sh, the archive passes no
+#     provisioning-service flags, and the package is wrapped by
+#     scripts/mac-export-appstore-pkg.sh (productbuild) instead of
+#     xcodebuild -exportArchive, which hangs on productsign on hosted runners
+#     (CodeCaps #95).  An iOS app, or a Mac app with no map, is untouched.
+#   - contactlogo-mac reports to the Sentry project contactlogo-macos.
+#   - ASCII only:  the host copy has 20 em dashes and one arrow in comments and log
+#     lines.  They are now "--" and "->", so the file honours its own ASCII-only
+#     contract under Apple bash 3.2.  No logic changed.
+# (asc-api.mjs beside it also differs:  exact bundle-id match in ensure-tf-ready,
+# and the What to Test timestamp with no timezone, as in Usage-Monitor #1693.)
+# The rate gate (DEFAULT_MIN_INTERVAL_SEC), same-HEAD skip, version sequencing
+# and What to Test rules are the fleet defaults.  Never set IOS_TF_MIN_INTERVAL_SEC
+# as a standing value in a workflow.
 # ship-testflight.sh - Archive + upload an iOS app to TestFlight without Xcode UI.
 #
 # Usage:
-#   bash /Users/jay/apps/ios-fleet/ship-testflight.sh <socratic|congress|usage|usage-local|dealdex|autorotate|autorotate-mac|contactlogo|contactlogo-mac|botfleet|botfleet-mac> [options]
+#   bash /Users/jay/apps/ios-fleet/ship-testflight.sh <socratic|congress|usage|usage-local|dealdex|autorotate|autorotate-mac|contactlogo|contactlogo-mac|botfleet|botfleet-mac|clutch> [options]
 #
 # Options:
 #   --repo-root PATH   Repo root (default: cwd)
@@ -66,6 +88,10 @@
 #   IOS_TF_RELEASE_NOTES=1     publish to App Store Connect
 #   IOS_TF_RELEASE_NOTES=0     off entirely
 #   unset (DEFAULT)            dry render into the ship log; nothing is written
+# Owner binding 2026-09-08 (Jay): production ships MUST publish What to Test
+# (IOS_TF_RELEASE_NOTES=1). Body = 1-2 change/fix/upgrade types, or the other
+# reason for the build if not a product change. Empty/placeholder/agent names ban.
+# No --force-ship.
 #   IOS_TF_RELEASE_TITLE=...   override the "<App> Update" title
 # CI needs `fetch-depth: 0` on actions/checkout or the runner workspace holds a
 # single commit and the range is uncomputable (verified 2026-08-13 on all three
@@ -83,34 +109,18 @@
 #   Quota: 100 size-analysis builds/month on the sponsored plan.  No LaunchAgent.
 #
 # ASCII-only (Apple bash 3.2 safe). Team: CC8UTF7ATG.
-#
-# ---------------------------------------------------------------------------
-# IN-REPO COPY, ContactLogo (CL-203, 2026-10-17)
-# ---------------------------------------------------------------------------
-# Vendored from the Socratic-Trade copy (hosted-runner manual App Store
-# signing) and extended so a macOS app can ship the same way:
-#   - a macOS app with a profile map (apps.json "appstoreProfilesMap", or
-#     MAC_APPSTORE_PROFILES_MAP) signs MANUALLY, installs its Mac App Store
-#     profiles with scripts/mac-install-appstore-profiles.sh, and archives with
-#     no provisioning-service flags.  MAC_MANUAL_SIGN=0 forces the old path.
-#   - the archive is wrapped into a signed installer package by
-#     scripts/mac-export-appstore-pkg.sh (productbuild), not by
-#     xcodebuild -exportArchive, which hangs on productsign on hosted runners
-#     (CodeCaps #95), then uploaded with altool and the API key.
-#   - contactlogo-mac reports to the Sentry project contactlogo-macos.
-# Edits to this file are pinned by scripts/ios-fleet.sha256.
 
 set -euo pipefail
 
 # LaunchAgents inherit a tiny PATH (no Homebrew). Node is required for
-# ensure-tf-ready. Keep this before any `node` / `xcodegen` call.
-export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH}"
+# ensure-tf-ready. Prioritize /usr/bin and /bin so Apple distribution tools (rsync -E) use native macOS binaries.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
 
 FLEET_DIR="$(cd "$(dirname "$0")" && pwd)"
 APPS_JSON="${FLEET_DIR}/apps.json"
 TEAM_ID="CC8UTF7ATG"
 SECRETS_ENV="${HOME}/.secrets/appstore-connect.env"
-# 1 hour — owner 2026-08-14: ship unbuilt iOS updates as often as once per hour.
+# 1 hour -- owner 2026-08-14: ship unbuilt iOS updates as often as once per hour.
 # Not Apple compute; local/process hygiene. Cron ticks twice an hour so a
 # trailing merge inside the window is picked up on the next eligible tick.
 DEFAULT_MIN_INTERVAL_SEC=3600
@@ -133,7 +143,7 @@ SYNC_PROJECT_VERSION=0
 
 die() { echo "error: $*" >&2; exit 1; }
 log() { echo "[ios-ship] $*"; }
-# Same prefix, but on stderr — for use inside $(...) helpers whose stdout is
+# Same prefix, but on stderr -- for use inside $(...) helpers whose stdout is
 # the return value and must stay clean.
 logerr() { echo "[ios-ship] $*" >&2; }
 
@@ -189,7 +199,6 @@ load_secrets() {
     # shellcheck source=/dev/null
     source "$SECRETS_ENV"
     set +a
-    export ASC_SECRETS_ENV="$SECRETS_ENV"
   fi
   if [[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -n "${ASC_KEY_PATH:-}" ]]; then
     if [[ -f "$ASC_KEY_PATH" ]]; then
@@ -212,6 +221,9 @@ sentry_project_for_app() {
     contactlogo) echo "contactlogo" ;;
     contactlogo-mac) echo "contactlogo-macos" ;;
     botfleet|botfleet-mac) echo "botfleet" ;;
+    fleetlink) echo "fleetlink" ;;
+    codecaps|codecaps-mac) echo "codecaps" ;;
+    hoghunter) echo "hoghunter" ;;
     *) echo "" ;;
   esac
 }
@@ -301,7 +313,7 @@ link_private_key() {
 }
 
 # Owner directive: version naming is 1.0.# (timestamp).
-# EVERY rebuild — including a tiny tweak — adds exactly 1 to the last number.
+# EVERY rebuild -- including a tiny tweak -- adds exactly 1 to the last number.
 # MARKETING_VERSION (CFBundleShortVersionString) is 1.0.<seq>.
 # CURRENT_PROJECT_VERSION (CFBundleVersion) is a UTC timestamp YYYYMMDDHHMM.
 # ASC shows "1.0.8 (202608121315)".
@@ -323,7 +335,7 @@ link_private_key() {
 # different marketing versions anyway (Apple's uniqueness is per version+build).
 #
 # Sequence state: ${STATE_DIR}/build-seq-<app>.txt (atomic-mkdir-guarded).
-# NOTE: flock(1) does not exist on macOS — under `set -e` a flock call would
+# NOTE: flock(1) does not exist on macOS -- under `set -e` a flock call would
 # kill the subshell and yield an EMPTY sequence ("1.0."), so the mutex is an
 # atomic mkdir instead (portable to Apple bash 3.2, per the header contract).
 #
@@ -333,7 +345,7 @@ link_private_key() {
 # a duplicate. So the next sequence is
 #     max(local cache, App Store Connect, project.pbxproj) + 1
 # which is monotonic against every record we have. Taking the max can skip a
-# number (harmless — numbers are free); reusing one is fatal.
+# number (harmless -- numbers are free); reusing one is fatal.
 local_seq() {
   local n
   n=$(cat "${STATE_DIR}/build-seq-${APP_KEY}.txt" 2>/dev/null || echo 0)
@@ -375,9 +387,7 @@ project_marketing_seq() {
 }
 
 # Highest N already uploaded to App Store Connect for the <prefix>.N train.
-# Returns 1 when ASC cannot be consulted.  stderr lines from asc-api.mjs that
-# start with latest-build-seq: are copied to the ship log (HTTP status and
-# Apple's error code only; the client never prints the key).  The caller must
+# Returns 1 (and prints nothing) when ASC cannot be consulted -- the caller must
 # distinguish "no builds yet" (0) from "unknown" (failure).
 asc_latest_seq() {
   local prefix="$1" plat="${2:-}" out rc
@@ -390,19 +400,9 @@ asc_latest_seq() {
     return 1
   fi
   set +e
-  local errf
-  errf="$(mktemp)"
-  out=$(node "${FLEET_DIR}/asc-api.mjs" latest-build-seq "$BUNDLE_ID" "$prefix" "$plat" 2>"$errf")
+  out=$(node "${FLEET_DIR}/asc-api.mjs" latest-build-seq "$BUNDLE_ID" "$prefix" "$plat" 2>/dev/null)
   rc=$?
   set -e
-  if [[ -s "$errf" ]]; then
-    while IFS= read -r line; do
-      case "$line" in
-        latest-build-seq:*) logerr "asc-seq: ${line}" ;;
-      esac
-    done <"$errf"
-  fi
-  rm -f "$errf"
   if [[ $rc -ne 0 || ! "$out" =~ ^[0-9]+$ ]]; then
     logerr "asc-seq: query failed (rc=${rc}); cannot verify against App Store Connect"
     return 1
@@ -440,18 +440,18 @@ resolve_seq_floor() {
     # Treat "ASC unverified" as fatal on its own.
     if [[ "$ALLOW_UNVERIFIED_SEQ" -eq 0 ]]; then
       die "cannot determine the next build number.
-  App Store Connect could not be verified.  seq sources: local=${l} project=${p} asc=UNVERIFIED.
-  Cache file: ${STATE_DIR}/build-seq-${APP_KEY}.txt.  project.pbxproj ${prefix}.N is project=${p}.
+  App Store Connect could not be reached AND there is no local sequence
+  (${STATE_DIR}/build-seq-${APP_KEY}.txt) and no ${prefix}.N in project.pbxproj.
   Shipping now would very likely reuse a build number and be rejected as a duplicate.
-  The asc-seq lines above include the HTTP status.  Fix one of these, then re-run:
+  Fix one of these, then re-run:
     1) restore ASC access: check ${SECRETS_ENV} and that 'node' is on PATH, then
        run: node ${FLEET_DIR}/asc-api.mjs latest-build-seq ${BUNDLE_ID} ${prefix}
-    2) or pass the number explicitly:  --version ${prefix}.<N>   (NOT --build <N>:
-       --version picks the marketing version and lets CFBundleVersion stay an
-       auto UTC timestamp, which is always higher than every build already
-       uploaded. A bare --build leaves MARKETING at ${DEFAULT_MARKETING}, which
-       re-enters an old train where Apple requires a strictly greater build than
-       everything in it -- rejected after the full archive+upload.)
+     2) or pass the number explicitly:  --version ${prefix}.<N>   (NOT --build <N>:
+        --version picks the marketing version and lets CFBundleVersion stay an
+        auto UTC timestamp, which is always higher than every build already
+        uploaded. A bare --build leaves MARKETING at ${DEFAULT_MARKETING}, which
+        re-enters an old train where Apple requires a strictly greater build than
+        everything in it -- rejected after the full archive+upload.)
     3) or, only if you are certain this train is empty, re-run with --allow-unverified-seq"
     fi
     if [[ "$ALLOW_UNVERIFIED_SEQ" -eq 1 ]]; then
@@ -573,7 +573,7 @@ evaluate_ship_gate() {
   fi
 
   if [[ -n "${last_sha:-}" && "$last_sha" != "unknown" && "$head_sha" == "$last_sha" ]]; then
-    log "ship-gate: skip — HEAD ${head_sha:0:10} already shipped for ${APP_KEY} (no new commits)"
+    log "ship-gate: skip -- HEAD ${head_sha:0:10} already shipped for ${APP_KEY} (no new commits)"
     log "ship-gate: use --force-ship to upload the same HEAD again"
     SHIP_GATE_DECISION="skip"
     return 0
@@ -584,9 +584,9 @@ evaluate_ship_gate() {
     local remain=$((min_sec - elapsed))
     local remain_m=$(( (remain + 59) / 60 ))
     local min_m=$(( min_sec / 60 ))
-    log "ship-gate: skip — last ${APP_KEY} ship ${elapsed}s ago; min interval ${min_sec}s (~${remain_m}m left)"
+    log "ship-gate: skip -- last ${APP_KEY} ship ${elapsed}s ago; min interval ${min_sec}s (~${remain_m}m left)"
     log "ship-gate: that ${min_sec}s (${min_m}m) limit comes from ${min_src}."
-    log "ship-gate: it is THE throttle on automatic shipping — .github/workflows/ios-ship.yml"
+    log "ship-gate: it is THE throttle on automatic shipping -- .github/workflows/ios-ship.yml"
     log "ship-gate: runs on every push to main touching clients/ios/**, and most runs skip here."
     log "ship-gate: override this run with IOS_TF_MIN_INTERVAL_SEC=<seconds> or --force-ship;"
     log "ship-gate: change the standing limit by editing DEFAULT_MIN_INTERVAL_SEC (owner's call)."
@@ -594,7 +594,7 @@ evaluate_ship_gate() {
     return 0
   fi
 
-  log "ship-gate: ok — ${elapsed}s since last ship (min ${min_sec}s from ${min_src}); HEAD ${head_sha:0:10}"
+  log "ship-gate: ok -- ${elapsed}s since last ship (min ${min_sec}s from ${min_src}); HEAD ${head_sha:0:10}"
 }
 
 record_successful_ship() {
@@ -607,7 +607,7 @@ record_successful_ship() {
   printf '%s %s\n' "$now" "$head_sha" >"$path"
   chmod 600 "$path" 2>/dev/null || true
   log "ship-gate: recorded success ts=${now} sha=${head_sha:0:10} -> ${path}"
-  # Public version manifest for the in-app update prompt.  Best-effort —
+  # Public version manifest for the in-app update prompt.  Best-effort --
   # a publish miss must never fail a ship that already uploaded.
   if [[ -n "${BUNDLE_ID:-}" && -n "${MARKETING:-}" ]]; then
     local apple_id display
@@ -651,7 +651,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$APP_KEY" ]] || die "app key required (e.g. socratic, congress, usage, usage-local, dealdex, autorotate, autorotate-mac, contactlogo, contactlogo-mac, botfleet, botfleet-mac)"
+[[ -n "$APP_KEY" ]] || die "app key required (e.g. socratic, congress, usage, usage-local, dealdex, autorotate, autorotate-mac, contactlogo, contactlogo-mac, botfleet, botfleet-mac, clutch)"
 [[ -f "$APPS_JSON" ]] || die "missing apps registry: $APPS_JSON"
 
 # Validate APP_KEY against apps.json before requiring Xcode tools so --help-adjacent
@@ -694,7 +694,16 @@ fi
 
 
 if [[ -z "$REPO_ROOT" ]]; then
-  REPO_ROOT="$(pwd)"
+  hint="$(json_get "$APP_KEY" worktreeHint || true)"
+  hint="${hint/#\~/$HOME}"
+  if [[ -n "$hint" && -d "$hint" ]]; then
+    REPO_ROOT="$hint"
+  else
+    REPO_ROOT="$(pwd)"
+  fi
+fi
+if [[ ! -d "$REPO_ROOT" ]]; then
+  die "repo root does not exist: $REPO_ROOT"
 fi
 REPO_ROOT="$(cd "$REPO_ROOT" && pwd)"
 
@@ -787,8 +796,8 @@ fi
 MARKETING_PREFIX="$(marketing_prefix)"
 
 if [[ -n "$UPLOAD_ONLY_IPA" ]]; then
-  # The IPA already carries the versions it was built with. Resolving — let
-  # alone consuming — a sequence here would burn a marketing version on a run
+  # The IPA already carries the versions it was built with. Resolving -- let
+  # alone consuming -- a sequence here would burn a marketing version on a run
   # that cannot possibly use it, which is the same defect as the gate-ordering
   # bug above. It would also drag in resolve_seq_floor's hard failure when ASC
   # is unreachable, blocking a legitimate retry of an already-built IPA.
@@ -798,18 +807,18 @@ if [[ -n "$UPLOAD_ONLY_IPA" ]]; then
 elif [[ -n "$FORCE_BUILD" || -n "$FORCE_VERSION" ]]; then
   # Explicit operator override: honour exactly what was asked. A bare --version
   # still gets an auto timestamp build number, which is always higher than
-  # anything already uploaded — that is the whole point of the scheme, so an
+  # anything already uploaded -- that is the whole point of the scheme, so an
   # operator picking the marketing version does not have to reason about it.
   MARKETING="${FORCE_VERSION:-$DEFAULT_MARKETING}"
   BUILD_NUM="${FORCE_BUILD:-$(utc_build_stamp)}"
   log "version: operator override (--build/--version); sequence not consulted"
 else
   # resolve_seq_floor runs in a subshell, so its die() cannot exit this script
-  # on its own — check explicitly rather than leaning on set -e.
+  # on its own -- check explicitly rather than leaning on set -e.
   SEQ_FLOOR="$(resolve_seq_floor "$MARKETING_PREFIX" "$PBXPROJ" "$PLATFORM")" || exit 1
   [[ "$SEQ_FLOOR" =~ ^[0-9]+$ ]] || die "could not resolve a build sequence floor (got '${SEQ_FLOOR}')"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    # Dry-run must not consume a sequence number — peek only.
+    # Dry-run must not consume a sequence number -- peek only.
     SEQ=$((SEQ_FLOOR + 1))
   else
     # The only remaining consumer. A gated run exited above; a dry-run peeks;
@@ -818,7 +827,7 @@ else
     SEQ="$(next_build_seq "$SEQ_FLOOR")"
   fi
   MARKETING="${MARKETING_PREFIX}.${SEQ}"
-  # NOT "$MARKETING" — see the CFBundleVersion note above utc_build_stamp.
+  # NOT "$MARKETING" -- see the CFBundleVersion note above utc_build_stamp.
   BUILD_NUM="$(utc_build_stamp)"
 fi
 
@@ -848,7 +857,7 @@ if [[ "$SYNC_PROJECT_VERSION" -eq 1 ]]; then
   A dry-run does not consume a sequence number, so writing ${MARKETING} now would be
   superseded by the next real ship. Pass --sync-project-version on the real ship instead."
   [[ -z "$UPLOAD_ONLY_IPA" ]] || die "--sync-project-version cannot be combined with --upload-only.
-  An upload-only run resolves no version of its own — the IPA already carries one — so
+  An upload-only run resolves no version of its own -- the IPA already carries one -- so
   there is nothing to write back. Pass it on the run that builds the archive."
   [[ -n "$PBXPROJ" && -f "$PBXPROJ" ]] || die "--sync-project-version: project.pbxproj not found under $REPO_ROOT"
   /usr/bin/sed -i '' \
@@ -857,19 +866,6 @@ if [[ "$SYNC_PROJECT_VERSION" -eq 1 ]]; then
     "$PBXPROJ"
   log "synced project.pbxproj -> MARKETING_VERSION=${MARKETING} CURRENT_PROJECT_VERSION=${BUILD_NUM}"
   log "commit that change; it is the repo's record of this version"
-  # project.yml is the actual source of truth: `xcodegen generate` (below) rewrites
-  # project.pbxproj FROM ${_sync_yml_dir}/project.yml, so the sed above is silently
-  # overwritten on regen unless project.yml carries the same values (the 2026-08-13
-  # drift incident). sync-project-yml.mjs enforces the exact pair.
-  _sync_yml_dir="$XCODEGEN_DIR"
-  [[ -n "$_sync_yml_dir" && "$_sync_yml_dir" != "null" ]] || _sync_yml_dir="ios"
-  command -v node >/dev/null 2>&1 || die "--sync-project-version: node not found; cannot update ${_sync_yml_dir}/project.yml"
-  node "${REPO_ROOT}/scripts/ios-fleet/sync-project-yml.mjs" \
-    --project-yaml "${REPO_ROOT}/${_sync_yml_dir}/project.yml" \
-    --marketing "$MARKETING" \
-    --build "$BUILD_NUM" \
-    || die "sync-project-yml.mjs failed; refusing to leave ${_sync_yml_dir}/project.yml stale"
-  log "synced ${_sync_yml_dir}/project.yml -> MARKETING_VERSION=${MARKETING} CURRENT_PROJECT_VERSION=${BUILD_NUM}"
 fi
 AUTH_MODE="none"
 load_secrets
@@ -925,11 +921,6 @@ if [[ -n "$XCODEGEN_DIR" && "$XCODEGEN_DIR" != "null" && "$SKIP_XCODEGEN" -eq 0 
   if command -v xcodegen >/dev/null 2>&1; then
     log "xcodegen generate in ${REPO_ROOT}/${XCODEGEN_DIR}"
     (cd "${REPO_ROOT}/${XCODEGEN_DIR}" && xcodegen generate) 2>&1 | tee "${LOG_DIR}/xcodegen.log"
-    _post_py="${REPO_ROOT}/${XCODEGEN_DIR}/xcodegen-post.py"
-    if [[ -f "$_post_py" ]]; then
-      log "xcodegen-post.py (objectVersion 77 -> 100 for Xcode 26)"
-      python3 "$_post_py"
-    fi
   else
     log "xcodegen not installed; using checked-in .xcodeproj"
   fi
@@ -957,47 +948,30 @@ if [[ -n "${ASC_KEY_PATH:-}" && -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" 
 fi
 
 # ---------------------------------------------------------------------------
-# MANUAL APP STORE SIGNING (2026-09-30, Socratic Trade first ship)
+# MACOS MANUAL APP STORE SIGNING (CL-203)
 # ---------------------------------------------------------------------------
-# Xcode 26 automatic signing (-allowProvisioningUpdates) calls
-# developerservices2.apple.com, and the fleet ASC API key gets HTTP 401
-# NOT_AUTHORIZED there ("Authentication failed: Make sure a bearer token was
-# provided...") while api.appstoreconnect.apple.com accepts the same key. The
-# archive then also reports "No profiles for '<bundle>' were found".
-#
-# Manual mode never asks Xcode's provisioning service for anything:
-#   - <repo>/scripts/ios-install-appstore-profiles.sh downloads the App Store
-#     profiles named in the profile map over the ASC REST API and installs them
-#   - the project's Release configuration carries CODE_SIGN_STYLE=Manual,
-#     CODE_SIGN_IDENTITY="Apple Distribution", PROVISIONING_PROFILE_SPECIFIER
-#     (per target, so SPM package targets such as Sentry are not handed a profile)
-#   - the archive passes no -allowProvisioningUpdates, no ASC auth flags, and no
+# Xcode's provisioning service (developerservices2.apple.com) answers the fleet
+# App Store Connect API key with HTTP 401 NOT_AUTHORIZED while
+# api.appstoreconnect.apple.com accepts the same key (Socratic-Trade 2026-09-30),
+# so a hosted runner cannot let `xcodebuild -allowProvisioningUpdates` fetch a
+# Mac App Store profile.  Manual mode never asks Xcode's provisioning service
+# for anything:
+#   - <repo>/scripts/mac-install-appstore-profiles.sh downloads the MAC_APP_STORE
+#     profile named in the profile map and installs it
+#   - the project's Release configuration for the app target carries
+#     CODE_SIGN_STYLE=Manual, CODE_SIGN_IDENTITY="Apple Distribution" and
+#     PROVISIONING_PROFILE_SPECIFIER (per target, so SPM package targets are not
+#     handed a profile)
+#   - the archive passes no -allowProvisioningUpdates, no ASC auth flags and no
 #     CODE_SIGN_STYLE override
-#   - export writes a manual-signing ExportOptions plist from the same map and
-#     goes straight to destination=export + altool (API key). The
-#     destination=upload export needs an Xcode account and fails with
-#     "Failed to Use Accounts" when none is passed (CodeCaps run 36768356017).
-#
-# On by default for an iOS app whose profile map exists:
-#   ${IOS_APPSTORE_PROFILES_MAP:-<repo>/<xcodegenDir or ios>/appstore-profiles.json}
-# IOS_MANUAL_SIGN=1 requires it (dies if the map is missing); IOS_MANUAL_SIGN=0
-# forces the automatic path.
+#   - the archive is wrapped into a signed installer package by
+#     <repo>/scripts/mac-export-appstore-pkg.sh and uploaded with altool
+# On by default for a macOS app whose registry entry names an existing profile
+# map (apps.json "appstoreProfilesMap", or MAC_APPSTORE_PROFILES_MAP);
+# MAC_MANUAL_SIGN=1 requires it and MAC_MANUAL_SIGN=0 forces the automatic path.
 MANUAL_SIGN=0
-PROVISION_UPDATE_FLAGS=(-allowProvisioningUpdates)
-_profile_map_dir="ios"
-if [[ -n "$XCODEGEN_DIR" && "$XCODEGEN_DIR" != "null" ]]; then
-  _profile_map_dir="$XCODEGEN_DIR"
-fi
-PROFILE_MAP="${IOS_APPSTORE_PROFILES_MAP:-${REPO_ROOT}/${_profile_map_dir}/appstore-profiles.json}"
-if [[ "$PLATFORM" != "macOS" ]]; then
-  case "${IOS_MANUAL_SIGN:-}" in
-    1) MANUAL_SIGN=1 ;;
-    0) MANUAL_SIGN=0 ;;
-    *) [[ -f "$PROFILE_MAP" ]] && MANUAL_SIGN=1 ;;
-  esac
-else
-  # macOS: the map is named by the registry, so one repo can carry both an iOS
-  # and a Mac map.  No map and no MAC_MANUAL_SIGN=1 keeps the automatic path.
+PROFILE_MAP=""
+if [[ "$PLATFORM" == "macOS" ]]; then
   _mac_map_rel="$(json_get "$APP_KEY" appstoreProfilesMap || true)"
   PROFILE_MAP="${MAC_APPSTORE_PROFILES_MAP:-}"
   if [[ -z "$PROFILE_MAP" && -n "$_mac_map_rel" ]]; then
@@ -1009,53 +983,18 @@ else
     *) [[ -n "$PROFILE_MAP" && -f "$PROFILE_MAP" ]] && MANUAL_SIGN=1 ;;
   esac
 fi
-
-write_manual_export_plists() {
-  EXPORT_PLIST_UPLOAD="${LOG_DIR}/ExportOptions-manual-upload.plist"
-  EXPORT_PLIST_IPA="${LOG_DIR}/ExportOptions-manual-ipa.plist"
-  python3 - "$PROFILE_MAP" "$TEAM_ID" "$EXPORT_PLIST_UPLOAD" "$EXPORT_PLIST_IPA" <<'PY'
-import json, plistlib, sys
-profiles = json.load(open(sys.argv[1], encoding="utf-8"))
-common = {
-    "method": "app-store-connect",
-    "teamID": sys.argv[2],
-    "signingStyle": "manual",
-    "signingCertificate": "Apple Distribution",
-    "provisioningProfiles": profiles,
-    "uploadSymbols": True,
-    "manageAppVersionAndBuildNumber": False,
-    "stripSwiftSymbols": True,
-}
-for path, destination in ((sys.argv[3], "upload"), (sys.argv[4], "export")):
-    opts = dict(common)
-    opts["destination"] = destination
-    with open(path, "wb") as handle:
-        plistlib.dump(opts, handle, fmt=plistlib.FMT_XML)
-PY
-  log "manual export options written (profiles from ${PROFILE_MAP##*/})"
-}
-
 if [[ "$MANUAL_SIGN" -eq 1 ]]; then
-  [[ -n "$PROFILE_MAP" && -f "$PROFILE_MAP" ]] || die "manual signing is on but the profile map is missing: ${PROFILE_MAP:-unset}"
-  if [[ "$PLATFORM" == "macOS" ]]; then
-    _installer="${MAC_INSTALL_PROFILES_SCRIPT:-${REPO_ROOT}/scripts/mac-install-appstore-profiles.sh}"
-  else
-    _installer="${IOS_INSTALL_PROFILES_SCRIPT:-${REPO_ROOT}/scripts/ios-install-appstore-profiles.sh}"
-  fi
-  [[ -f "$_installer" ]] || die "manual signing needs ${_installer}"
+  [[ -n "$PROFILE_MAP" && -f "$PROFILE_MAP" ]] || die "macOS manual signing is on but the profile map is missing: ${PROFILE_MAP:-unset}"
+  _installer="${MAC_INSTALL_PROFILES_SCRIPT:-${REPO_ROOT}/scripts/mac-install-appstore-profiles.sh}"
+  [[ -f "$_installer" ]] || die "macOS manual signing needs ${_installer}"
   log "manual App Store signing: skipping Xcode's provisioning service"
-  IOS_APPSTORE_PROFILES_MAP="$PROFILE_MAP" MAC_APPSTORE_PROFILES_MAP="$PROFILE_MAP" bash "$_installer" \
-    || die "could not install the App Store profiles named in ${PROFILE_MAP}"
-  PROVISION_UPDATE_FLAGS=()
+  MAC_APPSTORE_PROFILES_MAP="$PROFILE_MAP" bash "$_installer" \
+    || die "could not install the App Store profile named in ${PROFILE_MAP}"
   ASC_AUTH_FLAGS=()
-  if [[ "$PLATFORM" != "macOS" ]]; then
-    write_manual_export_plists
-  fi
 fi
 
-# macOS manual ship: wrap the archived app in a signed installer package with
-# productbuild.  xcodebuild -exportArchive hangs on productsign on hosted
-# runners (CodeCaps #95), so the archive never goes through it.  Sets PACKAGE.
+# Wrap the archived app in a signed installer package with productbuild.
+# Sets PACKAGE.
 mac_manual_export_pkg() {
   local exporter="${MAC_EXPORT_PKG_SCRIPT:-${REPO_ROOT}/scripts/mac-export-appstore-pkg.sh}"
   [[ -f "$exporter" ]] || die "macOS manual signing needs ${exporter}"
@@ -1157,11 +1096,22 @@ else
   log "SENTRY_DSN unset; Cocoa no-ops when the plist value is empty"
 fi
 
+# ContactLogo (vendored delta, CL-204): the iOS target's Release configuration
+# carries CODE_SIGN_IDENTITY="iPhone Developer" (XcodeGen default), which makes
+# Xcode ask App Store Connect for IOS_APP_DEVELOPMENT profiles.  On a GitHub-
+# hosted runner that path bearer-fails even with a valid AuthKey_<id>.p8 (the
+# same failure Usage-Monitor hit, runs 34039065969 and 34067392006).  Clearing
+# the identity lets Automatic signing pick Apple Distribution for the archive.
+ARCHIVE_IDENTITY_FLAGS=()
+if [[ "${APP_KEY}" == "contactlogo" ]]; then
+  ARCHIVE_IDENTITY_FLAGS+=(CODE_SIGN_IDENTITY=)
+fi
+
 if [[ "$MANUAL_SIGN" -eq 1 ]]; then
   # Signing comes from the project's Release configuration (Manual + Apple
-  # Distribution + PROVISIONING_PROFILE_SPECIFIER). A command-line
+  # Distribution + PROVISIONING_PROFILE_SPECIFIER).  A command-line
   # CODE_SIGN_STYLE / PROVISIONING_PROFILE_SPECIFIER would also apply to the
-  # SPM package targets, which do not take provisioning profiles.
+  # embedded framework and SPM package targets, which do not take a profile.
   xcodebuild archive \
     -project "$PROJECT_PATH" \
     -scheme "$SCHEME" \
@@ -1175,35 +1125,26 @@ if [[ "$MANUAL_SIGN" -eq 1 ]]; then
     2>&1 | tee "${LOG_DIR}/archive.log"
   ARCHIVE_RC="${PIPESTATUS[0]:-$?}"
 else
-  xcodebuild archive \
-    -project "$PROJECT_PATH" \
-    -scheme "$SCHEME" \
-    -configuration Release \
-    "${ARCHIVE_PLATFORM_FLAGS[@]}" \
-    -archivePath "$ARCHIVE_PATH" \
-    -allowProvisioningUpdates \
-    -allowProvisioningDeviceRegistration \
-    ${ASC_AUTH_FLAGS[@]:+"${ASC_AUTH_FLAGS[@]}"} \
-    DEVELOPMENT_TEAM="$TEAM_ID" \
-    CODE_SIGN_STYLE=Automatic \
-    MARKETING_VERSION="$MARKETING" \
-    CURRENT_PROJECT_VERSION="$BUILD_NUM" \
-    ${SENTRY_DSN_FLAGS[@]:+"${SENTRY_DSN_FLAGS[@]}"} \
-    2>&1 | tee "${LOG_DIR}/archive.log"
-  ARCHIVE_RC="${PIPESTATUS[0]:-$?}"
+xcodebuild archive \
+  -project "$PROJECT_PATH" \
+  -scheme "$SCHEME" \
+  -configuration Release \
+  "${ARCHIVE_PLATFORM_FLAGS[@]}" \
+  -archivePath "$ARCHIVE_PATH" \
+  -allowProvisioningUpdates \
+  -allowProvisioningDeviceRegistration \
+  ${ASC_AUTH_FLAGS[@]:+"${ASC_AUTH_FLAGS[@]}"} \
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  CODE_SIGN_STYLE=Automatic \
+  MARKETING_VERSION="$MARKETING" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUM" \
+  ${ARCHIVE_IDENTITY_FLAGS[@]:+"${ARCHIVE_IDENTITY_FLAGS[@]}"} \
+  ${SENTRY_DSN_FLAGS[@]:+"${SENTRY_DSN_FLAGS[@]}"} \
+  2>&1 | tee "${LOG_DIR}/archive.log"
+ARCHIVE_RC="${PIPESTATUS[0]:-$?}"
 fi
 set -e
 [[ $ARCHIVE_RC -eq 0 ]] || die "archive failed (rc=$ARCHIVE_RC); see ${LOG_DIR}/archive.log"
-if [[ -n "${SENTRY_DSN:-}" ]]; then
-  _archived_plist="$(ls -d "${ARCHIVE_PATH}/Products/Applications/"*.app/Info.plist 2>/dev/null | head -1 || true)"
-  if [[ -n "${_archived_plist}" ]]; then
-    _dsn_in_plist="$(/usr/libexec/PlistBuddy -c 'Print :SENTRY_DSN' "${_archived_plist}" 2>/dev/null || true)"
-    if [[ -z "${_dsn_in_plist}" || "${_dsn_in_plist}" == '$(SENTRY_DSN)' ]]; then
-      die "archived Info.plist SENTRY_DSN is empty; Cocoa will not start Sentry"
-    fi
-    log "archived Info.plist SENTRY_DSN length ${#_dsn_in_plist}"
-  fi
-fi
 if [[ "$MANUAL_SIGN" -eq 1 ]]; then
   # Receipt only (non-fatal): which identity actually signed the archived app.
   _archived_app="$(ls -d "${ARCHIVE_PATH}/Products/Applications/"*.app 2>/dev/null | head -1 || true)"
@@ -1214,10 +1155,8 @@ if [[ "$MANUAL_SIGN" -eq 1 ]]; then
 fi
 upload_sentry_artifacts
 
-if [[ "$MANUAL_SIGN" -eq 0 ]]; then
-  EXPORT_PLIST_UPLOAD="${FLEET_DIR}/ExportOptions-appstore.plist"
-  EXPORT_PLIST_IPA="${FLEET_DIR}/ExportOptions-export-ipa.plist"
-fi
+EXPORT_PLIST_UPLOAD="${FLEET_DIR}/ExportOptions-appstore.plist"
+EXPORT_PLIST_IPA="${FLEET_DIR}/ExportOptions-export-ipa.plist"
 
 if [[ "$EXPORT_ONLY" -eq 1 && "$PLATFORM" == "macOS" && "$MANUAL_SIGN" -eq 1 ]]; then
   log "exporting package only (macOS manual signing)..."
@@ -1234,7 +1173,7 @@ if [[ "$EXPORT_ONLY" -eq 1 ]]; then
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_DIR" \
     -exportOptionsPlist "$EXPORT_PLIST_IPA" \
-    ${PROVISION_UPDATE_FLAGS[@]:+"${PROVISION_UPDATE_FLAGS[@]}"} \
+    -allowProvisioningUpdates \
     ${ASC_AUTH_FLAGS[@]:+"${ASC_AUTH_FLAGS[@]}"} \
     2>&1 | tee "${LOG_DIR}/export.log"
   EXPORT_RC=${PIPESTATUS[0]}
@@ -1247,11 +1186,12 @@ if [[ "$EXPORT_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-if [[ "$MANUAL_SIGN" -eq 1 ]]; then
-  # destination=upload needs an Xcode account; manual mode passes none, so it
-  # can only fail ("Failed to Use Accounts"). Export the IPA and use altool.
-  log "manual signing: exporting the package locally, then uploading with altool (api key)"
-  : >"${LOG_DIR}/export-upload.log"
+if [[ "$PLATFORM" == "macOS" && "$MANUAL_SIGN" -eq 1 ]]; then
+  # destination=upload needs an Xcode account, which manual mode does not have,
+  # and exportArchive hangs on productsign on hosted runners.  Build the package
+  # with productbuild and use altool (API key).
+  log "manual signing: building the package locally, then uploading with altool (api key)"
+  mac_manual_export_pkg
 else
 # Prefer: export with destination=upload (uses Xcode session OR ASC if configured in Xcode)
 log "exporting + uploading to App Store Connect..."
@@ -1278,18 +1218,14 @@ if [[ $EXPORT_RC -eq 0 ]]; then
 fi
 
 log "xcodebuild upload export failed (rc=$EXPORT_RC); trying local export + altool"
-fi
 
-if [[ "$PLATFORM" == "macOS" && "$MANUAL_SIGN" -eq 1 ]]; then
-  mac_manual_export_pkg
-else
 mkdir -p "$EXPORT_DIR"
 set +e
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$EXPORT_PLIST_IPA" \
-  ${PROVISION_UPDATE_FLAGS[@]:+"${PROVISION_UPDATE_FLAGS[@]}"} \
+  -allowProvisioningUpdates \
   ${ASC_AUTH_FLAGS[@]:+"${ASC_AUTH_FLAGS[@]}"} \
   2>&1 | tee "${LOG_DIR}/export-ipa.log"
 EXPORT_RC=${PIPESTATUS[0]}
@@ -1327,7 +1263,7 @@ UPLOAD_RC=${PIPESTATUS[0]}
 set -e
 if [[ $UPLOAD_RC -ne 0 ]]; then
   log "altool failed (rc=$UPLOAD_RC). Common cause: no App Store Connect app for ${BUNDLE_ID}."
-  log "Create the app in ASC (My Apps → +) with this exact bundle id, then:"
+  log "Create the app in ASC (My Apps -> +) with this exact bundle id, then:"
   log "  bash $0 $APP_KEY --upload-only \"$PACKAGE\""
   die "altool upload failed (rc=$UPLOAD_RC); see ${LOG_DIR}/upload.log"
 fi
@@ -1338,4 +1274,3 @@ record_successful_ship
 log "upload submitted; watch TestFlight processing for ${BUNDLE_ID} build ${BUILD_NUM}"
 log "logs: ${LOG_DIR}"
 exit 0
-

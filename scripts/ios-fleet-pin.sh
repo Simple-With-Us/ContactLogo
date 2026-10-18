@@ -15,10 +15,10 @@
 #   ship registry cannot silently change what TestFlight receives.  Refreshing
 #   the pin is a reviewed PR.  CI runs this check on every pull request.
 #
-# The vendored ship-testflight.sh is the Socratic-Trade copy plus the macOS
-# manual-signing path (see its IN-REPO COPY header).  asc-api.mjs is the central
-# ios-fleet client with the release stamp following AGENT-SYNC (owner clock, am or
-# pm, no timezone abbreviation).
+# The iOS lane (ios-testflight.yml, CL-204) and the Mac lane (mac-testflight.yml,
+# CL-203) ship through this one set of files.  ship-testflight.sh is the central
+# ios-fleet script plus the ContactLogo deltas listed in its header (the iOS
+# archive identity override, and macOS manual signing for contactlogo-mac).
 #
 # ON DRIFT
 #   Read the diff, decide whether the tooling change is wanted, then either
@@ -35,7 +35,7 @@ PIN_FILE="${REPO_ROOT}/scripts/ios-fleet.sha256"
 
 # Exactly the files that can change what this repo ships.  The Sentry helper
 # scripts in the same directory are ordinary CI scripts and are not pinned.
-PINNED_FILES="ship-testflight.sh asc-api.mjs apps.json ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json"
+PINNED_FILES="ship-testflight.sh asc-api.mjs apps.json scheduled-ship-gate.sh publish-ios-versions.sh ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json"
 
 MODE="check"
 case "${1:-}" in

@@ -84,7 +84,7 @@ for needed in (
     check(f"- '{needed}'" in push_block, f"push paths filter covers {needed}")
 check("workflow_dispatch:" in on_block, "workflow_dispatch is available")
 check("schedule:" in on_block, "a scheduled catch-up exists")
-check("ios-scheduled-ship-gate.sh" in wf_code, "the scheduled catch-up carries the path gate")
+check("scripts/ios-fleet/scheduled-ship-gate.sh" in wf_code, "the scheduled catch-up carries the path gate")
 check(wf_code.count("fetch-depth: 0") >= 2, "the gate and the ship checkout full history (fetch-depth: 0)")
 check("scripts/ios-fleet/ship-testflight.sh" in wf_code, "the ship goes through the fleet ship script")
 check(re.search(r'IOS_TF_RELEASE_NOTES:\s*"1"', wf_code) is not None, "What to Test is published (IOS_TF_RELEASE_NOTES=1)")

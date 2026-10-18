@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# test-ios-scheduled-ship-gate.sh - Offline tests for ios-scheduled-ship-gate.sh.
+# test-ios-scheduled-ship-gate.sh - Offline tests for scripts/ios-fleet/scheduled-ship-gate.sh,
+# the gate both the iOS and the Mac TestFlight workflows use.
 #
 # The gate is the only thing standing between the scheduled catch-up and a
 # TestFlight build for every web, Android or iOS-only commit.  Hosted macos-latest
@@ -15,7 +16,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-GATE="${SCRIPT_DIR}/ios-scheduled-ship-gate.sh"
+GATE="${SCRIPT_DIR}/ios-fleet/scheduled-ship-gate.sh"
 [[ -f "$GATE" ]] || { echo "missing $GATE"; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/ship-gate-test.XXXXXX")"
@@ -78,7 +79,7 @@ set_state() {
 }
 
 echo "== syntax =="
-bash -n "$GATE" && echo "  ok  : ios-scheduled-ship-gate.sh parses"
+bash -n "$GATE" && echo "  ok  : scripts/ios-fleet/scheduled-ship-gate.sh parses"
 
 echo "== fixture =="
 BASE="$(commit README.md base "base")"
@@ -90,9 +91,12 @@ check "push -> should_ship" 1 "$(field "$out" should_ship)"
 out="$(run_gate workflow_dispatch demo)"
 check "workflow_dispatch -> should_ship" 1 "$(field "$out" should_ship)"
 
-echo "== 2. scheduled tick with no ship history defers to the ship script =="
+echo "== 2. scheduled tick with no ship history skips =="
+# A hosted runner starts with an empty home, so "no state" would otherwise
+# re-archive on every tick.  A first ship is a push that passed the paths filter
+# or an explicit dispatch, never the cron.
 out="$(run_gate schedule demo)"
-check "no state -> should_ship" 1 "$(field "$out" should_ship)"
+check "no state -> should_ship" 0 "$(field "$out" should_ship)"
 
 echo "== 3. scheduled tick on an already-shipped HEAD skips =="
 set_state demo "$BASE"

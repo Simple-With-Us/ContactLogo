@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# ios-scheduled-ship-gate.sh - Decide whether a SCHEDULED ios-ship run ships.
+# scheduled-ship-gate.sh - Decide whether a SCHEDULED ios-ship run should ship.
 #
 # Why this exists
 # ---------------
 # .github/workflows/ios-ship.yml gained a `schedule:` trigger because a PR
 # merged by github-actions[bot] lands on main under GitHub's recursion guard
 # and dispatches no workflow run at all -- so `push:` alone could not be
-# trusted to notice that iOS code had landed. Measured fleet-wide 2026-08-13:
-# PR #1145 here (bot-merged, touches ios/) produced no ios-ship run, and
-# #1159 (human-merged) produced the only ios-ship run this repo has ever had.
-# On Congress.Trade the same A/B was sha c38b6787 (bot) -> 0 runs vs ceaca097
-# (human) -> 5 runs.
+# trusted to notice that iOS code had landed. Measured on this repo: sha
+# c38b6787 (PR #1835, bot-merged, touches clients/ios) produced ZERO runs,
+# while sha ceaca097 (PR #1836, human-merged) produced five.
 #
 # But a cron carries no `paths:` filter, and ship-testflight.sh's own gate only
 # tests "is HEAD the sha I last shipped" plus a time interval. Without this
@@ -20,14 +18,14 @@
 # source tree actually changed since its last successful ship.
 #
 # Usage:
-#   ios-scheduled-ship-gate.sh --path-prefix <path> [--path-prefix <path>...] [options] <key> [key...]
-#   (ContactLogo ships one app, `contactlogo-mac`, from several source paths)
+#   scheduled-ship-gate.sh --path-prefix <path> [--path-prefix <path> ...] [options] <app_key> [app_key...]
 #
 # Options:
-#   --path-prefix P   Repo-relative path (a directory prefix such as Apps/ContactLogoMac/
-#                     or a single file such as project.yml) that counts as app
-#                     source.  Required, and repeatable: any listed path that
-#                     changed since the last successful ship votes ship=1.
+#   --path-prefix P   Repo-relative path (a directory prefix such as ios/, or a
+#                     single file such as project.yml) that counts as app source.
+#                     Required, and repeatable:  ContactLogo's iOS app builds from
+#                     several trees (Apps/ContactLogoiOS/, Sources/ContactLogoKit/,
+#                     project.yml), so the gate takes every one of them.
 #   --event NAME      GitHub event name (default: $GITHUB_EVENT_NAME).
 #                     Anything other than "schedule" votes ship=1 for every
 #                     app: a push already passed the workflow's paths filter,
@@ -43,10 +41,6 @@
 #
 # Exit code is always 0 on a decision. Deciding "skip" is a normal outcome and
 # must never turn a scheduled tick red.
-#
-# CL-203: copied from the Usage-Monitor gate and extended to take several
-# --path-prefix values, because a Mac app is built from Apps/ContactLogoMac/,
-# Apps/ContactLogoMacAppStore/, Sources/ and project.yml.
 #
 # ASCII-only (Apple bash 3.2 safe), matches ship-testflight.sh conventions.
 
@@ -73,7 +67,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${#PATH_PREFIXES[@]}" -gt 0 && -n "${PATH_PREFIXES[0]}" ]] || die "--path-prefix is required"
+[[ "${#PATH_PREFIXES[@]}" -gt 0 ]] || die "--path-prefix is required"
+for _p in "${PATH_PREFIXES[@]}"; do
+  [[ -n "$_p" ]] || die "--path-prefix must not be empty"
+done
+# Human-readable form of the pathspec list, for log lines only.
 PATH_LABEL="${PATH_PREFIXES[*]}"
 [[ -n "${APPS// /}" ]] || die "at least one app key is required"
 
@@ -115,8 +113,11 @@ for app in $APPS; do
   decision=0
 
   if [[ ! -f "$state" ]]; then
-    log "[${app}] no prior ship recorded (${state}); letting ship-testflight.sh decide."
-    decision=1
+    # Hosted runners start with an empty home.  Treating that as "never
+    # shipped" re-archives every cron tick.  A first ship is a push that
+    # already passed paths: or an explicit workflow_dispatch.
+    log "[${app}] no prior ship recorded (${state}); scheduled tick skips."
+    decision=0
   else
     # Format written by record_successful_ship(): "<unix_ts> <git_sha>"
     last_sha="$(awk 'NR==1{print $2}' "$state" 2>/dev/null || true)"

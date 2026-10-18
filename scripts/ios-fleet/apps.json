@@ -1,11 +1,20 @@
 {
+  "teamId": "CC8UTF7ATG",
   "apps": {
     "contactlogo": {
-      "displayName": "ContactLogo iOS",
-      "bundleId": "com.contactlogo.ios",
+      "displayName": "ContactLogo",
+      "bundleId": "com.contactlogo",
+      "appleId": 6804247582,
+      "platform": "iOS",
       "scheme": "ContactLogoiOS",
+      "projectRel": "ContactLogo.xcodeproj",
+      "xcodegenDir": ".",
+      "marketingVersionDefault": "1.0.0",
       "sentryProject": "contactlogo",
-      "sentryDsnSecret": "SENTRY_DSN"
+      "sentryDsnSecret": "SENTRY_DSN",
+      "notes": "ContactLogo iOS app.  AppleId 6804247582.  Team CC8UTF7ATG.  ASC SKU contactlogo.  Bundle id is com.contactlogo (project.yml and the ASC record agree).",
+      "publicBetaLink": "https://testflight.apple.com/join/HRzFDeA1",
+      "updateFeedUrl": null
     },
     "contactlogo-mac": {
       "displayName": "ContactLogo for Mac",
@@ -19,7 +28,9 @@
       "appstoreProfilesMap": "scripts/ios-fleet/mac-appstore-profiles.json",
       "sentryProject": "contactlogo-macos",
       "sentryDsnSecret": "SENTRY_DSN_MACOS",
-      "notes": "ContactLogo for Mac, Mac App Store / TestFlight build (Sparkle-free ContactLogoMacAppStore target).  Developer ID releases ship from mac-release.yml.  ASC app 6804248235, team CC8UTF7ATG."
+      "notes": "ContactLogo for Mac, Mac App Store / TestFlight build (the Sparkle-free ContactLogoMacAppStore target), shipped by mac-testflight.yml (CL-203).  Developer ID releases ship from mac-release.yml (Sparkle).  ASC app 6804248235, team CC8UTF7ATG.",
+      "publicBetaLink": "https://testflight.apple.com/join/xsPB27gf",
+      "updateFeedUrl": "https://github.com/Simple-With-Us/ContactLogo/releases/latest/download/appcast.xml"
     }
   }
 }

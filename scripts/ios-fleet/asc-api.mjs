@@ -95,9 +95,11 @@ const AGENT_MARKER = new RegExp(`\\[\\s*(?:ag|${AGENT_NAMES})\\s*\\]`, "gi");
 const AGENT_NAME_DENY = new RegExp(`(?:\\b(?:${AGENT_NAMES})\\b|\\[\\s*ag\\s*\\])`, "i");
 
 function centralTimestamp(now = new Date()) {
-  // AGENT-SYNC renders "Mon, Aug 12, 2026 at 1:15 AM CT". One combined
-  // Intl call yields "Mon, Aug 12, 2026, 1:15 AM" (comma, not "at"), so build
-  // the two halves separately. America/Chicago handles CDT/CST automatically.
+  // AGENT-SYNC renders "Wed, Aug 12, 2026 at 1:15am": the owner's clock,
+  // 12-hour, lowercase am or pm with no space, and NO timezone abbreviation
+  // (owner rule; the older "1:15 AM CT" form is retired). One combined Intl
+  // call yields "Wed, Aug 12, 2026, 1:15 AM" (comma, not "at"), so build the
+  // two halves separately. America/Chicago handles daylight time automatically.
   const d = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
     weekday: "short", month: "short", day: "numeric", year: "numeric"
@@ -105,12 +107,8 @@ function centralTimestamp(now = new Date()) {
   const t = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
     hour: "numeric", minute: "2-digit", hour12: true
-  }).format(now);
-  // CL-203: AGENT-SYNC (Release stamp) wants the owner's clock, 12-hour, with am
-  // or pm and NO timezone abbreviation:  "Wed, Aug 12, 2026 at 1:15am".  The
-  // central client still appends " CT" and prints "AM"; this in-repo copy
-  // follows the written rule.
-  return `${d} at ${t.replace(/\s*([AP])M$/i, (_m, x) => `${x.toLowerCase()}m`)}`;
+  }).format(now).replace(/\s*([AP])M$/i, (_m, ap) => `${ap.toLowerCase()}m`);
+  return `${d} at ${t}`;
 }
 
 function gitSubjects(repoRoot, prevSha) {
@@ -545,12 +543,19 @@ async function main() {
     const POLL_MS = 15000;
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    const apps = await api("GET", `/v1/apps?filter[bundleId]=${encodeURIComponent(bundleId)}&limit=1`);
-    if (!apps.ok || !apps.parsed.data?.[0]) {
+    // filter[bundleId] is a PREFIX match on Apple's side (com.contactlogo also
+    // returns com.contactlogo.macos), so take the row whose bundleId is EXACTLY
+    // the one asked for.  limit=1 / data[0] could resolve to the sibling app and
+    // never find the uploaded build (ensure-tf-ready exit 4, no What to Test).
+    const apps = await api("GET", `/v1/apps?filter[bundleId]=${encodeURIComponent(bundleId)}&limit=50`);
+    const exactApp = apps.ok
+      ? (apps.parsed.data || []).find((a) => a?.attributes?.bundleId === bundleId)
+      : null;
+    if (!exactApp) {
       console.error(`ensure-tf-ready: app not found for bundle (HTTP ${apps.status})`);
       process.exit(2);
     }
-    const appId = apps.parsed.data[0].id;
+    const appId = exactApp.id;
 
     // ---- Phase A: discovery. Poll until the uploaded build has an ASC record.
     let query = `/v1/builds?filter[app]=${appId}&filter[version]=${encodeURIComponent(wantBuildVersion)}`;
