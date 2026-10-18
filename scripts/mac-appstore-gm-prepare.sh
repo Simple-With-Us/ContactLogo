@@ -4,8 +4,7 @@
 # credentials file the fleet ship script reads, and imports these identities
 # into a throwaway keychain:
 #   - Apple Distribution                  (IOS_DIST_P12_*)  signs the app
-#   - 3rd Party Mac Developer Installer   (MAC_APPSTORE_INSTALLER_P12_* or
-#                                          MAC_INSTALLER_P12_*)  signs the package
+#   - 3rd Party Mac Developer Installer   (MAC_APPSTORE_INSTALLER_P12_*)  signs the package
 # The App Store Connect key must already be staged by scripts/ios-stage-asc-key.sh
 # (ASC_KEY_PATH).  Never prints secret values.  Fails closed on a beta macOS host.
 set +o xtrace
@@ -30,19 +29,13 @@ fi
 : "${IOS_DIST_P12_BASE64:?IOS_DIST_P12_BASE64 required}"
 : "${IOS_DIST_P12_PASSWORD:?IOS_DIST_P12_PASSWORD required}"
 
-# The Mac installer certificate lives in Fleet-OPS /mac-certs under one of two
-# names (MAC_APPSTORE_INSTALLER_* or MAC_INSTALLER_*).  Import whichever are
-# present;  the identity check below requires a Mac App Store installer
-# identity among them.
-INSTALLER_NAMES=""
-for n in MAC_APPSTORE_INSTALLER MAC_INSTALLER; do
-  b64="${n}_P12_BASE64"
-  pw="${n}_P12_PASSWORD"
-  if [[ -n "${!b64:-}" && -n "${!pw:-}" ]]; then
-    INSTALLER_NAMES="${INSTALLER_NAMES} ${n}"
-  fi
-done
-[[ -n "$INSTALLER_NAMES" ]] || die "no Mac installer certificate in the environment (MAC_APPSTORE_INSTALLER_P12_* or MAC_INSTALLER_P12_*)"
+# Fleet-OPS /mac-certs holds two installer certificates:  MAC_APPSTORE_INSTALLER_*
+# is the "3rd Party Mac Developer Installer" the store needs;  MAC_INSTALLER_* is
+# the "Developer ID Installer" for notarized packages, and is NOT used here
+# (the first CL-203 run found that out: it holds no App Store installer).
+: "${MAC_APPSTORE_INSTALLER_P12_BASE64:?MAC_APPSTORE_INSTALLER_P12_BASE64 required}"
+: "${MAC_APPSTORE_INSTALLER_P12_PASSWORD:?MAC_APPSTORE_INSTALLER_P12_PASSWORD required}"
+INSTALLER_NAMES="MAC_APPSTORE_INSTALLER"
 
 SECRETS_DIR="${HOME}/.secrets"
 mkdir -p "$SECRETS_DIR"

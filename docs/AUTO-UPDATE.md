@@ -95,7 +95,7 @@ Renewal: the profile and both certificates expire on 2027-06-30.  When the fleet
 
 ### The Vendored Ship Tooling
 
-`scripts/ios-fleet/` holds the fleet ship script and its client, vendored because a hosted runner has no `/Users/jay/apps/ios-fleet`: `ship-testflight.sh` (the Socratic-Trade copy, plus the macOS manual-signing path described in its header), `asc-api.mjs` (the central client, unchanged), the two `ExportOptions` plists, `apps.json` (the ship registry) and `mac-appstore-profiles.json`.  `scripts/ios-fleet.sha256` pins all of them; `bash scripts/ios-fleet-pin.sh --update` refreshes the pin, and the change lands in a reviewed PR.  CI (`ship-tooling`) and the ship job both check the pin.
+`scripts/ios-fleet/` holds the fleet ship script and its client, vendored because a hosted runner has no `/Users/jay/apps/ios-fleet`: `ship-testflight.sh` (the Socratic-Trade copy, plus the macOS manual-signing path described in its header), `asc-api.mjs` (the central client, with one change:  the What to Test release stamp reads `Sun, Oct 18, 2026 at 9:05am`, the owner clock with no timezone abbreviation, as AGENT-SYNC writes it, where the central client still prints `AM CT`), the two `ExportOptions` plists, `apps.json` (the ship registry) and `mac-appstore-profiles.json`.  `scripts/ios-fleet.sha256` pins all of them; `bash scripts/ios-fleet-pin.sh --update` refreshes the pin, and the change lands in a reviewed PR.  CI (`ship-tooling`) and the ship job both check the pin.
 
 `scripts/check-mac-testflight-contract.py` runs in CI and fails when the workflow, `project.yml`, the registry and the profile map stop agreeing (a trigger path dropped, Sparkle linked into the store target, a profile name that no longer matches).
 

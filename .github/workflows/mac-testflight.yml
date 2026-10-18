@@ -44,9 +44,11 @@ name: Mac TestFlight
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8            Fleet-OPS prod /asc
 #   IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD       Fleet-OPS prod /mac-certs
 #                                                    (Apple Distribution)
-#   MAC_INSTALLER_P12_BASE64, MAC_INSTALLER_P12_PASSWORD
+#   MAC_APPSTORE_INSTALLER_P12_BASE64, MAC_APPSTORE_INSTALLER_P12_PASSWORD
 #                                                    Fleet-OPS prod /mac-certs
-#                                                    (3rd Party Mac Developer Installer)
+#                                                    (3rd Party Mac Developer Installer;
+#                                                    MAC_INSTALLER_P12_* there is the
+#                                                    Developer ID Installer and is not used)
 #   SENTRY_DSN_MACOS, SENTRY_AUTH_TOKEN              ContactLogo project, best effort
 
 on:
@@ -229,7 +231,8 @@ jobs:
       - name: Load Mac installer certificate (Fleet Secrets via Infisical)
         uses: ./.github/actions/infisical-secrets
         with:
-          names: MAC_APPSTORE_INSTALLER_P12_BASE64 MAC_APPSTORE_INSTALLER_P12_PASSWORD MAC_INSTALLER_P12_BASE64 MAC_INSTALLER_P12_PASSWORD
+          names: MAC_APPSTORE_INSTALLER_P12_BASE64 MAC_APPSTORE_INSTALLER_P12_PASSWORD
+          required: MAC_APPSTORE_INSTALLER_P12_BASE64 MAC_APPSTORE_INSTALLER_P12_PASSWORD
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /mac-certs
           client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}

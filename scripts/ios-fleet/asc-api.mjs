@@ -106,7 +106,11 @@ function centralTimestamp(now = new Date()) {
     timeZone: "America/Chicago",
     hour: "numeric", minute: "2-digit", hour12: true
   }).format(now);
-  return `${d} at ${t} CT`;
+  // CL-203: AGENT-SYNC (Release stamp) wants the owner's clock, 12-hour, with am
+  // or pm and NO timezone abbreviation:  "Wed, Aug 12, 2026 at 1:15am".  The
+  // central client still appends " CT" and prints "AM"; this in-repo copy
+  // follows the written rule.
+  return `${d} at ${t.replace(/\s*([AP])M$/i, (_m, x) => `${x.toLowerCase()}m`)}`;
 }
 
 function gitSubjects(repoRoot, prevSha) {

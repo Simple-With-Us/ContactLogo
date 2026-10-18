@@ -17,7 +17,8 @@
 #
 # The vendored ship-testflight.sh is the Socratic-Trade copy plus the macOS
 # manual-signing path (see its IN-REPO COPY header).  asc-api.mjs is the central
-# ios-fleet client unchanged.
+# ios-fleet client with the release stamp following AGENT-SYNC (owner clock, am or
+# pm, no timezone abbreviation).
 #
 # ON DRIFT
 #   Read the diff, decide whether the tooling change is wanted, then either
