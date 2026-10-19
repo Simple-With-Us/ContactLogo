@@ -2,7 +2,7 @@
 # GitHub-hosted macos-latest ships from this copy, not /Users/jay/apps/ios-fleet.
 # Refresh with: bash scripts/ios-fleet-pin.sh --update  (then land it in a PR)
 8e004ecd4cfa2523a8208e6d55eb14d9682f939dad80cad55e0d0b1233eabb35  ship-testflight.sh
-c10620bd71b014034635520d3c53e15956ea868c2aab91ed71acabf9665d1fb4  asc-api.mjs
+d950ae4b0b5844df321cf33ec3b67dc9fc6a5caf94a84edd0c9d08bd81d26fe9  asc-api.mjs
 983f87366388d1ccb2133e8fc8b04c8bcc959b9008e0c390af2cffe343c2c2e6  apps.json
 c789da98fdb922667d1d757b00bf61e0f7e640b33ea27f9c6650311bb29f2ec5  scheduled-ship-gate.sh
 2005bdb70ae699177c1b8501a3b3fcad2795907e059047a8e92e9a0e6a4caad2  publish-ios-versions.sh

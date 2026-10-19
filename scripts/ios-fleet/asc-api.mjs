@@ -514,12 +514,24 @@ export async function ensureInternalTesterGroup({ api, appId, emails, log, warn 
         relationships: { app: { data: { type: "apps", id: appId } } }
       }
     }));
-    if (!created.ok) {
-      return fail(`could not create internal group "${INTERNAL_GROUP_NAME}" (${ascErrorText(created)}); create it by hand in App Store Connect > TestFlight > Internal Testing`);
+    if (created.ok) {
+      group = created.parsed.data;
+      out.created = true;
+      log(`created internal group "${INTERNAL_GROUP_NAME}" id=${group.id} (all builds)`);
+    } else {
+      // A concurrent run can win the create between our list and our POST;
+      // Apple then refuses ours with a name conflict.  Re-read and adopt the
+      // group that landed rather than failing the sync (and orphaning the
+      // loser's group).  Only a real failure still falls through to fail().
+      const retry = await api("GET", `/v1/apps/${appId}/betaGroups?limit=200&fields[betaGroups]=name,isInternalGroup,hasAccessToAllBuilds`);
+      group = retry.ok ? ascRows(retry).find(
+        (g) => g.attributes?.isInternalGroup === true && g.attributes?.hasAccessToAllBuilds === true
+      ) : null;
+      if (!group) {
+        return fail(`could not create internal group "${INTERNAL_GROUP_NAME}" (${ascErrorText(created)}); create it by hand in App Store Connect > TestFlight > Internal Testing`);
+      }
+      log(`internal group "${INTERNAL_GROUP_NAME}" created by a concurrent run; reusing id=${group.id}`);
     }
-    group = created.parsed.data;
-    out.created = true;
-    log(`created internal group "${INTERNAL_GROUP_NAME}" id=${group.id} (all builds)`);
   }
   out.groupId = group.id;
 
@@ -733,7 +745,10 @@ async function main() {
       }
     }
 
-    return { appId, appsStatus: apps.status };
+    // appsStatus is the HTTP code ONLY when the apps query itself failed (early
+    // return above).  Reaching here means the query succeeded, so a null appId
+    // is "not in ASC", not an HTTP error.
+    return { appId, appsStatus: null };
   }
 
   // Highest N already used by the "<prefix>.N" MARKETING version train
@@ -773,7 +788,7 @@ async function main() {
     const appleIdHint = String(arg5 || process.env.ASC_APPLE_ID || "").trim();
     const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "latest-build-seq");
     if (!appId) {
-      console.error(`latest-build-seq: app not found for bundle (HTTP ${appsStatus})`);
+      console.error(`latest-build-seq: app not found for bundle${appsStatus ? ` (HTTP ${appsStatus})` : ""}`);
       process.exit(2);
     }
 
@@ -1209,7 +1224,7 @@ async function main() {
 
     const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "ensure-tf-ready");
     if (!appId) {
-      console.error(`ensure-tf-ready: app not found for bundle (HTTP ${appsStatus})`);
+      console.error(`ensure-tf-ready: app not found for bundle${appsStatus ? ` (HTTP ${appsStatus})` : ""}`);
       process.exit(2);
     }
 
