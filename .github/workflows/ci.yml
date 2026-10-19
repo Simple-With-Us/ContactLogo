@@ -161,6 +161,7 @@ jobs:
         run: |
           bash scripts/test-ios-scheduled-ship-gate.sh
           bash scripts/ios-fleet/test-asc-credentials.sh
+          node --test scripts/ios-fleet/test-asc-credentials.mjs
 
       - name: Mac TestFlight contract
         run: python3 scripts/check-mac-testflight-contract.py

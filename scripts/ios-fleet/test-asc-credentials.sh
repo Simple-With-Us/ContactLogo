@@ -22,9 +22,10 @@ cat > "${tmp}/fleet-secrets" <<'FAKE'
 name="$2"; folder="$4"
 echo "${name} ${folder}" >> "${FAKE_LOG}"
 case "${folder}:${name}" in
-  /appstore-connect:ASC_KEY_ID) printf 'ABCDE12345\n' ;;
-  /appstore-connect:ASC_ISSUER_ID) printf 'issuer-synthetic\n' ;;
-  /authkey-abcde12345-p8:AUTHKEY_ABCDE12345) printf -- '-----BEGIN PRIVATE KEY-----\nSYNTHETIC\n-----END PRIVATE KEY-----\n' ;;
+  /asc:ASC_KEY_ID) printf 'ABCDE12345\n' ;;
+  /asc:ASC_ISSUER_ID) printf 'issuer-synthetic\n' ;;
+  /asc:ASC_KEY_P8) printf -- '-----BEGIN PRIVATE KEY-----\nSYNTHETIC\n-----END PRIVATE KEY-----\n' ;;
+  /authkey-otherkey01-p8:AUTHKEY_OTHERKEY01) printf -- '-----BEGIN PRIVATE KEY-----\nOTHERKEYMATERIAL\n-----END PRIVATE KEY-----\n' ;;
   *) exit 3 ;;
 esac
 FAKE
@@ -34,7 +35,7 @@ export FAKE_LOG="${tmp}/fake.log"
 
 extract() {
   awk '
-    /^fs_get\(\) \{/ || /^load_secrets\(\) \{/ || /^cleanup_asc_tmp\(\) \{/ { grab = 1 }
+    /^fs_get\(\) \{/ || /^load_secrets\(\) \{/ || /^cleanup_asc_tmp\(\) \{/ || /^expand_tilde\(\) \{/ { grab = 1 }
     grab { print }
     grab && /^\}/ { grab = 0 }
   ' "$script"
@@ -66,8 +67,8 @@ out="$(env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH bash -c '
   [[ ! -e "$ASC_KEY_PATH" ]]
 ')" || fail "load_secrets from Infisical"
 [[ ! -e "$out" ]] || fail "temp key file survived cleanup"
-grep -q '^ASC_KEY_ID /appstore-connect$' "$FAKE_LOG" || fail "did not ask Infisical /appstore-connect"
-grep -q '^AUTHKEY_ABCDE12345 /authkey-abcde12345-p8$' "$FAKE_LOG" || fail "did not ask the per-key folder"
+grep -q '^ASC_KEY_ID /asc$' "$FAKE_LOG" || fail "did not ask Infisical /asc for the key id"
+grep -q '^ASC_KEY_P8 /asc$' "$FAKE_LOG" || fail "did not ask Infisical /asc for the key"
 
 # 2. An explicit ASC_* environment wins and fleet-secrets is not called.
 : > "$FAKE_LOG"
@@ -79,6 +80,66 @@ env ASC_KEY_ID=ENVKEY0001 ASC_ISSUER_ID=env-issuer ASC_KEY_PATH="${tmp}/env-key.
   [[ "$AUTH_MODE" == api_key && "$ASC_KEY_ID" == ENVKEY0001 && -z "$ASC_TMP_DIR" ]]
 ' || fail "environment credentials were not honored"
 [[ ! -s "$FAKE_LOG" ]] || fail "fleet-secrets was called although the environment was complete"
+
+# 2b. An env key id that is NOT the /asc one never gets the /asc key or the /asc issuer:  it
+# brings its own issuer and its own .p8 comes from /authkey-<id>-p8;  /asc ASC_KEY_P8 is not
+# requested.
+: > "$FAKE_LOG"
+env -u ASC_KEY_PATH ASC_KEY_ID=OTHERKEY01 ASC_ISSUER_ID=issuer-for-other bash -c '
+  set -euo pipefail
+  source "'"$funcs"'"
+  load_secrets
+  [[ "$AUTH_MODE" == api_key && "$ASC_KEY_ID" == OTHERKEY01 ]]
+  [[ "$ASC_ISSUER_ID" == issuer-for-other ]]
+  grep -q OTHERKEYMATERIAL "$ASC_KEY_PATH"
+  ! grep -q SYNTHETIC$ "$ASC_KEY_PATH"
+  cleanup_asc_tmp
+' || fail "env key id different from /asc was not given its own key and issuer"
+grep -q '^AUTHKEY_OTHERKEY01 /authkey-otherkey01-p8$' "$FAKE_LOG" || fail "did not ask the per-key folder"
+if grep -q '^ASC_KEY_P8 ' "$FAKE_LOG"; then fail "mixed an env key id with the /asc key"; fi
+if grep -q '^ASC_ISSUER_ID /asc$' "$FAKE_LOG"; then fail "mixed an env key id with the /asc issuer"; fi
+
+# 2b-mixed. An env key id that is NOT the /asc one and no issuer of its own fails closed
+# rather than pairing the /asc issuer with the per-key .p8.
+: > "$FAKE_LOG"
+env -u ASC_KEY_PATH -u ASC_ISSUER_ID ASC_KEY_ID=OTHERKEY01 bash -c '
+  set -euo pipefail
+  source "'"$funcs"'"
+  load_secrets
+  [[ "$AUTH_MODE" == none ]]
+  [[ -z "${ASC_ISSUER_ID:-}" && -z "${ASC_KEY_PATH:-}" && -z "$ASC_TMP_DIR" ]]
+' || fail "env key id different from /asc was paired with the /asc issuer"
+if grep -q '^ASC_ISSUER_ID /asc$' "$FAKE_LOG"; then fail "mixed an env key id with the /asc issuer"; fi
+
+# 2c. An env key id equal to the /asc one uses the /asc key.
+: > "$FAKE_LOG"
+env -u ASC_KEY_PATH -u ASC_ISSUER_ID ASC_KEY_ID=ABCDE12345 bash -c '
+  set -euo pipefail
+  source "'"$funcs"'"
+  load_secrets
+  [[ "$AUTH_MODE" == api_key && "$ASC_KEY_ID" == ABCDE12345 ]]
+  grep -q SYNTHETIC "$ASC_KEY_PATH"
+  cleanup_asc_tmp
+' || fail "env key id equal to /asc was not served from /asc"
+grep -q '^ASC_KEY_P8 /asc$' "$FAKE_LOG" || fail "did not ask /asc ASC_KEY_P8"
+
+# 2d. An env key id with no key material anywhere fails closed (no api_key mode).
+: > "$FAKE_LOG"
+env -u ASC_KEY_PATH -u ASC_ISSUER_ID ASC_KEY_ID=NOSUCHKEY0 bash -c '
+  set -euo pipefail
+  source "'"$funcs"'"
+  load_secrets
+  [[ "$AUTH_MODE" == none && -z "$ASC_TMP_DIR" ]]
+' || fail "missing key material did not fail closed"
+
+# 2e. Only a leading "~/" is expanded:  "~user/x" must not be merged with $HOME.
+env ASC_KEY_ID=TILDE00001 ASC_ISSUER_ID=tilde-issuer bash -c '
+  set -euo pipefail
+  source "'"$funcs"'"
+  [[ "$(expand_tilde "~/k.p8")" == "$HOME/k.p8" ]]
+  [[ "$(expand_tilde "~other/k.p8")" == "~other/k.p8" ]]
+  [[ "$(expand_tilde "/abs/k.p8")" == "/abs/k.p8" ]]
+' || fail "expand_tilde"
 
 # 3. Nothing is created under the old secrets folder or ~/.appstoreconnect.
 [[ ! -e "${HOME}/.secrets" ]] || fail "created the old secrets folder"
