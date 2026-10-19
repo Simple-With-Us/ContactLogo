@@ -18,8 +18,8 @@ name: Mac TestFlight
 # with its defaults: one TestFlight build per app per hour, and a same-HEAD
 # skip.  Nothing here sets IOS_TF_MIN_INTERVAL_SEC or passes --force-ship as a
 # standing value; the force_ship input below is a per-run choice and defaults to
-# false.  Marketing version 1.0.N (+1 per upload) and the build number (UTC
-# YYYYMMDDHHMM) come from the script, and the mandatory What to Test note is
+# false.  Marketing version and build number (both the repo commit count) come
+# from the script, and the mandatory What to Test note is
 # published (IOS_TF_RELEASE_NOTES=1).
 #
 # WHY THERE IS A `schedule:` TRIGGER
