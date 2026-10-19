@@ -48,12 +48,14 @@ function resolveAscCredentials() {
   }
   // The key id, issuer and private key must belong together:  with no key id in the
   // environment all three come from /asc;  an env key id that is not the /asc one gets its
-  // own .p8 from /authkey-<id>-p8, never the /asc key.
+  // own .p8 from /authkey-<id>-p8, never the /asc key.  The /asc issuer is only ever paired
+  // with the /asc key id:  an env key id that differs from /asc must bring its own issuer,
+  // or the JWT would be signed by the per-key .p8 while claiming the /asc issuer.
   const ascKeyId = fleetSecretsGet("ASC_KEY_ID", "/asc");
   if (!keyId) {
     keyId = ascKeyId;
     issuerId = fleetSecretsGet("ASC_ISSUER_ID", "/asc");
-  } else if (!issuerId) {
+  } else if (keyId === ascKeyId && !issuerId) {
     issuerId = fleetSecretsGet("ASC_ISSUER_ID", "/asc");
   }
   if (!keyId || !issuerId) {

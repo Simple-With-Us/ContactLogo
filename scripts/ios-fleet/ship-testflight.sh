@@ -233,12 +233,13 @@ load_secrets() {
   local kid="${ASC_KEY_ID:-}" iss="${ASC_ISSUER_ID:-}" p8="" fkid="" lower
   # The key id, issuer and private key must belong together:  with nothing named in the
   # environment all three come from /asc;  an env key id that is not the /asc one gets its
-  # own .p8 from /authkey-<id>-p8, never the /asc key.
+  # own .p8 from /authkey-<id>-p8, never the /asc key.  The /asc issuer is only ever paired
+  # with the /asc key id:  an env key id that differs from /asc must bring its own issuer.
   fkid="$(fs_get ASC_KEY_ID /asc)" || fkid=""
   if [[ -z "$kid" ]]; then
     kid="$fkid"
     iss="$(fs_get ASC_ISSUER_ID /asc)" || iss=""
-  elif [[ -z "$iss" ]]; then
+  elif [[ "$kid" == "$fkid" && -z "$iss" ]]; then
     iss="$(fs_get ASC_ISSUER_ID /asc)" || iss=""
   fi
   if [[ -z "$kid" || -z "$iss" ]]; then

@@ -81,9 +81,18 @@ test("an env key id equal to the /asc one is served from /asc", async () => {
 });
 
 test("an env key id that is not the /asc one gets its own .p8, never the /asc key", async () => {
-  const r = await run({ ASC_KEY_ID: "OTHERKEY01" });
+  const r = await run({ ASC_KEY_ID: "OTHERKEY01", ASC_ISSUER_ID: "issuer-for-other" });
   assert.equal(r.code, 0);
   assert.equal(r.kid, "OTHERKEY01");
+  // The /asc issuer belongs to the /asc key id, never to this one.
+  assert.equal(r.iss, "issuer-for-other");
+});
+
+test("an env key id that is not the /asc one and no issuer of its own fails closed", async () => {
+  // Otherwise the JWT would be signed by the per-key .p8 while claiming the /asc issuer.
+  const r = await run({ ASC_KEY_ID: "OTHERKEY01" });
+  assert.notEqual(r.code, 0);
+  assert.equal(r.kid, null);
 });
 
 test("an env key id with no key material anywhere fails closed", async () => {
