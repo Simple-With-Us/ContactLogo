@@ -351,7 +351,7 @@ jobs:
         run: |
           set +o xtrace
           security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" >/dev/null 2>&1 || true
-          rm -f "$RUNNER_TEMP/app-signing-kc-pass" "$HOME/.secrets/ios-distribution.p12" "$HOME/.secrets/mac-installer.p12" "$HOME/.secrets/appstore-connect.env"
+          rm -f "$RUNNER_TEMP/app-signing-kc-pass"
           if [[ -n "${ASC_KEY_PATH:-}" && "$ASC_KEY_PATH" == "$RUNNER_TEMP"/asc-signing.*/AuthKey.p8 ]]; then
             rm -rf "$(dirname "$ASC_KEY_PATH")"
           fi

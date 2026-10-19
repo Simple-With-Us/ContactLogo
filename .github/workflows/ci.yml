@@ -158,7 +158,9 @@ jobs:
           node --check scripts/ios-fleet/asc-api.mjs
 
       - name: Scheduled ship gate tests
-        run: bash scripts/test-ios-scheduled-ship-gate.sh
+        run: |
+          bash scripts/test-ios-scheduled-ship-gate.sh
+          bash scripts/ios-fleet/test-asc-credentials.sh
 
       - name: Mac TestFlight contract
         run: python3 scripts/check-mac-testflight-contract.py
