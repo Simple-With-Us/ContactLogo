@@ -7,9 +7,9 @@ name: ContactLogo iOS TestFlight
 #   scripts/ios-ship-testflight.sh -> scripts/ios-fleet/ship-testflight.sh
 #
 # The fleet script owns everything the old custom release script did not:
-#   - the marketing version:  1.0.<N+1>, where N is the highest 1.0.N already in
-#     App Store Connect (project.yml stays 1.0.0 and is never the source);
-#   - a unique build number (UTC YYYYMMDDHHmm);
+#   - the marketing version and the build number:  both are the repo's commit
+#     count, 1.0.<commit_count> and <commit_count>, so the pair always
+#     describes one commit (project.yml is a floor input, never the source);
 #   - the rate gate (a minimum interval per app) and the same-HEAD skip, both at
 #     the script defaults.  Never set IOS_TF_MIN_INTERVAL_SEC or any other gate
 #     override as a standing value in this file;
