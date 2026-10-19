@@ -1923,9 +1923,18 @@ function mountShell(root: HTMLElement): Shell {
         "a",
         { href: "https://simplewithus.com/", "aria-label": "From Simple With Us" },
         "From ",
-        el("img", { src: "/swu-logo-wide.webp", alt: "Simple With Us by Jay Wedgeworth", width: "288", height: "30" }),
+        el(
+          "picture",
+          {},
+          el("source", {
+            media: "(prefers-color-scheme: dark)",
+            srcset: "/swu-wordmark-dark.webp",
+            type: "image/webp",
+          }),
+          el("img", { src: "/swu-wordmark-light.webp", alt: "Simple With Us by Jay Wedgeworth", width: "288", height: "30" }),
+        ),
       ),
-    ),
+      ),
   );
 
   root.append(app);

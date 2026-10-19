@@ -37,24 +37,20 @@ fi
 : "${MAC_APPSTORE_INSTALLER_P12_PASSWORD:?MAC_APPSTORE_INSTALLER_P12_PASSWORD required}"
 INSTALLER_NAMES="MAC_APPSTORE_INSTALLER"
 
-SECRETS_DIR="${HOME}/.secrets"
-mkdir -p "$SECRETS_DIR"
-chmod 700 "$SECRETS_DIR"
+# AFC-359: nothing is written under the old secrets folder.  Scratch files live in a
+# private temp dir that is removed on exit.  The ship step reads ASC_KEY_ID /
+# ASC_ISSUER_ID / ASC_KEY_PATH from the job environment (GITHUB_ENV), not from a file.
+KC_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+WORK_DIR="$(mktemp -d "${KC_DIR%/}/gm-prepare.XXXXXX")"
+chmod 700 "$WORK_DIR"
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 [[ -s "$ASC_KEY_PATH" ]] || die "ASC_KEY_PATH has no key file"
 chmod 600 "$ASC_KEY_PATH"
 
-ENV_PATH="${SECRETS_DIR}/appstore-connect.env"
-{
-  printf 'ASC_KEY_ID=%s\n' "$ASC_KEY_ID"
-  printf 'ASC_ISSUER_ID=%s\n' "$ASC_ISSUER_ID"
-  printf 'ASC_KEY_PATH=%s\n' "$ASC_KEY_PATH"
-} > "$ENV_PATH"
-chmod 600 "$ENV_PATH"
-
-DIST_P12="${SECRETS_DIR}/ios-distribution.p12"
+DIST_P12="${WORK_DIR}/ios-distribution.p12"
 INST_DIR="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mac-installer.XXXXXX")"
-trap 'rm -f "$DIST_P12"; rm -rf "$INST_DIR"' EXIT
+trap 'rm -rf "$WORK_DIR" "$INST_DIR"' EXIT
 printf '%s' "$IOS_DIST_P12_BASE64" | base64 --decode > "$DIST_P12"
 chmod 600 "$DIST_P12"
 for n in $INSTALLER_NAMES; do
@@ -100,4 +96,4 @@ if ! security find-identity -v "$KC_PATH" | grep -Eq '3rd Party Mac Developer In
   die "imported keychain has no Mac installer identity (3rd Party Mac Developer Installer or Mac Installer Distribution)"
 fi
 log "Apple Distribution and Mac installer identities imported"
-log "ASC env written (key id length ${#ASC_KEY_ID})"
+log "ASC credentials come from the job environment (key id length ${#ASC_KEY_ID})"
