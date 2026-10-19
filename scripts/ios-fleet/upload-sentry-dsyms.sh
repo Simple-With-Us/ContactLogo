@@ -33,7 +33,7 @@ sentry_project_for_app() {
 
 load_sentry_auth() {
   # Runtime credentials come from the process env (CI / Infisical).
-  # ~/.secrets is handoff-only and is not read here.
+  # Nothing is read from the old secrets folder here.
   if [[ -n "${SENTRY_AUTH_TOKEN:-}" ]]; then
     return 0
   fi
