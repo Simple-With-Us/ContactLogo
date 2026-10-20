@@ -433,9 +433,10 @@ export async function addTesterToGroup({ api, appId, groupId, email, createFirst
       relationships: { betaGroups: { data: [{ type: "betaGroups", id: groupId }] } }
     }
   }));
+  let firstCreate = null;
   if (createFirst) {
-    const made = await create();
-    if (made.ok) return { ok: true, existing: false, res: made };
+    firstCreate = await create();
+    if (firstCreate.ok) return { ok: true, existing: false, res: firstCreate };
   }
   const sameEmail = (t) => String(t.attributes?.email || "").toLowerCase() === wanted;
   let existing = ascRows(await api("GET", `/v1/betaTesters?filter[email]=${encodeURIComponent(email)}&filter[apps]=${appId}&limit=5`)).find(sameEmail);
@@ -457,6 +458,15 @@ export async function addTesterToGroup({ api, appId, groupId, email, createFirst
     if (res.status === 409) {
       // The record we found is for another app; Apple refused to assign it.
       // Try the app-scoped lookup before giving up.
+      const recovered = await recoverFromCrossApp();
+      if (recovered) res = recovered;
+    }
+  } else if (firstCreate) {
+    // createFirst already POSTed and failed: re-POSTing the identical body
+    // cannot succeed, so reuse the outcome.  A 409 still gets the app-scoped
+    // recovery; any other failure stands as-is.
+    res = firstCreate;
+    if (res.status === 409) {
       const recovered = await recoverFromCrossApp();
       if (recovered) res = recovered;
     }
