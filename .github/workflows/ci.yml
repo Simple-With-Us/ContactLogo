@@ -50,7 +50,7 @@ jobs:
     # macos-latest was starving for hours while macos-15 runners still
     # picked up the apple matrix on the same workflow; keep kit on the
     # same pool so swift test is not the only job stuck queued.
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -63,7 +63,7 @@ jobs:
   # package. Regenerates the project from project.yml so it always reflects
   # the committed spec, then builds each app target without codesigning.
   apple:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     strategy:
       fail-fast: false

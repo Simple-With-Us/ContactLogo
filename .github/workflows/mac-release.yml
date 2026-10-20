@@ -60,7 +60,7 @@ concurrency:
 jobs:
   release:
     if: github.event.repository.fork == false
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     # ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 are loaded by the
     # "Load App Store Connect key" step below (Fleet Secrets, Fleet-OPS
