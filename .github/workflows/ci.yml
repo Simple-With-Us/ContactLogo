@@ -156,12 +156,14 @@ jobs:
             echo "parses: $f"
           done
           node --check scripts/ios-fleet/asc-api.mjs
+          node --check scripts/ios-fleet/asc-key.mjs
 
       - name: Scheduled ship gate tests
         run: |
           bash scripts/test-ios-scheduled-ship-gate.sh
           bash scripts/ios-fleet/test-asc-credentials.sh
           node --test scripts/ios-fleet/test-asc-credentials.mjs
+          node --test scripts/ios-fleet/test-asc-key.test.mjs
 
       - name: Mac TestFlight contract
         run: python3 scripts/check-mac-testflight-contract.py
