@@ -9,8 +9,9 @@
     "build": "npm run build --prefix web",
     "preview": "npm run preview --prefix web",
     "typecheck": "npm run typecheck --prefix web",
-    "test": "npm test --prefix web",
+    "test": "npm test --prefix web && npm run test:infisical-fetch",
     "test:web": "npm test --prefix web",
+    "test:infisical-fetch": "node --test scripts/infisical-fetch.node-test.mjs scripts/infisical-fetch-expand.node-test.mjs",
     "test:swift": "swift test"
   }
 }
