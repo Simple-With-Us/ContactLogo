@@ -892,10 +892,40 @@ async function main() {
       process.exit(2);
     }
 
+    // Platform discipline: an explicit platform must be IOS or MAC_OS (anything
+    // else is a caller bug, not an empty train -> exit 2). When it is omitted,
+    // accept BOTH platforms: an empty answer must never come from a filter the
+    // caller did not ask for, and over-raising the build number is the safe
+    // direction to be wrong in.
     const platformArg = (arg4 || "").toUpperCase();
-    const wantPlatform = (platformArg === "MACOS" || platformArg === "MAC_OS") ? "MAC_OS" : (platformArg === "IOS" ? "IOS" : null);
+    let wantPlatform = null;
+    if (platformArg) {
+      if (platformArg === "MACOS" || platformArg === "MAC_OS") wantPlatform = "MAC_OS";
+      else if (platformArg === "IOS") wantPlatform = "IOS";
+      else {
+        console.error(`latest-build-in-train: unknown platform "${arg4}" (want IOS or MACOS); cannot verify the train`);
+        process.exit(2);
+      }
+    }
 
-    let best = 0;
+    // Segment-wise build ordering, because Apple compares CFBundleVersion by
+    // integer segments and legacy fleet builds include dotted values ("1.0.7").
+    // parseInt would truncate those to their first segment and under-report the
+    // train maximum. Non-numeric segments compare 0.
+    const segs = (v) => String(v || "").split(".").map((s) => {
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : 0;
+    });
+    const cmpVersions = (a, b) => {
+      const as = segs(a), bs = segs(b);
+      for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+        const d = (as[i] || 0) - (bs[i] || 0);
+        if (d) return d;
+      }
+      return 0;
+    };
+
+    let best = null;
     let seenBuilds = 0;
     let matchedTrain = 0;
     let url = `/v1/builds?filter[app]=${appId}&filter[preReleaseVersion.version]=${encodeURIComponent(exactVersion)}&include=preReleaseVersion&limit=200`;
@@ -905,31 +935,55 @@ async function main() {
         console.error(`latest-build-in-train: builds query failed (HTTP ${res.status})`);
         process.exit(2);
       }
-      const included = new Map();
-      for (const inc of res.parsed.included || []) {
-        if (inc.type === "preReleaseVersions") included.set(inc.id, inc.attributes || {});
+      // Validate the page shape before trusting it: a malformed page must read
+      // as "unverified" (exit 2), never as "train empty" (a false 0 floor).
+      const body2 = res.parsed;
+      if (!body2 || !Array.isArray(body2.data) || (body2.included !== undefined && !Array.isArray(body2.included))) {
+        console.error("latest-build-in-train: malformed builds page from App Store Connect; cannot verify the train");
+        process.exit(2);
       }
-      for (const b of res.parsed.data || []) {
+      const included = new Map();
+      for (const inc of body2.included || []) {
+        if (inc && inc.type === "preReleaseVersions" && inc.id) included.set(inc.id, inc.attributes || {});
+      }
+      for (const b of body2.data) {
+        if (!b || typeof b !== "object") {
+          console.error("latest-build-in-train: malformed build row from App Store Connect; cannot verify the train");
+          process.exit(2);
+        }
         seenBuilds++;
-        // Belt and braces: the filter already scopes to the exact marketing
-        // version, but verify through the included preReleaseVersion so a
-        // silently-ignored filter can never report a build from another train.
+        // The exact-version check and the platform BOTH come from the included
+        // preReleaseVersion, so an unresolvable one means this build cannot be
+        // verified at all. Defaulting its platform to IOS could turn a Mac
+        // train into a false "empty" answer; refuse instead.
         const prvId = b.relationships?.preReleaseVersion?.data?.id;
         const prv = prvId ? included.get(prvId) : null;
-        if (prv && prv.version !== exactVersion) continue;
-        const plat = prv?.platform || "IOS";
-        if (wantPlatform ? plat !== wantPlatform : plat !== "IOS") continue;
+        if (!prv || prv.version !== exactVersion) {
+          console.error(`latest-build-in-train: build ${b.id || "?"} has no verifiable preReleaseVersion; cannot verify the train`);
+          process.exit(2);
+        }
+        const plat = prv.platform || "IOS";
+        if (wantPlatform && plat !== wantPlatform) continue;
         matchedTrain++;
-        const n = parseInt(String(b.attributes?.version || ""), 10);
-        if (Number.isFinite(n) && n > best) best = n;
+        const v = String(b.attributes?.version || "");
+        if (!v) continue;
+        if (best === null || cmpVersions(v, best) > 0) best = v;
       }
-      url = res.parsed.links?.next || "";
+      url = body2.links?.next || "";
     }
 
+    // The answer must be a plain integer the caller can bump: Apple orders
+    // segment-wise, so first-segment+1 clears any dotted legacy value
+    // ([2] > [1,0,7] under segment comparison).
+    let out = "0";
+    if (best !== null) {
+      const first = parseInt(String(best).split(".")[0], 10);
+      out = String(Number.isFinite(first) ? first : 0);
+    }
     console.error(
-      `latest-build-in-train: ${seenBuilds} build(s) inspected, ${matchedTrain} in train ${exactVersion}; highest CFBundleVersion is ${best}`
+      `latest-build-in-train: ${seenBuilds} build(s) inspected, ${matchedTrain} in train ${exactVersion}; highest CFBundleVersion is ${best ?? "none"}`
     );
-    console.log(String(best));
+    console.log(out);
     process.exit(0);
   }
 

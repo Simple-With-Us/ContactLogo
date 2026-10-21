@@ -489,9 +489,11 @@ asc_latest_seq() {
 # marketing version (e.g. 1.0.5) -- not a train. asc_latest_seq answers "highest
 # N of the <prefix>.N train" and discards plain-integer build numbers, so it
 # cannot see a legacy 12-digit UTC build sitting inside the train an operator
-# re-ships with --version. Prints 0 when the train is empty. Returns 1 (and
-# prints nothing) when ASC cannot be consulted -- the caller must distinguish
-# "empty train" (0) from "unknown" (failure).
+# re-ships with --version. Comparison is segment-wise (Apple's ordering), and
+# the printed value is the winning build's first segment as a plain integer, so
+# the caller's +1 clears any dotted legacy value. Prints 0 when the train is
+# empty. Returns 1 (and prints nothing) when ASC cannot be consulted -- the
+# caller must distinguish "empty train" (0) from "unknown" (failure).
 asc_latest_build_in_train() {
   local version="$1" plat="${2:-}" out rc
   if ! command -v node >/dev/null 2>&1; then
