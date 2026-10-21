@@ -290,7 +290,7 @@ jobs:
       # Sync the standing testers and attach/submit the new build to the public
       # external group.  A failure here is a warning, never a red ship.
       - name: Sync standing TestFlight testers
-        if: success() && env.SHIP_MODE == 'ship' && inputs.export_only != true
+        if: success() && env.SHIP_MODE == 'ship'
         continue-on-error: true
         env:
           ASC_STANDING_TESTERS: ${{ secrets.ASC_STANDING_TESTERS }}
