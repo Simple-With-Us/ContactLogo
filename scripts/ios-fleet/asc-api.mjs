@@ -958,18 +958,38 @@ async function main() {
         // train into a false "empty" answer; refuse instead.
         const prvId = b.relationships?.preReleaseVersion?.data?.id;
         const prv = prvId ? included.get(prvId) : null;
-        if (!prv || prv.version !== exactVersion) {
+        if (!prv) {
           console.error(`latest-build-in-train: build ${b.id || "?"} has no verifiable preReleaseVersion; cannot verify the train`);
           process.exit(2);
         }
-        const plat = prv.platform || "IOS";
+        // A preReleaseVersion of ANOTHER train is a known mismatch, not an
+        // unverifiable answer: skip it.  The query already filters on the
+        // exact version, so this only fires when that filter is looser than
+        // exact, and a build from another train must never be counted.
+        if (prv.version !== exactVersion) continue;
+        const plat = prv.platform;
+        if (!plat) {
+          console.error(`latest-build-in-train: preReleaseVersion ${prvId} carries no platform; cannot verify the train`);
+          process.exit(2);
+        }
         if (wantPlatform && plat !== wantPlatform) continue;
         matchedTrain++;
         const v = String(b.attributes?.version || "");
         if (!v) continue;
         if (best === null || cmpVersions(v, best) > 0) best = v;
       }
-      url = body2.links?.next || "";
+      const next = body2.links?.next;
+      if (next && typeof next !== "string") {
+        console.error("latest-build-in-train: malformed next link; cannot verify the train");
+        process.exit(2);
+      }
+      // The bearer token must never follow a link that leaves App Store
+      // Connect, so a hostile or malformed next link ends the query.
+      if (next && !next.startsWith("https://api.appstoreconnect.apple.com/") && !next.startsWith("/")) {
+        console.error("latest-build-in-train: next link leaves App Store Connect; cannot verify the train");
+        process.exit(2);
+      }
+      url = next || "";
     }
 
     // The answer must be a plain integer the caller can bump: Apple orders

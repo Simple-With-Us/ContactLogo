@@ -971,13 +971,22 @@ elif [[ -n "$FORCE_BUILD" || -n "$FORCE_VERSION" ]]; then
     # rejects a lower build number only after the full archive+upload. Bound
     # BUILD_NUM by the highest build already uploaded for the exact version.
     # Failure is fatal for the same reason the floor failure is: an unverified
-    # train is how duplicate build numbers ship.
-    _train_max="$(asc_latest_build_in_train "$MARKETING" "$PLATFORM")" \
-      || die "override path could not verify builds already in ${MARKETING}; refusing to ship"
-    [[ "$_train_max" =~ ^[0-9]+$ ]] || die "train build floor is not a number: ${_train_max}"
-    if [[ "$_train_max" -ge "$BUILD_NUM" ]]; then
-      BUILD_NUM="$((_train_max + 1))"
-      log "build: train ${MARKETING} already holds build ${_train_max}; using ${BUILD_NUM} instead"
+    # train is how duplicate build numbers ship -- unless the operator asked
+    # for exactly that with --allow-unverified-seq, which has to work here
+    # too or the flag cannot ship an override at all.
+    if ! _train_max="$(asc_latest_build_in_train "$MARKETING" "$PLATFORM")"; then
+      if [[ "$ALLOW_UNVERIFIED_SEQ" -eq 0 ]]; then
+        die "override path could not verify builds already in ${MARKETING}; refusing to ship"
+      fi
+      logerr "WARNING: --allow-unverified-seq set; the builds already in ${MARKETING} are unverified"
+      _train_max=""
+    fi
+    if [[ -n "$_train_max" ]]; then
+      [[ "$_train_max" =~ ^[0-9]+$ ]] || die "train build floor is not a number: ${_train_max}"
+      if [[ "$_train_max" -ge "$BUILD_NUM" ]]; then
+        BUILD_NUM="$((_train_max + 1))"
+        log "build: train ${MARKETING} already holds build ${_train_max}; using ${BUILD_NUM} instead"
+      fi
     fi
   fi
   # The shipped pair must describe one number.  Unless the operator pinned
