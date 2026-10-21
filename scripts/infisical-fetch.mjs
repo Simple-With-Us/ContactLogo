@@ -1,7 +1,8 @@
-// Copied verbatim from Simple-With-Us/BotFleet scripts/infisical-fetch.mjs on
-// 2026-09-29, with .github/actions/infisical-secrets, so the Mac release
-// workflow reads its signing certificate the way BotFleet's release.yml does.
-// Keep the two copies in step until the fleet has a shared action.
+// Copied from Simple-With-Us/BotFleet scripts/infisical-fetch.mjs, in step with
+// BotFleet's main at b91fa490e7e7 on 2026-10-21, together with
+// .github/actions/infisical-secrets, so the Mac release workflow reads its
+// signing certificate the way BotFleet's release.yml does.  Keep the two copies
+// in step until the fleet has a shared action.
 //
 // CI-side Infisical fetch: universal-auth login, one bulk secrets list, then
 // per requested name mask + export into $GITHUB_ENV -- falling back to a
@@ -153,10 +154,6 @@ async function resolveVaultValues({ siteUrl, projectId, clientId, clientSecret, 
   }
   try {
     const token = await loginUniversalAuth({ siteUrl, clientId, clientSecret, fetchImpl });
-    // The access token rides in an Authorization header below and is never
-    // printed.  The fleet loader masks only the values it exports, so the
-    // canonical loader test can assert that no ::add-mask:: command appears
-    // when nothing was exported.
     return await listSecretsRaw({ siteUrl, token, projectId, environment, secretPath, fetchImpl });
   } catch (err) {
     // Never interpolate the raw error body -- Infisical error payloads have
