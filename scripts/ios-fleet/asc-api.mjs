@@ -462,10 +462,15 @@ export async function addTesterToGroup({ api, appId, groupId, email, createFirst
       if (recovered) res = recovered;
     }
   } else if (firstCreate) {
-    // createFirst already POSTed and failed: re-POSTing the identical body
-    // cannot succeed, so reuse the outcome.  A 409 still gets the app-scoped
-    // recovery; any other failure stands as-is.
+    // createFirst already POSTed and failed.  A transient answer (429 or 5xx)
+    // is worth one retry after a short wait - a permanent failure reuses the
+    // outcome, and a 409 (either attempt) still gets the app-scoped recovery.
     res = firstCreate;
+    if (res.status === 429 || res.status >= 500) {
+      await new Promise((r) => setTimeout(r, 1500));
+      res = await create();
+      if (res.ok) return { ok: true, existing: false, res };
+    }
     if (res.status === 409) {
       const recovered = await recoverFromCrossApp();
       if (recovered) res = recovered;
