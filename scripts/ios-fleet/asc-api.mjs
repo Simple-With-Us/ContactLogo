@@ -865,6 +865,74 @@ async function main() {
     process.exit(0);
   }
 
+  // Highest CFBundleVersion (build number) already uploaded to App Store
+  // Connect for ONE EXACT marketing version (e.g. "1.0.5"), not a train.
+  // latest-build-seq answers "highest N of the <prefix>.N train"; it discards
+  // plain-integer build numbers, so it cannot see a legacy 12-digit UTC build
+  // sitting inside a train. The --version override path needs exactly that
+  // answer: Apple rejects a CFBundleVersion at or below one already uploaded
+  // for the same CFBundleShortVersionString, and it rejects AFTER the full
+  // archive+upload.
+  //
+  // stdout: the integer max build number (0 when the version has no builds
+  // yet). stderr: notes. exit 0 = authoritative answer; exit 2 = could not
+  // determine (caller must treat that as "unverified", NOT as zero).
+  if (method === "latest-build-in-train") {
+    const bundleId = path;
+    const exactVersion = body;
+    if (!bundleId || !exactVersion) {
+      console.error("Usage: node asc-api.mjs latest-build-in-train <bundleId> <exactVersion> [platform] [appleId]");
+      process.exit(2);
+    }
+
+    const appleIdHint = String(arg5 || process.env.ASC_APPLE_ID || "").trim();
+    const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "latest-build-in-train");
+    if (!appId) {
+      console.error(`latest-build-in-train: app not found for bundle${appsStatus ? ` (HTTP ${appsStatus})` : ""}`);
+      process.exit(2);
+    }
+
+    const platformArg = (arg4 || "").toUpperCase();
+    const wantPlatform = (platformArg === "MACOS" || platformArg === "MAC_OS") ? "MAC_OS" : (platformArg === "IOS" ? "IOS" : null);
+
+    let best = 0;
+    let seenBuilds = 0;
+    let matchedTrain = 0;
+    let url = `/v1/builds?filter[app]=${appId}&filter[preReleaseVersion.version]=${encodeURIComponent(exactVersion)}&include=preReleaseVersion&limit=200`;
+    for (let page = 0; page < 10 && url; page++) {
+      const res = await api("GET", url);
+      if (!res.ok) {
+        console.error(`latest-build-in-train: builds query failed (HTTP ${res.status})`);
+        process.exit(2);
+      }
+      const included = new Map();
+      for (const inc of res.parsed.included || []) {
+        if (inc.type === "preReleaseVersions") included.set(inc.id, inc.attributes || {});
+      }
+      for (const b of res.parsed.data || []) {
+        seenBuilds++;
+        // Belt and braces: the filter already scopes to the exact marketing
+        // version, but verify through the included preReleaseVersion so a
+        // silently-ignored filter can never report a build from another train.
+        const prvId = b.relationships?.preReleaseVersion?.data?.id;
+        const prv = prvId ? included.get(prvId) : null;
+        if (prv && prv.version !== exactVersion) continue;
+        const plat = prv?.platform || "IOS";
+        if (wantPlatform ? plat !== wantPlatform : plat !== "IOS") continue;
+        matchedTrain++;
+        const n = parseInt(String(b.attributes?.version || ""), 10);
+        if (Number.isFinite(n) && n > best) best = n;
+      }
+      url = res.parsed.links?.next || "";
+    }
+
+    console.error(
+      `latest-build-in-train: ${seenBuilds} build(s) inspected, ${matchedTrain} in train ${exactVersion}; highest CFBundleVersion is ${best}`
+    );
+    console.log(String(best));
+    process.exit(0);
+  }
+
   // After upload: find THE BUILD THIS RUN JUST UPLOADED, declare export
   // compliance on it, set its TestFlight "What to Test" notes, and wait until
   // internal testers can actually install it.

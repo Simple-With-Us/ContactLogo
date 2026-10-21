@@ -485,6 +485,42 @@ asc_latest_seq() {
   printf '%s' "$out"
 }
 
+# Highest CFBundleVersion already uploaded to App Store Connect for ONE EXACT
+# marketing version (e.g. 1.0.5) -- not a train. asc_latest_seq answers "highest
+# N of the <prefix>.N train" and discards plain-integer build numbers, so it
+# cannot see a legacy 12-digit UTC build sitting inside the train an operator
+# re-ships with --version. Prints 0 when the train is empty. Returns 1 (and
+# prints nothing) when ASC cannot be consulted -- the caller must distinguish
+# "empty train" (0) from "unknown" (failure).
+asc_latest_build_in_train() {
+  local version="$1" plat="${2:-}" out rc
+  if ! command -v node >/dev/null 2>&1; then
+    logerr "asc-train: node not on PATH; cannot verify builds already in the train"
+    return 1
+  fi
+  set +e
+  # Same stderr discipline as asc_latest_seq: this function's stdout IS the
+  # build number, so diagnostics go through a temp file, never the redirect.
+  local errf
+  errf="$(mktemp "${TMPDIR:-/tmp}/asc-train-err.XXXXXX")"
+  out=$(node "${FLEET_DIR}/asc-api.mjs" latest-build-in-train "$BUNDLE_ID" "$version" "$plat" 2>"$errf")
+  rc=$?
+  set -e
+  if [[ -s "$errf" ]]; then
+    while IFS= read -r line; do
+      case "$line" in
+        latest-build-in-train:*) logerr "asc-train: ${line}" ;;
+      esac
+    done <"$errf"
+  fi
+  rm -f "$errf" >/dev/null 2>&1 || true
+  if [[ $rc -ne 0 || ! "$out" =~ ^[0-9]+$ ]]; then
+    logerr "asc-train: query failed (rc=${rc}); cannot verify builds already in the train"
+    return 1
+  fi
+  printf '%s' "$out"
+}
+
 # The floor the next sequence must exceed: the highest N any record knows about.
 resolve_seq_floor() {
   local prefix="$1" proj_file="$2" plat="${3:-}"
@@ -926,6 +962,20 @@ elif [[ -n "$FORCE_BUILD" || -n "$FORCE_VERSION" ]]; then
     if [[ "$_of_floor" -ge "$BUILD_NUM" ]]; then
       BUILD_NUM="$((_of_floor + 1))"
       log "build: floor ${_of_floor} is at or above the commit count; using ${BUILD_NUM} instead"
+    fi
+    # The sequence floor tracks the highest <prefix>.N train, not the
+    # CFBundleVersion values already inside the exact train this override
+    # ships to. A legacy 12-digit UTC build can sit in that train, and Apple
+    # rejects a lower build number only after the full archive+upload. Bound
+    # BUILD_NUM by the highest build already uploaded for the exact version.
+    # Failure is fatal for the same reason the floor failure is: an unverified
+    # train is how duplicate build numbers ship.
+    _train_max="$(asc_latest_build_in_train "$MARKETING" "$PLATFORM")" \
+      || die "override path could not verify builds already in ${MARKETING}; refusing to ship"
+    [[ "$_train_max" =~ ^[0-9]+$ ]] || die "train build floor is not a number: ${_train_max}"
+    if [[ "$_train_max" -ge "$BUILD_NUM" ]]; then
+      BUILD_NUM="$((_train_max + 1))"
+      log "build: train ${MARKETING} already holds build ${_train_max}; using ${BUILD_NUM} instead"
     fi
   fi
   # The shipped pair must describe one number.  Unless the operator pinned
