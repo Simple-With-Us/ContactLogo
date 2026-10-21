@@ -2,6 +2,10 @@
 // then from Infisical through fleet-secrets, and keeps the key id and private key together.
 // Runs asc-api.mjs against a local HTTP server with a FAKE fleet-secrets binary and a
 // throwaway HOME.  The JWT header's kid proves which key id was used.  No real secrets.
+//
+// 2026-10-21 (AFC-459): a path on disk is not a credential source.  ASC_KEY_PATH is
+// ignored wherever it appears, and the key comes from the environment or from
+// fleet-secrets.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { chmodSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -50,7 +54,8 @@ function run(env) {
       const base = { PATH: process.env.PATH, HOME: home, FLEET_SECRETS: fake };
       const child = spawn(process.execPath, [script, "GET", url], { env: { ...base, ...env }, stdio: ["ignore", "pipe", "pipe"] });
       child.stdout.resume();
-      child.stderr.resume();
+      let stderr = "";
+      child.stderr.on("data", (d) => { stderr += d; });
       child.on("close", (code) => {
         server.close();
         const jwt = (seen[0] || "").replace(/^Bearer /, "");
@@ -61,7 +66,7 @@ function run(env) {
           kid = part(0).kid;
           iss = part(1).iss;
         }
-        resolve({ code, kid, iss });
+        resolve({ code, kid, iss, stderr });
       });
     });
   });
@@ -101,23 +106,46 @@ test("an env key id with no key material anywhere fails closed", async () => {
   assert.equal(r.kid, null);
 });
 
-test("a complete environment (id, issuer, key file) wins and never calls fleet-secrets", async () => {
-  const keyFile = join(root, "env-key.p8");
-  writeFileSync(keyFile, pem());
-  const r = await run({ ASC_KEY_ID: "ENVKEY0001", ASC_ISSUER_ID: "env-issuer", ASC_KEY_PATH: keyFile, FLEET_SECRETS: join(root, "does-not-exist") });
+test("a complete environment (id, issuer, ASC_KEY_P8) wins and never calls fleet-secrets", async () => {
+  const r = await run({ ASC_KEY_ID: "ENVKEY0001", ASC_ISSUER_ID: "env-issuer", ASC_KEY_P8: pem(), FLEET_SECRETS: join(root, "does-not-exist") });
   assert.equal(r.code, 0);
   assert.equal(r.kid, "ENVKEY0001");
   assert.equal(r.iss, "env-issuer");
+  assert.match(r.stderr, /asc-auth: using ASC_KEY_P8 environment/);
 });
 
-test("only a leading ~/ is expanded in ASC_KEY_PATH", async () => {
-  writeFileSync(join(home, "tilde-key.p8"), pem());
-  const gone = join(root, "does-not-exist");
-  const ok = await run({ ASC_KEY_ID: "TILDEKEY01", ASC_ISSUER_ID: "tilde-issuer", ASC_KEY_PATH: "~/tilde-key.p8", FLEET_SECRETS: gone });
-  assert.equal(ok.code, 0);
-  assert.equal(ok.kid, "TILDEKEY01");
-  const bad = await run({ ASC_KEY_ID: "TILDEKEY01", ASC_ISSUER_ID: "tilde-issuer", ASC_KEY_PATH: "~other/tilde-key.p8", FLEET_SECRETS: gone });
-  assert.notEqual(bad.code, 0);
+test("the APPLE_API_* trio wins over the ASC_* environment", async () => {
+  const r = await run({
+    APPLE_API_KEY_ID: "APPLEKEY01",
+    APPLE_API_ISSUER_ID: "apple-issuer",
+    APPLE_API_KEY_P8_BASE64: Buffer.from(pem(), "utf8").toString("base64"),
+    ASC_KEY_ID: "ENVKEY0001",
+    ASC_ISSUER_ID: "env-issuer",
+    ASC_KEY_P8: pem()
+  });
+  assert.equal(r.code, 0);
+  assert.equal(r.kid, "APPLEKEY01");
+  assert.equal(r.iss, "apple-issuer");
+});
+
+test("an ASC_KEY_P8 that is not a private key is refused as a credential error", async () => {
+  // A truncated key reaches the signer as a stack trace otherwise.
+  const r = await run({ ASC_KEY_ID: "ENVKEY0001", ASC_ISSUER_ID: "env-issuer", ASC_KEY_P8: "not a private key" });
+  assert.notEqual(r.code, 0);
+  assert.equal(r.kid, null);
+  assert.match(r.stderr, /ASC_KEY_P8 is set but is not a PEM private key/);
+});
+
+test("a named ASC_KEY_PATH is ignored:  the credential comes from /asc", async () => {
+  // A path on disk is not an approved credential source (AFC-459), so the file
+  // never decides which key signs the request.
+  const keyFile = join(root, "named-key.p8");
+  writeFileSync(keyFile, pem());
+  const r = await run({ ASC_KEY_PATH: keyFile });
+  assert.equal(r.code, 0);
+  assert.equal(r.kid, "ASCKEY0001");
+  assert.equal(r.iss, "issuer-from-asc");
+  assert.doesNotMatch(r.stderr, /ASC_KEY_PATH/);
 });
 
 test.after(() => rmSync(root, { recursive: true, force: true }));
