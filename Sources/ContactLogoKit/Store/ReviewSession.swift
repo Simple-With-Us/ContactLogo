@@ -114,6 +114,13 @@ public final class ReviewSession: ObservableObject {
     var pipelineForTesting: MatchPipeline?
     /// Tests inject a contacts provider.
     var contactsProviderForTesting: ContactsProvider?
+    /// 2026-09-27 [MM] — where a finished scan reports its own numbers.
+    ///
+    /// Nil means "nobody is listening", which is correct for CLI and web.
+    /// The iOS shell installs a crash-reporter-backed sink so a build that
+    /// miscounts an address book says so off-device, instead of the only
+    /// evidence being a number on a screen nobody screenshotted.
+    public var scanReportSink: ScanReportSink?
     /// Token captured when contacts were enumerated for the current results.
     /// Replaced after apply/undo, which themselves mutate the contact store.
     var scanChangeToken: Data?
@@ -372,6 +379,7 @@ public final class ReviewSession: ObservableObject {
     public func scanAndMatch() async -> Bool {
         lastError = nil
         cancelRequested = false
+        let scanStartedAt = Date()
         #if canImport(Contacts)
         stage = .scanning
         // Stamp the store as it is *before* matching.  A token captured after
@@ -419,6 +427,8 @@ public final class ReviewSession: ObservableObject {
             var businessTargets: [ContactIdentity] = []
             var affiliatedTargets: [ContactIdentity] = []
             var protectedCount = 0
+            var personCount = 0
+            var nonBrandCount = 0
 
             for c in contacts {
                 let klass = pipeline.classify(c)
@@ -436,6 +446,7 @@ public final class ReviewSession: ObservableObject {
                         ))
                     }
                 } else if klass == .person {
+                    personCount += 1
                     if c.hasImage {
                         // People with existing headshots are NEVER logo targets,
                         // regardless of skipPhotos setting.
@@ -468,6 +479,7 @@ public final class ReviewSession: ObservableObject {
                         }
                     }
                 } else if klass == .nonBrand {
+                    nonBrandCount += 1
                     // PR #102 review — generic non-brand names ("Hospital",
                     // "Gift Card", printers) are dropped too; sample them so
                     // the Diagnostic screen can explain that category.
@@ -484,6 +496,33 @@ public final class ReviewSession: ObservableObject {
                 }
             }
             sampleDroppedContacts = droppedSamples
+
+            // 2026-09-27 [MM] — every count the UI shows, snapshotted while
+            // it is all in scope, so all four exit paths below report the
+            // same figures.  A scan that quietly returns a subset of the
+            // database is the defect this exists to make visible: the
+            // numbers on the screen and the numbers off-device have to be
+            // checkable against each other.
+            let fetchedCount = contacts.count
+            let visibleCount = visibleContactCount
+            let authLabel = Self.authorizationLabel(diag)
+            func emitReport(cancelled: Bool, error: String?) {
+                guard let sink = self.scanReportSink else { return }
+                sink.record(ScanReport(
+                    fetched: fetchedCount,
+                    identities: fetchedCount,
+                    visibleInDatabase: visibleCount,
+                    businessCard: businessTargets.count,
+                    affiliated: affiliatedTargets.count,
+                    person: personCount,
+                    nonBrand: nonBrandCount,
+                    protectedCount: protectedCount,
+                    authorization: authLabel,
+                    elapsedSeconds: Date().timeIntervalSince(scanStartedAt),
+                    cancelled: cancelled,
+                    errorDescription: error
+                ))
+            }
 
             protectedPersonCount = protectedCount
             businessTargetsCount = businessTargets.count
@@ -506,6 +545,7 @@ public final class ReviewSession: ObservableObject {
             retryingIDs = []
             stage = .matching(done: 0, total: allTargets.count)
             if cancelRequested || Task.isCancelled {
+                emitReport(cancelled: true, error: nil)
                 stage = .idle
                 return false
             }
@@ -581,6 +621,10 @@ public final class ReviewSession: ObservableObject {
                 return doneCount == allTargets.count && !self.cancelRequested && !Task.isCancelled
             }
 
+            // One report per run, emitted after the group settles so the
+            // cancellation paths inside it do not each fire one.
+            emitReport(cancelled: !completedAll || Task.isCancelled, error: nil)
+
             guard completedAll else {
                 // Keep what finished.  An all-or-nothing scan over thousands
                 // of network matches rarely survives a background window, and
@@ -608,12 +652,37 @@ public final class ReviewSession: ObservableObject {
         } catch {
             stage = .idle
             lastError = .scanFailed(underlying: error.localizedDescription)
+            // 2026-09-27 [MM] — a thrown scan is the case most worth seeing
+            // off-device, because on screen it looks identical to an empty
+            // address book.
+            if let sink = scanReportSink {
+                sink.record(ScanReport(
+                    fetched: 0, identities: 0, visibleInDatabase: visibleContactCount,
+                    businessCard: 0, affiliated: 0, person: 0, nonBrand: 0,
+                    protectedCount: 0, authorization: "unknown",
+                    elapsedSeconds: Date().timeIntervalSince(scanStartedAt),
+                    cancelled: false, errorDescription: error.localizedDescription
+                ))
+            }
             return false
         }
         #else
         stage = .idle
         return false
         #endif
+    }
+
+    /// Stable, human-readable name for an authorization state, so a report
+    /// from a field build is readable without the enum in front of you.
+    static func authorizationLabel(_ state: LimitedAccessState) -> String {
+        switch state {
+        case .open: return "open"
+        case .definite: return "limited"
+        case .heuristic: return "limited-heuristic"
+        case .fullAccessSmallDatabase: return "full-access-small-database"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        }
     }
 
     // MARK: - Apply / undo

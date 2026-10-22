@@ -236,7 +236,7 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     /// asks ("does this contact already have a photo?"), at a fraction of
     /// the cost.  The bytes are still fetched per contact in
     /// `mutableContact(id:)` for the actual get/set operations.
-    internal static var keys: [CNKeyDescriptor] {
+    internal static var scanKeys: [CNKeyDescriptor] {
         [
             CNContactIdentifierKey as CNKeyDescriptor,
             CNContactGivenNameKey as CNKeyDescriptor,
@@ -251,7 +251,7 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
 
     public func fetchCandidates() async throws -> [ContactIdentity] {
         var out: [ContactIdentity] = []
-        let request = CNContactFetchRequest(keysToFetch: Self.keys)
+        let request = CNContactFetchRequest(keysToFetch: Self.scanKeys)
         try store.enumerateContacts(with: request) { contact, _ in
             if let identity = Self.identity(from: contact, requireCandidateShape: true) {
                 out.append(identity)
@@ -263,7 +263,7 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     /// One contact by identifier, for per-row Retry. Skips the enumerate-time
     /// people-only filter so a row already in the queue can be rematched.
     public func fetchCandidate(id: String) async -> ContactIdentity? {
-        guard let contact = try? store.unifiedContact(withIdentifier: id, keysToFetch: Self.keys) else {
+        guard let contact = try? store.unifiedContact(withIdentifier: id, keysToFetch: Self.scanKeys) else {
             return nil
         }
         return Self.identity(from: contact, requireCandidateShape: false)
