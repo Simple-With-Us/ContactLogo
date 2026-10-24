@@ -38,7 +38,10 @@ PIN_FILE="${REPO_ROOT}/scripts/ios-fleet.sha256"
 # asc-key.mjs is pinned since AFC-459:  the App Store Connect credential is
 # validated and staged by it, so an unreviewed edit to it decides which key
 # the ship runs with.
-PINNED_FILES="ship-testflight.sh asc-api.mjs asc-key.mjs apps.json scheduled-ship-gate.sh publish-ios-versions.sh ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json"
+# version-plan.mjs is pinned since AFC-517:  it holds the version-numbering
+# rules (the next patch on the train, the build floor), so an unreviewed edit
+# to it decides which version and which build number the ship carries.
+PINNED_FILES="ship-testflight.sh asc-api.mjs asc-key.mjs apps.json scheduled-ship-gate.sh publish-ios-versions.sh ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json version-plan.mjs"
 
 MODE="check"
 case "${1:-}" in

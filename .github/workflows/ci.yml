@@ -157,6 +157,7 @@ jobs:
           done
           node --check scripts/ios-fleet/asc-api.mjs
           node --check scripts/ios-fleet/asc-key.mjs
+          node --check scripts/ios-fleet/version-plan.mjs
 
       - name: Scheduled ship gate tests
         run: |
@@ -164,6 +165,14 @@ jobs:
           bash scripts/ios-fleet/test-asc-credentials.sh
           node --test scripts/ios-fleet/test-asc-credentials.mjs
           node --test scripts/ios-fleet/test-asc-key.test.mjs
+
+      # The fleet's version-numbering rules (AFC-517):  the marketing version
+      # is the next patch on the app's train and the build number is
+      # INDEPENDENT of it, so App Store Connect can no longer show "1.0.N (N)".
+      # The rules live in scripts/ios-fleet/version-plan.mjs (pure, no I/O);
+      # this is their unit test.  Fully offline:  no network, no credentials.
+      - name: Test the iOS fleet version-numbering rules
+        run: node --test scripts/ios-fleet/version-plan.node-test.mjs
 
       - name: Mac TestFlight contract
         run: python3 scripts/check-mac-testflight-contract.py
