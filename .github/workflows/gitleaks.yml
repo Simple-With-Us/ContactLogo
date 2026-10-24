@@ -57,8 +57,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PUSH_BEFORE: ${{ github.before }}
-          PUSH_AFTER: ${{ github.after }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
         run: |
           set -euo pipefail
           gitleaks version
@@ -78,6 +78,10 @@ jobs:
               range=""
               ;;
           esac
+
+          if [ -z "$range" ]; then
+            echo "::warning::gitleaks is scanning FULL HISTORY instead of the changed commit range. On a push this means the before/after SHAs were empty - check that PUSH_BEFORE/PUSH_AFTER use github.event.before / github.event.after, not github.before / github.after (those are not github-context properties, so they expand to empty and silently blind the scanner to new leaks)."
+          fi
 
           report="${RUNNER_TEMP:-/tmp}/gitleaks-report.json"
           rm -f "$report"
