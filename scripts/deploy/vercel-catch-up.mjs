@@ -12,7 +12,7 @@ const STATES = new Set([...ACTIVE, 'READY', 'ERROR', 'CANCELED']);
 function must(ok, message) { if (!ok) throw new Error(message); }
 function object(x) { return x !== null && typeof x === 'object' && !Array.isArray(x); }
 export function deploymentSha(d) {
-  const values = [d.gitSource?.sha, d.meta?.githubCommitSha, d.meta?.fleetCommitSha].filter(Boolean);
+  const values = [d.gitSource?.sha, d.meta?.githubCommitSha, d.meta?.fleetCommitSha, d.meta?.gitCommitSha, d.meta?.commitSha].filter(Boolean);
   must(values.length > 0 && values.every(x => SHA.test(x) && x === values[0]), 'Deployment commit missing or conflicting');
   return values[0];
 }

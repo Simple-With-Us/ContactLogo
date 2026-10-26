@@ -31,6 +31,11 @@ test('unknown history, timestamp, baseline or metadata fails closed', () => {
  assert.throws(() => decide({baseline:{...baseline,gitSource:{}}}));
  assert.throws(() => deploymentSha({...baseline,meta:{fleetCommitSha:B}}));
 });
+test('CLI baseline SHA from gitCommitSha/commitSha metadata', () => {
+ assert.equal(deploymentSha({meta:{gitCommitSha:A, commitSha:A}}), A);
+ assert.equal(deploymentSha({meta:{gitCommitSha:A}}), A);
+ assert.throws(() => deploymentSha({meta:{gitCommitSha:A, commitSha:B}}));
+});
 test('binding checks stable repo ID and preserves root', () => {
  assert.doesNotThrow(() => assertProject(project,config));
  assert.doesNotThrow(() => assertProject({...project,link:{...project.link,org:'old-owner'}},config));
