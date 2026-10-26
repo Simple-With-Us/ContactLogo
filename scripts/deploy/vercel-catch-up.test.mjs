@@ -35,6 +35,8 @@ test('CLI baseline SHA from gitCommitSha/commitSha metadata', () => {
  assert.equal(deploymentSha({meta:{gitCommitSha:A, commitSha:A}}), A);
  assert.equal(deploymentSha({meta:{gitCommitSha:A}}), A);
  assert.throws(() => deploymentSha({meta:{gitCommitSha:A, commitSha:B}}));
+ assert.equal(deploymentSha({meta:{gitCommitSha:A, gitDirty:'0'}}), A);
+ assert.throws(() => deploymentSha({meta:{gitCommitSha:A, gitDirty:'1'}}));
 });
 test('binding checks stable repo ID and preserves root', () => {
  assert.doesNotThrow(() => assertProject(project,config));
