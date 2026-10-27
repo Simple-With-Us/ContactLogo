@@ -95,7 +95,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.google.android.play:app-update:2.1.0")
     // Crash + ANR + Replay + profiling.  Mapping upload is the Gradle plugin below.
-    implementation("io.sentry:sentry-android:8.61.0")
+    implementation("io.sentry:sentry-android:8.61.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
