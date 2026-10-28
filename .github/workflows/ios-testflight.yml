@@ -14,7 +14,7 @@ name: ContactLogo iOS TestFlight
 #     the script defaults.  Never set IOS_TF_MIN_INTERVAL_SEC or any other gate
 #     override as a standing value in this file;
 #   - ensure-tf-ready (export compliance on the build this run uploaded) and the
-#     mandatory What to Test notes (IOS_TF_RELEASE_NOTES=1, AGENT-SYNC template).
+#     mandatory What to Test notes (IOS_TF_RELEASE_NOTES=1, FLEET-PROTOCOL template).
 # Nothing here depends on a repository variable.  The old CL_IOS_TESTFLIGHT_ENABLED
 # and CL_APPLE_ID gates were never set, so every push skipped in one second and
 # the last build stayed 1.0.3.  The numeric app id now lives in
