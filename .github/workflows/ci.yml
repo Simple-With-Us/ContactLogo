@@ -149,6 +149,7 @@ jobs:
         run: |
           set -e
           for f in scripts/ios-fleet/ship-testflight.sh scripts/ios-fleet/scheduled-ship-gate.sh \
+                   scripts/ios-fleet/test-fixed-version.sh \
                    scripts/ios-collect-ship-logs.sh scripts/ios-stage-asc-key.sh \
                    scripts/mac-appstore-gm-prepare.sh scripts/mac-export-appstore-pkg.sh \
                    scripts/mac-install-appstore-profiles.sh scripts/ios-fleet-pin.sh; do
@@ -175,8 +176,11 @@ jobs:
       - name: Test the iOS fleet version-numbering rules
         run: node --test scripts/ios-fleet/version-plan.node-test.mjs
 
-      - name: Fleet shared build counter (offline)
-        run: node --test scripts/ios-fleet/shared-build.test.mjs
+      - name: Fleet shared merge-timestamp build (offline)
+        run: |
+          node --test scripts/ios-fleet/shared-build.test.mjs
+          node --test scripts/ios-fleet/test-next-shared-build.test.mjs
+          bash scripts/ios-fleet/test-fixed-version.sh
 
       - name: Mac TestFlight contract
         run: python3 scripts/check-mac-testflight-contract.py
