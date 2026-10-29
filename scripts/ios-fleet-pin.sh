@@ -41,7 +41,9 @@ PIN_FILE="${REPO_ROOT}/scripts/ios-fleet.sha256"
 # version-plan.mjs is pinned since AFC-517:  it holds the version-numbering
 # rules (the next patch on the train, the build floor), so an unreviewed edit
 # to it decides which version and which build number the ship carries.
-PINNED_FILES="ship-testflight.sh asc-api.mjs asc-key.mjs apps.json scheduled-ship-gate.sh publish-ios-versions.sh ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json version-plan.mjs"
+# shared-build.mjs is pinned:  it decides the uploaded build in fixed mode
+# (the shared four-digit counter), like version-plan.mjs.
+PINNED_FILES="ship-testflight.sh asc-api.mjs asc-key.mjs apps.json scheduled-ship-gate.sh publish-ios-versions.sh ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json version-plan.mjs shared-build.mjs"
 
 MODE="check"
 case "${1:-}" in
