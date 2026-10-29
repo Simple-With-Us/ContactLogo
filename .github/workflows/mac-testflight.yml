@@ -1,5 +1,14 @@
 name: Mac TestFlight
 
+# The Mac TestFlight lane (CL-203), called by .github/workflows/testflight.yml.
+# That workflow owns every trigger, plans ONE build per release, and hands
+# the single value to this lane (and the iOS lane) as the required `build`
+# input.  This file carries no push/schedule triggers of its own.
+#
+# A standalone workflow_dispatch stays available as the explicit per-lane
+# instruction:  pass a planned `build`, or leave it empty to plan one on
+# the runner (the same --plan-build-only the release workflow runs).
+#
 # CL-203 (2026-10-17): every merge to main that changes the Mac app becomes a
 # TestFlight build of ContactLogo for Mac, with no human step.  The Developer ID
 # / Sparkle release (mac-release.yml) is a different channel: it reaches the
@@ -14,23 +23,25 @@ name: Mac TestFlight
 # provisioning service rejects the fleet App Store Connect key.  See
 # docs/AUTO-UPDATE.md, Mac TestFlight.
 #
-# The ship goes through scripts/ios-fleet/ship-testflight.sh, the fleet script,
-# with its defaults: one TestFlight build per app per hour, and a same-HEAD
+# Versioning (fixed mode):  the marketing version is the fixedMarketingVersion
+# in scripts/ios-fleet/apps.json (0.1.0, it does not count up per ship) and
+# the build is the shared merge-timestamp value planned once per release
+# (max(S, M + 1)), passed here as `build` and on to the fleet script via
+# --build.  The ship goes through scripts/ios-fleet/ship-testflight.sh with
+# its defaults: one TestFlight build per app per hour, and a same-HEAD
 # skip.  Nothing here sets IOS_TF_MIN_INTERVAL_SEC or passes --force-ship as a
 # standing value; the force_ship input below is a per-run choice and defaults to
-# false.  Marketing version and build number (both the repo commit count) come
-# from the script, and the mandatory What to Test note is
-# published (IOS_TF_RELEASE_NOTES=1).
+# false.  The mandatory What to Test note is published (IOS_TF_RELEASE_NOTES=1).
 #
-# WHY THERE IS A `schedule:` TRIGGER
+# THE GATE
 #   The one-hour rate gate skips a merge that lands inside the window of the
-#   previous ship, and a skipped push never ships later by itself.  The hourly
-#   tick finds that merge: scripts/ios-fleet/scheduled-ship-gate.sh passes only when
+#   previous ship, and a skipped push never ships later by itself.  The
+#   release caller's catch-up ticks find that merge:
+#   scripts/ios-fleet/scheduled-ship-gate.sh passes only when
 #   Apps/ContactLogoMac/, Apps/ContactLogoMacAppStore/, Sources/ or project.yml
 #   changed since the last successful ship, so a web, Android or iOS-only commit
-#   never produces a Mac build.  The gate runs on a cheap Linux runner; the
-#   macOS job starts only when it votes to ship.  It also covers a bot merge,
-#   which GitHub does not turn into a push event.
+#   never produces a Mac build.  The gate below re-verifies on a cheap Linux
+#   runner; the macOS job starts only when it votes to ship.
 #
 # Ship state (the last ship's time and sha) lives in ~/.cache/ios-fleet and is
 # kept between runs with actions/cache, because a hosted runner starts empty.
@@ -40,7 +51,8 @@ name: Mac TestFlight
 # (altool --validate-app) without uploading anything.
 #
 # Secrets (names only; no value is ever printed), all read at runtime from Fleet
-# Secrets through the Simple-With-Us org machine identity:
+# Secrets through the Simple-With-Us org machine identity (a release call
+# passes them through secrets: inherit):
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8            Fleet-OPS prod /asc
 #   IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD       Fleet-OPS prod /mac-certs
 #                                                    (Apple Distribution)
@@ -52,32 +64,28 @@ name: Mac TestFlight
 #   SENTRY_DSN_MACOS, SENTRY_AUTH_TOKEN              ContactLogo project, best effort
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'Apps/ContactLogoMac/**'
-      - 'Apps/ContactLogoMacAppStore/**'
-      - 'Sources/**'
-      - 'project.yml'
-      - 'scripts/ios-fleet/ship-testflight.sh'
-      - 'scripts/ios-fleet/asc-api.mjs'
-      - 'scripts/ios-fleet/apps.json'
-      - 'scripts/ios-fleet/scheduled-ship-gate.sh'
-      - 'scripts/ios-fleet/ExportOptions-*.plist'
-      - 'scripts/ios-fleet/mac-appstore-profiles.json'
-      - 'scripts/ios-fleet-pin.sh'
-      - 'scripts/ios-fleet.sha256'
-      - 'scripts/ios-stage-asc-key.sh'
-      - 'scripts/ios-collect-ship-logs.sh'
-      - 'scripts/mac-appstore-gm-prepare.sh'
-      - 'scripts/mac-export-appstore-pkg.sh'
-      - 'scripts/mac-install-appstore-profiles.sh'
-      - '.github/actions/infisical-secrets/**'
-      - '.github/workflows/mac-testflight.yml'
-  schedule:
-    - cron: '17 * * * *'
+  workflow_call:
+    inputs:
+      build:
+        description: 'The release build planned once by testflight.yml (12-digit merge-timestamp build)'
+        required: true
+        type: string
+      validate_only:
+        description: 'Build the signed package and have App Store Connect validate it; upload nothing'
+        required: false
+        default: false
+        type: boolean
+      force_ship:
+        description: 'Bypass the one-hour rate gate and the same-HEAD skip for THIS run only'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
+      build:
+        description: 'Planned 12-digit merge-timestamp build (leave empty to plan it on the runner)'
+        required: false
+        type: string
       validate_only:
         description: 'Build the signed package and have App Store Connect validate it; upload nothing'
         required: false
@@ -139,9 +147,9 @@ jobs:
     name: Mac App Store archive and TestFlight upload
     needs: gate
     if: needs.gate.outputs.should_ship == '1'
-    # Shared with ios-testflight.yml's ship job: the fixed-version build
-    # counter is one per app across iOS and macOS, so the two lanes must
-    # never plan a build at the same time.  Queued, never cancelled.
+    # Shared with ios-testflight.yml's ship job: the release build is one per
+    # app across iOS and macOS (planned once by testflight.yml), so the two
+    # lanes must never upload at the same time.  Queued, never cancelled.
     concurrency:
       group: contactlogo-testflight
       cancel-in-progress: false
@@ -267,6 +275,27 @@ jobs:
           export ASC_KEY_PATH
           bash "$GITHUB_WORKSPACE/scripts/mac-appstore-gm-prepare.sh"
 
+      # The release caller hands the one planned build in;  a standalone
+      # dispatch without one plans it here instead (the same read-only
+      # --plan-build-only, on the App Store Connect credential above).
+      - name: Resolve the release build
+        id: build
+        env:
+          BUILD_INPUT: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BUILD_INPUT:-}" ]; then
+            [[ "$BUILD_INPUT" =~ ^[1-9][0-9]{11}$ ]] || { echo "::error::build input is not a 12-digit merge-timestamp build"; exit 1; }
+            build="$BUILD_INPUT"
+            echo "[mac-testflight] release build from the caller: $build"
+          else
+            echo "[mac-testflight] no build input; planning it on this runner"
+            build="$(bash scripts/ios-fleet/ship-testflight.sh contactlogo-mac --repo-root "$GITHUB_WORKSPACE" --plan-build-only)"
+            [[ "$build" =~ ^[1-9][0-9]{11}$ ]] || { echo "::error::plan-build: malformed build '${build}'"; exit 1; }
+            echo "[mac-testflight] planned release build: $build"
+          fi
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+
       # No IOS_TF_MIN_INTERVAL_SEC here, and --force-ship only when someone
       # chose it for this one run.  The standing limit is the fleet script's
       # DEFAULT_MIN_INTERVAL_SEC (one hour); editing it is the owner's call.
@@ -275,6 +304,7 @@ jobs:
         env:
           IOS_TF_RELEASE_NOTES: "1"   # Owner 2026-09-08: What to Test is mandatory
           MAC_MANUAL_SIGN: "1"        # App Store profile, no Xcode provisioning service
+          RELEASE_BUILD: ${{ steps.build.outputs.build }}
         run: |
           set +o xtrace
           set -euo pipefail
@@ -282,7 +312,7 @@ jobs:
           if [ -n "${SENTRY_DSN_MACOS:-}" ]; then
             export SENTRY_DSN="$SENTRY_DSN_MACOS"
           fi
-          args=(contactlogo-mac --repo-root "$GITHUB_WORKSPACE")
+          args=(contactlogo-mac --repo-root "$GITHUB_WORKSPACE" --build "$RELEASE_BUILD")
           if [ "$SHIP_MODE" = "validate" ]; then
             echo "[mac-testflight] validate mode: build the signed package, upload nothing"
             args+=(--export-only)

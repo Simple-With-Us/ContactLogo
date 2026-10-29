@@ -1,6 +1,6 @@
 // Test-only App Store Connect stub for asc-api.mjs, loaded via
 // `node --import <this file>`.  Replaces global fetch before the client runs
-// and answers the /v1/apps and /v1/builds reads next-shared-build makes.
+// and answers the /v1/apps and /v1/builds reads plan-release-build makes.
 // No network:  any other host throws, and every requested URL is appended to
 // $STUB_ASC_LOG.  $STUB_ASC_SCENARIO varies the links shape of the builds
 // pages ("paired" and "single" answer plain pages; "links-*" answers a
@@ -13,7 +13,8 @@ const LOG = process.env.STUB_ASC_LOG || "";
 const APPS = {
   "com.example.wl": "app-wl",
   "com.example.wl.mac": "app-wlmac",
-  "com.example.solo": "app-solo"
+  "com.example.solo": "app-solo",
+  "com.example.big": "app-big"
 };
 
 // One static inventory; the scenario only changes the links shape.
@@ -23,7 +24,9 @@ const BUILDS = {
   "app-wlmac|IOS": ["1500"],
   "app-wlmac|MAC_OS": ["1300"],
   "app-solo|IOS": ["1200"],
-  "app-solo|MAC_OS": ["1300"]
+  "app-solo|MAC_OS": ["1300"],
+  "app-big|IOS": ["209912312359"],
+  "app-big|MAC_OS": []
 };
 
 function linksFor() {

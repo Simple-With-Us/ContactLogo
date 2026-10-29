@@ -1,7 +1,8 @@
-// Contract test for `asc-api.mjs next-shared-build` against a stub App Store
-// Connect (see ./stub-asc-fetch.mjs, loaded via `node --import`).  Fully
-// offline:  a throwaway key is generated here, fetch never leaves the
-// process, and every requested URL is asserted from the stub's call log.
+// Contract test for `asc-api.mjs plan-release-build` (and its original name
+// `next-shared-build`) plus `max-build`, against a stub App Store Connect
+// (see ./stub-asc-fetch.mjs, loaded via `node --import`).  Fully offline:  a
+// throwaway key is generated here, fetch never leaves the process, and every
+// requested URL is asserted from the stub's call log.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFile } from "node:child_process";
@@ -15,6 +16,7 @@ import { nextSharedBuild } from "./shared-build.mjs";
 
 const execFileAsync = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
+const STAMP = "202610290000";
 
 // A throwaway key pair, generated here and never committed.  The client
 // parses a PEM before it accepts it, so a fake envelope is not a key.
@@ -68,17 +70,32 @@ function buildsCall(calls, appId, platform) {
     url.includes(`filter[preReleaseVersion.platform]=${platform}`));
 }
 
-test("prints nextSharedBuild over an iOS build, a macOS build and a floor", async () => {
+test("prints the merge stamp when the inventory sits below it", async () => {
   const expected = nextSharedBuild({
     iosBuilds: ["1200"],
     macBuilds: ["1300"],
     extraFloors: [1400],
-    complete: true
+    complete: true,
+    mergeStamp: STAMP
   });
-  const res = await runClient(["next-shared-build", "com.example.solo", "1400"], "single");
+  assert.equal(expected.build, STAMP);
+  const res = await runClient(
+    ["plan-release-build", "com.example.solo", "1400", "--merge-stamp", STAMP],
+    "single"
+  );
   assert.equal(res.code, 0);
   assert.equal(res.stdout, expected.build);
-  assert.equal(res.stdout, "1401");
+  assert.match(res.stderr, /1 iOS build\(s\) \+ 1 macOS build\(s\) inspected/);
+  assert.match(res.stderr, new RegExp(`merge stamp ${STAMP}`));
+});
+
+test("next-shared-build is the same command under its original name", async () => {
+  const res = await runClient(
+    ["next-shared-build", "com.example.solo", "1400", "--merge-stamp", STAMP],
+    "single"
+  );
+  assert.equal(res.code, 0);
+  assert.equal(res.stdout, STAMP);
 });
 
 test("collects both platforms of both apps when paired", async () => {
@@ -86,13 +103,15 @@ test("collects both platforms of both apps when paired", async () => {
     iosBuilds: ["1200", "1500"],
     macBuilds: ["1100", "1300"],
     extraFloors: [1400],
-    complete: true
+    complete: true,
+    mergeStamp: STAMP
   });
   // The max (1500) sits in the PAIRED app's iOS list:  a client that only
-  // reads the paired app's macOS builds answers 1401, not 1501.
-  assert.equal(expected.build, "1501");
+  // reads the paired app's macOS builds still answers the stamp here, so the
+  // call log below (not the value) pins the four inventories.
+  assert.equal(expected.build, STAMP);
   const res = await runClient(
-    ["next-shared-build", "com.example.wl", "com.example.wl.mac", "1400"],
+    ["plan-release-build", "com.example.wl", "com.example.wl.mac", "1400", "--merge-stamp", STAMP],
     "paired"
   );
   assert.equal(res.code, 0);
@@ -104,25 +123,83 @@ test("collects both platforms of both apps when paired", async () => {
   assert.ok(buildsCall(res.calls, "app-wlmac", "MAC_OS"), "reads MAC_OS of the paired app");
 });
 
-test("single app without a paired bundle id stays on one app", async () => {
-  const res = await runClient(["next-shared-build", "com.example.solo"], "single");
+test("an existing build at or above the stamp moves one up", async () => {
+  const res = await runClient(
+    ["plan-release-build", "com.example.big", "--merge-stamp", STAMP],
+    "single"
+  );
   assert.equal(res.code, 0);
-  assert.equal(res.stdout, "1301");
+  assert.equal(res.stdout, "209912312360");
+});
+
+test("single app without a paired bundle id stays on one app", async () => {
+  const res = await runClient(
+    ["plan-release-build", "com.example.solo", "--merge-stamp", STAMP],
+    "single"
+  );
+  assert.equal(res.code, 0);
+  assert.equal(res.stdout, STAMP);
   assert.ok(!res.calls.some((url) => url.includes("filter[app]=app-wl")),
     "never queries another app");
 });
 
+test("a missing or malformed merge stamp exits 2 with no build", async () => {
+  const missing = await runClient(["plan-release-build", "com.example.solo"], "single");
+  assert.equal(missing.code, 2);
+  assert.match(missing.stderr, /--merge-stamp <S> is required/);
+  assert.equal(missing.stdout, "");
+  for (const bad of ["999", "022610290000", "2026102900000"]) {
+    const res = await runClient(
+      ["plan-release-build", "com.example.solo", "--merge-stamp", bad],
+      "single"
+    );
+    assert.equal(res.code, 2, bad);
+    assert.match(res.stderr, /--merge-stamp <S> is required/, bad);
+    assert.equal(res.stdout, "", `${bad} prints no build`);
+  }
+});
+
 test("malformed pagination exits 2", async () => {
   for (const scenario of ["links-string", "links-next-number", "links-next-object", "links-null"]) {
-    const res = await runClient(["next-shared-build", "com.example.solo"], scenario);
+    const res = await runClient(
+      ["plan-release-build", "com.example.solo", "--merge-stamp", STAMP],
+      scenario
+    );
     assert.equal(res.code, 2, scenario);
-    assert.match(res.stderr, /next-shared-build: malformed pagination/, scenario);
+    assert.match(res.stderr, /plan-release-build: malformed pagination/, scenario);
     assert.equal(res.stdout, "", `${scenario} prints no build`);
   }
 });
 
 test("null next link is the last page, not malformed", async () => {
-  const res = await runClient(["next-shared-build", "com.example.solo"], "links-next-null");
+  const res = await runClient(
+    ["plan-release-build", "com.example.solo", "--merge-stamp", STAMP],
+    "links-next-null"
+  );
   assert.equal(res.code, 0);
-  assert.equal(res.stdout, "1301");
+  assert.equal(res.stdout, STAMP);
+});
+
+test("max-build prints one app record on one platform", async () => {
+  const ios = await runClient(["max-build", "com.example.wl", "IOS"], "paired");
+  assert.equal(ios.code, 0);
+  assert.equal(ios.stdout, "1200");
+  const mac = await runClient(["max-build", "com.example.wl", "MAC_OS"], "paired");
+  assert.equal(mac.code, 0);
+  assert.equal(mac.stdout, "1100");
+  const big = await runClient(["max-build", "com.example.big", "IOS"], "single");
+  assert.equal(big.code, 0);
+  assert.equal(big.stdout, "209912312359");
+  const empty = await runClient(["max-build", "com.example.big", "MAC_OS"], "single");
+  assert.equal(empty.code, 0);
+  assert.equal(empty.stdout, "0");
+});
+
+test("max-build fails closed on an unknown app or platform", async () => {
+  const unknown = await runClient(["max-build", "com.example.nobody", "IOS"], "single");
+  assert.equal(unknown.code, 2);
+  assert.equal(unknown.stdout, "");
+  const platform = await runClient(["max-build", "com.example.wl", "TVOS"], "paired");
+  assert.equal(platform.code, 2);
+  assert.equal(platform.stdout, "");
 });

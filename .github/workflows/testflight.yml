@@ -1,0 +1,254 @@
+name: ContactLogo TestFlight
+
+# The one TestFlight release workflow (owner, Oct 29 2026):  it owns every
+# trigger, plans ONE build per release, and hands that single value to both
+# platform lanes.  ios-testflight.yml and mac-testflight.yml are reusable
+# lanes (workflow_call):  they carry no push/schedule triggers of their own
+# and ship only the build this workflow planned.
+#
+# Versioning (fixed mode):  the marketing version is the lane's
+# fixedMarketingVersion in scripts/ios-fleet/apps.json (0.1.0), and the build
+# is the shared merge-timestamp value max(S, M + 1), where S is the HEAD
+# committer date in America/Chicago as YYYYMMDDHHMM and M is the highest
+# first numeric component among every build of both apps plus every extra
+# floor.  A rebuild of the same commit still goes up.  The plan-build job
+# below computes it once per release via `ship-testflight.sh --plan-build-only`
+# (read-only:  it plans a number, it ships nothing);  each ship job receives
+# it as the required `build` input and passes it to the fleet script via
+# --build.  The lanes re-validate it against their own platform max, so a
+# stale value fails closed instead of uploading.
+#
+# Triggers (merged from the two lanes; the cron expressions are unchanged):
+#   push to main, filtered to the union of both lanes' paths (native trees,
+#   project.yml, the ship tooling, these three workflow files);
+#   schedule, the twice-hourly iOS catch-up plus the hourly Mac catch-up;
+#   workflow_dispatch, with the merged lane inputs (below).
+#
+# Gates:  the union push filter cannot express per-lane intent (a Mac-only
+# merge matches it), so gate-ios and gate-mac ALWAYS take the path-diff
+# (--event schedule):  each lane ships only when its own source tree changed
+# since its last successful ship, on push and dispatch exactly as on cron.
+# A standalone dispatch of a lane file stays an explicit per-lane instruction
+# (its own gate still votes ship);  that is the escape hatch for a no-change
+# rebuild.  When a gate skips, its lane is never called and nothing uploads.
+# The fleet script's own same-HEAD skip and rate gate still apply inside
+# every ship;  nothing here sets IOS_TF_MIN_INTERVAL_SEC or passes
+# --force-ship as a standing value.
+#
+# Dispatch inputs are lane-scoped:  export_only is the iOS signing check
+# (archive + export, no upload), so it skips the Mac call rather than
+# producing a Mac upload as a side effect;  validate_only is the Mac
+# validation request (build the signed package, upload nothing), so it skips
+# the iOS call.  force_ship bypasses the Mac rate gate and same-HEAD skip
+# for this run only (the iOS lane has no force input, unchanged).  A plain
+# dispatch ships every lane whose tree changed.
+#
+# Concurrency:  releases run one at a time in merge order
+# (contactlogo-testflight-release), so two releases can never plan a build
+# concurrently;  the lanes keep their existing groups, including the shared
+# job-level contactlogo-testflight group that serializes the two uploads.
+#
+# Ship state (last-ship sha and time) lives in ~/.cache/ios-fleet, restored
+# here for the gates and in each lane for its ship;  a hosted runner starts
+# empty every job.  The gates restore only;  the ships save.
+#
+# Secrets (names only; no value is ever printed):  the plan-build job loads
+# ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 exactly the way the ship jobs do
+# (Fleet Secrets Fleet-OPS prod /asc through the Simple-With-Us org machine
+# identity; same-named repository secrets are only the GH_FALLBACK_ path).
+# Lane secrets pass through secrets: inherit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Apps/ContactLogoiOS/**'
+      - 'Apps/ContactLogoMac/**'
+      - 'Apps/ContactLogoMacAppStore/**'
+      - 'Sources/**'
+      - 'project.yml'
+      - '.github/workflows/testflight.yml'
+      - '.github/workflows/ios-testflight.yml'
+      - '.github/workflows/mac-testflight.yml'
+      - '.github/actions/infisical-secrets/**'
+      - 'scripts/ios-ship-testflight.sh'
+      - 'scripts/ios-appstore-gm-prepare.sh'
+      - 'scripts/ios-stage-asc-key.sh'
+      - 'scripts/ios-collect-ship-logs.sh'
+      - 'scripts/ios-fleet/**'
+      - 'scripts/ios-fleet-pin.sh'
+      - 'scripts/ios-fleet.sha256'
+      - 'scripts/mac-appstore-gm-prepare.sh'
+      - 'scripts/mac-export-appstore-pkg.sh'
+      - 'scripts/mac-install-appstore-profiles.sh'
+      # The two Sentry helpers run in ci.yml only; they are not ship tooling.
+      - '!scripts/ios-fleet/check-built-sentry-dsn.sh'
+      - '!scripts/ios-fleet/upload-sentry-dsyms.sh'
+  schedule:
+    # Twice an hour, offset from the other fleet repos (Socratic.Trade '*/30',
+    # Congress.Trade '7,37', Usage-Monitor '13,43', CodeCaps '26,56').
+    - cron: '19,49 * * * *'
+    # Hourly Mac catch-up.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      export_only:
+        description: 'Archive + export the iOS IPA only; do not upload (signing check; skips the Mac lane)'
+        type: boolean
+        default: false
+      validate_only:
+        description: 'Build the signed Mac package and have App Store Connect validate it; upload nothing (skips the iOS lane)'
+        required: false
+        default: false
+        type: boolean
+      force_ship:
+        description: 'Bypass the Mac one-hour rate gate and the same-HEAD skip for THIS run only'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contactlogo-testflight-release
+  cancel-in-progress: false
+
+jobs:
+  gate-ios:
+    name: iOS ship gate
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_ship: ${{ steps.gate.outputs.should_ship }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The gate diffs HEAD against the sha of the last successful ship,
+          # which can be many commits back.  A shallow clone makes that range
+          # uncomputable.
+          fetch-depth: 0
+
+      - name: Restore iOS ship state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ios-fleet
+          key: ios-fleet-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ios-fleet-contactlogo-
+
+      # Always the path-diff (--event schedule), on push and dispatch exactly
+      # as on cron:  the union push filter above cannot express per-lane
+      # intent, so a Mac-only merge must not ship iOS (and vice versa).
+      - name: Ship gate (skip unless iOS code changed)
+        id: gate
+        run: |
+          bash scripts/ios-fleet/scheduled-ship-gate.sh \
+            --event schedule \
+            --path-prefix 'Apps/ContactLogoiOS/' \
+            --path-prefix 'Sources/ContactLogoKit/' \
+            --path-prefix 'project.yml' \
+            --repo-root "$GITHUB_WORKSPACE" \
+            contactlogo
+
+  gate-mac:
+    name: Mac ship gate
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_ship: ${{ steps.gate.outputs.should_ship }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The gate diffs HEAD against the sha of the last successful ship,
+          # which can be many commits back.  A shallow clone makes that range
+          # uncomputable.
+          fetch-depth: 0
+
+      - name: Restore Mac ship state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ios-fleet
+          key: ios-fleet-mac-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ios-fleet-mac-contactlogo-
+
+      # Always the path-diff (--event schedule):  see gate-ios above.
+      - name: Ship gate (skip unless the Mac app changed)
+        id: gate
+        run: |
+          bash scripts/ios-fleet/scheduled-ship-gate.sh \
+            --event schedule \
+            --path-prefix 'Apps/ContactLogoMac/' \
+            --path-prefix 'Apps/ContactLogoMacAppStore/' \
+            --path-prefix 'Sources/' \
+            --path-prefix 'project.yml' \
+            --repo-root "$GITHUB_WORKSPACE" \
+            contactlogo-mac
+
+  plan-build:
+    name: Plan the release build
+    needs: [gate-ios, gate-mac]
+    if: needs.gate-ios.outputs.should_ship == '1' || needs.gate-mac.outputs.should_ship == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      - name: Verify the in-repo ship tooling pin
+        run: bash scripts/ios-fleet-pin.sh --check
+
+      - name: Load App Store Connect key (Fleet Secrets via Infisical)
+        uses: ./.github/actions/infisical-secrets
+        with:
+          names: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
+          project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
+          secret-path: /asc
+          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+        env:
+          GH_FALLBACK_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          GH_FALLBACK_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GH_FALLBACK_ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+
+      # The ONE plan per release.  App key contactlogo is paired with
+      # contactlogo-mac in the registry, so the inventory covers both apps
+      # on both platforms and the single value ships on either.  Read-only:
+      # it plans a number, it ships nothing.  Stdout is exactly the build.
+      - name: Plan one build for every ship job
+        id: plan
+        run: |
+          set -euo pipefail
+          build="$(bash scripts/ios-fleet/ship-testflight.sh contactlogo --repo-root "$GITHUB_WORKSPACE" --plan-build-only)"
+          [[ "$build" =~ ^[1-9][0-9]{11}$ ]] || { echo "::error::plan-build: malformed build '${build}'"; exit 1; }
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+          echo "[plan-build] release build: ${build}"
+
+  ship-ios:
+    name: Ship iOS to TestFlight
+    needs: [gate-ios, plan-build]
+    if: needs.gate-ios.outputs.should_ship == '1' && inputs.validate_only != true
+    uses: ./.github/workflows/ios-testflight.yml
+    with:
+      build: ${{ needs.plan-build.outputs.build }}
+      export_only: ${{ inputs.export_only || false }}
+    secrets: inherit
+
+  ship-mac:
+    name: Ship Mac to TestFlight
+    needs: [gate-mac, plan-build]
+    if: needs.gate-mac.outputs.should_ship == '1' && inputs.export_only != true
+    uses: ./.github/workflows/mac-testflight.yml
+    with:
+      build: ${{ needs.plan-build.outputs.build }}
+      validate_only: ${{ inputs.validate_only || false }}
+      force_ship: ${{ inputs.force_ship || false }}
+    secrets: inherit

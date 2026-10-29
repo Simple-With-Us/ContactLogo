@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Static contract for the ContactLogo for Mac TestFlight pipeline (CL-203).
+"""Static contract for the ContactLogo TestFlight release (CL-203/CL-204).
+
+One owner workflow (.github/workflows/testflight.yml) owns every trigger,
+plans ONE merge-timestamp build per release, and hands it to the iOS and Mac
+lanes (ios-testflight.yml, mac-testflight.yml), which are reusable
+(workflow_call) and carry no push/schedule triggers of their own.
 
 The pipeline has several parts that only fail together, and each failure shows
 up late: after a merge, in a macOS job that takes ten minutes to reach the
@@ -7,14 +12,19 @@ upload.  This check runs in CI on every pull request and fails fast on the
 mistakes that would otherwise produce a green PR followed by a rejected upload
 or a merge that never ships:
 
-  * the workflow must fire on a push to main that touches the Mac native tree,
-    must be dispatchable, must fetch full history, must ship through the fleet
-    script with the mandatory What to Test note, and must never set the rate
-    gate override as a standing value;
+  * the owner must fire on a push to main that touches either native tree,
+    must keep both catch-up crons, must be dispatchable with the merged
+    inputs, must gate each lane by its own paths, must plan one build and
+    hand the same value to both lanes;
+  * each lane must require the planned build, must pass it via --build, must
+    fetch full history, must ship through the fleet script with the mandatory
+    What to Test note, and must never set the rate gate override as a
+    standing value;
   * the App Store target must not link or compile Sparkle, must use the update
     stub, and must carry no temporary-exception entitlement;
-  * the profile map, project.yml, the registry and the workflow must agree on
-    the bundle id, the profile name, the scheme and the source paths.
+  * the profile map, project.yml, the registry and the workflows must agree on
+    the bundle id, the profile name, the scheme, the fixed versions and the
+    source paths.
 
 Standard library only.  Exit status 0 when every check passes.
 """
@@ -66,60 +76,134 @@ def code_lines(text):
     return [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
 
 
-# ---------------------------------------------------------------- workflow
-print("== workflow ==")
-wf = read(".github/workflows/mac-testflight.yml")
-wf_code = "\n".join(code_lines(wf))
-on_block = block(wf, "on:", 0)
-push_block = block(on_block, "  push:", 2)
+# ---------------------------------------------------------------- release owner
+print("== release owner (.github/workflows/testflight.yml) ==")
+owner = read(".github/workflows/testflight.yml")
+owner_code = "\n".join(code_lines(owner))
+owner_on = block(owner, "on:", 0)
+owner_push = block(owner_on, "  push:", 2)
 
 # Exact match, not a substring:  exactly one `branches:` key under push (a
 # `branches-ignore:` or a second key fails too), written as the one-item flow
 # list `[main]`.  A block-style list or any extra branch fails the check.
 branch_lines = [
     ln.split("#", 1)[0].rstrip()
-    for ln in push_block.splitlines()
+    for ln in owner_push.splitlines()
     if ln.strip().startswith("branches")
 ]
 check(
     len(branch_lines) == 1 and re.fullmatch(r"\s*branches:\s*\[\s*main\s*\]", branch_lines[0]) is not None,
-    "push trigger is limited to main (exactly `branches: [main]`)",
+    "owner push trigger is limited to main (exactly `branches: [main]`)",
 )
 for needed in (
+    "Apps/ContactLogoiOS/**",
     "Apps/ContactLogoMac/**",
     "Apps/ContactLogoMacAppStore/**",
     "Sources/**",
     "project.yml",
+    ".github/workflows/testflight.yml",
+    ".github/workflows/ios-testflight.yml",
     ".github/workflows/mac-testflight.yml",
+    ".github/actions/infisical-secrets/**",
+    "scripts/ios-fleet/**",
+    "scripts/ios-fleet-pin.sh",
+    "scripts/ios-fleet.sha256",
 ):
-    check(f"- '{needed}'" in push_block, f"push paths filter covers {needed}")
-check("workflow_dispatch:" in on_block, "workflow_dispatch is available")
-check("schedule:" in on_block, "a scheduled catch-up exists")
-check("scripts/ios-fleet/scheduled-ship-gate.sh" in wf_code, "the scheduled catch-up carries the path gate")
-check(wf_code.count("fetch-depth: 0") >= 2, "the gate and the ship checkout full history (fetch-depth: 0)")
-check("scripts/ios-fleet/ship-testflight.sh" in wf_code, "the ship goes through the fleet ship script")
-check(re.search(r'IOS_TF_RELEASE_NOTES:\s*"1"', wf_code) is not None, "What to Test is published (IOS_TF_RELEASE_NOTES=1)")
-check(re.search(r"IOS_TF_MIN_INTERVAL_SEC\s*[:=]", wf_code) is None, "the rate-gate override is never set as a standing value")
-force_lines = [i for i, ln in enumerate(wf_code.splitlines()) if "--force-ship" in ln]
-lines = wf_code.splitlines()
+    check(f"- '{needed}'" in owner_push, f"owner push paths filter covers {needed}")
+check("workflow_dispatch:" in owner_on, "owner workflow_dispatch is available")
+owner_dispatch = block(owner_on, "  workflow_dispatch:", 2)
+for name in ("export_only:", "validate_only:", "force_ship:"):
+    check(name in owner_dispatch, f"owner dispatch merges {name[:-1]}")
+check("force_ship:" in owner_dispatch and "default: false" in owner_dispatch,
+      "owner force_ship defaults to false")
+check("cron: '19,49 * * * *'" in owner_on and "cron: '17 * * * *'" in owner_on,
+      "owner keeps both catch-up crons unchanged")
+check("scripts/ios-fleet/scheduled-ship-gate.sh" in owner_code, "owner gates carry the path gate")
+check(owner_code.count("--event schedule") >= 2,
+      "owner gates always take the path-diff (--event schedule)")
+owner_prefixes = re.findall(r"--path-prefix '([^']+)'", owner_code)
+check(
+    set(owner_prefixes) == {"Apps/ContactLogoiOS/", "Sources/ContactLogoKit/", "project.yml",
+                            "Apps/ContactLogoMac/", "Apps/ContactLogoMacAppStore/", "Sources/"},
+    "owner gates watch both lanes' source paths",
+)
+check(owner_code.count("fetch-depth: 0") >= 2, "owner gates checkout full history (fetch-depth: 0)")
+check("--plan-build-only" in owner_code, "owner plans the release build once (--plan-build-only)")
+check(owner_code.count("needs.plan-build.outputs.build") >= 2,
+      "both lane calls receive the same planned build")
+for lane in ("ios-testflight.yml", "mac-testflight.yml"):
+    check(f"uses: ./.github/workflows/{lane}" in owner_code, f"owner calls {lane}")
+check("secrets: inherit" in owner_code, "owner passes secrets to the lanes")
+check("secret-path: /asc" in owner_code, "plan-build loads the ASC key the way the ships do")
+check("ios-fleet-pin.sh --check" in owner_code, "plan-build verifies the tooling pin")
+check(re.search(r"IOS_TF_MIN_INTERVAL_SEC\s*[:=]", owner_code) is None,
+      "owner never sets the rate-gate override as a standing value")
+check("--force-ship" not in owner_code, "owner never passes --force-ship")
+check("contactlogo-testflight-release" in owner, "owner serializes releases")
+
+
+def check_lane(rel, prefixes, ship_via):
+    print(f"== lane ({rel}) ==")
+    wf = read(rel)
+    wf_code = "\n".join(code_lines(wf))
+    on_block = block(wf, "on:", 0)
+    check("  push:" not in on_block, f"{rel} carries no push trigger (the owner does)")
+    check("  schedule:" not in on_block, f"{rel} carries no schedule trigger (the owner does)")
+    check("workflow_call:" in on_block, f"{rel} is reusable (workflow_call)")
+    call_build = re.search(r"      build:\n((?:        \S.*\n)+)", on_block)
+    check(call_build is not None and "required: true" in call_build.group(1)
+          and "type: string" in call_build.group(1),
+          f"{rel} requires the planned build input")
+    check("workflow_dispatch:" in on_block, f"{rel} keeps a standalone workflow_dispatch")
+    check("build:" in block(on_block, "  workflow_dispatch:", 2),
+          f"{rel} dispatch takes or plans a build")
+    check("scripts/ios-fleet/scheduled-ship-gate.sh" in wf_code, f"{rel} keeps its ship gate")
+    check(set(re.findall(r"--path-prefix '([^']+)'", wf_code)) == set(prefixes),
+          f"{rel} gate watches the lane paths")
+    check(ship_via in wf_code, f"{rel} ships through {ship_via}")
+    check("--build" in wf_code, f"{rel} passes the planned build via --build")
+    check("--plan-build-only" in wf_code, f"{rel} plans its own build on a standalone dispatch")
+    check(re.search(r'IOS_TF_RELEASE_NOTES:\s*"1"', wf_code) is not None,
+          f"{rel} publishes What to Test (IOS_TF_RELEASE_NOTES=1)")
+    check(re.search(r"IOS_TF_MIN_INTERVAL_SEC\s*[:=]", wf_code) is None,
+          f"{rel} never sets the rate-gate override as a standing value")
+    check("group: contactlogo-testflight" in wf, f"{rel} keeps the shared ship concurrency group")
+    return wf, wf_code, on_block
+
+
+ios_wf, ios_code, ios_on = check_lane(
+    ".github/workflows/ios-testflight.yml",
+    ["Apps/ContactLogoiOS/", "Sources/ContactLogoKit/", "project.yml"],
+    "scripts/ios-ship-testflight.sh",
+)
+check("github.ref == 'refs/heads/main'" in ios_code, "iOS lane uploads only from main")
+check("--force-ship" not in ios_code, "iOS lane never passes --force-ship")
+
+mac_wf, mac_code, mac_on = check_lane(
+    ".github/workflows/mac-testflight.yml",
+    ["Apps/ContactLogoMac/", "Apps/ContactLogoMacAppStore/", "Sources/", "project.yml"],
+    "scripts/ios-fleet/ship-testflight.sh",
+)
+check(mac_code.count("fetch-depth: 0") >= 2,
+      "the Mac gate and the Mac ship checkout full history (fetch-depth: 0)")
+force_lines = [i for i, ln in enumerate(mac_code.splitlines()) if "--force-ship" in ln]
+mac_lines = mac_code.splitlines()
 guarded = all(
-    any('FORCE_SHIP" = "true"' in lines[j] for j in range(max(0, i - 4), i)) for i in force_lines
+    any('FORCE_SHIP" = "true"' in mac_lines[j] for j in range(max(0, i - 4), i)) for i in force_lines
 )
 check(len(force_lines) == 1 and guarded, "--force-ship appears once, only behind the per-run force_ship input")
-check("force_ship:" in block(on_block, "  workflow_dispatch:", 2) and "default: false" in block(on_block, "  workflow_dispatch:", 2),
-      "force_ship defaults to false")
-check("github.ref == 'refs/heads/main'" in wf_code, "only main uploads")
-check("ios-fleet-pin.sh --check" in wf_code, "the ship verifies the tooling pin")
-check("mac-appstore-gm-prepare.sh" in wf_code, "the ship imports the signing identities")
-gate_prefixes = re.findall(r"--path-prefix '([^']+)'", wf_code)
-check(
-    set(gate_prefixes) == {"Apps/ContactLogoMac/", "Apps/ContactLogoMacAppStore/", "Sources/", "project.yml"},
-    "the scheduled gate watches the same source paths as the push filter",
-)
+check("force_ship:" in block(mac_on, "  workflow_dispatch:", 2)
+      and "default: false" in block(mac_on, "  workflow_dispatch:", 2),
+      "Mac force_ship defaults to false")
+check("github.ref == 'refs/heads/main'" in mac_code, "Mac lane uploads only from main")
+check("ios-fleet-pin.sh --check" in mac_code, "the Mac ship verifies the tooling pin")
+check("mac-appstore-gm-prepare.sh" in mac_code, "the Mac ship imports the signing identities")
 
 # ------------------------------------------------------------- project.yml
 print("== project.yml ==")
 spec = read("project.yml")
+check('MARKETING_VERSION: "0.1.0"' in spec, "project.yml carries the 0.1.0 placeholder")
+check('CURRENT_PROJECT_VERSION: "202610290000"' in spec, "project.yml carries the merge-stamp placeholder build")
 target = block(spec, "  ContactLogoMacAppStore:", 2)
 check(bool(target.strip()), "the ContactLogoMacAppStore target exists")
 check("Sparkle" not in "\n".join(code_lines(target)), "the App Store target has no Sparkle dependency")
@@ -139,8 +223,13 @@ check("package: Sparkle" in mac_target, "the Developer ID target still links Spa
 # ----------------------------------------------------- registry + profile map
 print("== registry and profile map ==")
 apps = json.loads(read("scripts/ios-fleet/apps.json") or "{}").get("apps", {})
+ios = apps.get("contactlogo", {})
 mac = apps.get("contactlogo-mac", {})
 profile_map = json.loads(read("scripts/ios-fleet/mac-appstore-profiles.json") or "{}")
+check(ios.get("fixedMarketingVersion") == "0.1.0", "the registry pins the iOS fixed marketing version")
+check(ios.get("pairedBundleId") == "com.contactlogo.macos", "the iOS entry pairs with the Mac bundle id")
+check(mac.get("fixedMarketingVersion") == "0.1.0", "the registry pins the Mac fixed marketing version")
+check(mac.get("pairedBundleId") == "com.contactlogo", "the Mac entry pairs with the iOS bundle id")
 check(mac.get("scheme") == "ContactLogoMacAppStore", "the registry ships the App Store scheme")
 check(mac.get("platform") == "macOS", "the registry marks contactlogo-mac as macOS")
 check(mac.get("bundleId") == "com.contactlogo.macos", "the registry bundle id is com.contactlogo.macos")

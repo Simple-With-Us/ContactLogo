@@ -1,35 +1,36 @@
 name: ContactLogo iOS TestFlight
 
-# Auto-ship (CL-204): a merge to main that touches the iOS app's native tree
-# archives and uploads a fresh TestFlight build with no human step.  This is the
+# The iOS TestFlight lane (CL-204), called by .github/workflows/testflight.yml.
+# That workflow owns every trigger, plans ONE build per release, and hands
+# the single value to this lane (and the Mac lane) as the required `build`
+# input.  This file carries no push/schedule triggers of its own.
+#
+# A standalone workflow_dispatch stays available as the explicit per-lane
+# instruction:  pass a planned `build`, or leave it empty to plan one on
+# the runner (the same --plan-build-only the release workflow runs).
+#
+# Auto-ship: a merge to main that touches the iOS app's native tree archives
+# and uploads a fresh TestFlight build with no human step.  This is the
 # fleet pipeline (Usage-Monitor, Socratic.Trade, CodeCaps), not a custom script:
 #
 #   scripts/ios-ship-testflight.sh -> scripts/ios-fleet/ship-testflight.sh
 #
-# The fleet script owns everything the old custom release script did not:
-#   - the marketing version and the build number:  both are the repo's commit
-#     count, 1.0.<commit_count> and <commit_count>, so the pair always
-#     describes one commit (project.yml is a floor input, never the source);
+# Versioning (fixed mode):  the marketing version is the fixedMarketingVersion
+# in scripts/ios-fleet/apps.json (0.1.0, it does not count up per ship) and
+# the build is the shared merge-timestamp value planned once per release
+# (max(S, M + 1)), passed here as `build` and on to the fleet script via
+# --build.  The fleet script owns everything else:
 #   - the rate gate (a minimum interval per app) and the same-HEAD skip, both at
 #     the script defaults.  Never set IOS_TF_MIN_INTERVAL_SEC or any other gate
 #     override as a standing value in this file;
 #   - ensure-tf-ready (export compliance on the build this run uploaded) and the
 #     mandatory What to Test notes (IOS_TF_RELEASE_NOTES=1, FLEET-PROTOCOL template).
-# Nothing here depends on a repository variable.  The old CL_IOS_TESTFLIGHT_ENABLED
-# and CL_APPLE_ID gates were never set, so every push skipped in one second and
-# the last build stayed 1.0.3.  The numeric app id now lives in
+# Nothing here depends on a repository variable.  The numeric app id lives in
 # scripts/ios-fleet/apps.json.
 #
-# Triggers
-#   push to main, filtered to the native tree (and the ship tooling itself);
-#   workflow_dispatch (optionally archive + export only, no upload);
-#   schedule, a catch-up for the case the push path cannot cover:  a merge that
-#   landed inside the rate window is skipped by the ship script, and a merge by
-#   github-actions[bot] fires no push run at all (GitHub's recursion guard).  The
-#   cron carries no `paths:` filter of its own, so scripts/ios-fleet/
-#   scheduled-ship-gate.sh decides first:  it ships only when the app's own source
-#   tree changed since the last successful ship, and a tick with nothing to ship
-#   ends in seconds.
+# The scheduled-ship gate below re-verifies intent on this runner (seconds):
+# only the caller's schedule event is path-diffed here, because the caller
+# already gated the lane;  a tick with nothing to ship ends before Xcode.
 #
 # Ship state (last-ship sha and time, build sequence cache) lives in
 # ~/.cache/ios-fleet, which a hosted runner starts empty every job.  It is
@@ -42,31 +43,29 @@ name: ContactLogo iOS TestFlight
 # certificate, canonical home Fleet-OPS prod /mac-certs).  Both are loaded at
 # runtime by the dedicated steps below via the Simple-With-Us org machine
 # identity; same-named repository secrets are only the GH_FALLBACK_ path.
+# A release call passes them through secrets: inherit.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'Apps/ContactLogoiOS/**'
-      - 'Sources/ContactLogoKit/**'
-      - 'project.yml'
-      - '.github/workflows/ios-testflight.yml'
-      - 'scripts/ios-ship-testflight.sh'
-      - 'scripts/ios-appstore-gm-prepare.sh'
-      - 'scripts/ios-stage-asc-key.sh'
-      - 'scripts/ios-fleet/**'
-      # The two Sentry helpers below run in ci.yml only; they are not ship tooling.
-      - '!scripts/ios-fleet/check-built-sentry-dsn.sh'
-      - '!scripts/ios-fleet/upload-sentry-dsyms.sh'
+  workflow_call:
+    inputs:
+      build:
+        description: 'The release build planned once by testflight.yml (12-digit merge-timestamp build)'
+        required: true
+        type: string
+      export_only:
+        description: 'Archive + export the IPA only; do not upload (signing check)'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
+      build:
+        description: 'Planned 12-digit merge-timestamp build (leave empty to plan it on the runner)'
+        required: false
+        type: string
       export_only:
         description: 'Archive + export the IPA only; do not upload (signing check)'
         type: boolean
         default: false
-  schedule:
-    # Twice an hour, offset from the other fleet repos (Socratic.Trade '*/30',
-    # Congress.Trade '7,37', Usage-Monitor '13,43', CodeCaps '26,56').
-    - cron: '19,49 * * * *'
 
 permissions:
   contents: read
@@ -79,9 +78,9 @@ jobs:
   ship:
     name: TestFlight archive + upload
     if: github.event.repository.fork == false && github.ref == 'refs/heads/main'
-    # Shared with mac-testflight.yml's ship job: the fixed-version build
-    # counter is one per app across iOS and macOS, so the two lanes must
-    # never plan a build at the same time.  Queued, never cancelled.
+    # Shared with mac-testflight.yml's ship job: the release build is one per
+    # app across iOS and macOS (planned once by testflight.yml), so the two
+    # lanes must never upload at the same time.  Queued, never cancelled.
     concurrency:
       group: contactlogo-testflight
       cancel-in-progress: false
@@ -119,9 +118,9 @@ jobs:
       - name: Drop stale ship locks from restored state
         run: find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
 
-      # Runs FIRST so a scheduled tick with nothing to ship costs seconds.
-      # push and workflow_dispatch always vote ship (the paths filter or an
-      # explicit dispatch already expressed intent); only the cron is gated.
+      # Runs FIRST so a tick with nothing to ship costs seconds.  The release
+      # caller already gated this lane;  this re-verifies on the ship runner
+      # (a standalone dispatch votes ship:  an explicit per-lane instruction).
       - name: Scheduled ship gate (skip unless iOS code changed)
         id: gate
         run: |
@@ -213,14 +212,37 @@ jobs:
           export ASC_KEY_PATH
           bash "$GITHUB_WORKSPACE/scripts/ios-appstore-gm-prepare.sh"
 
+      # The release caller hands the one planned build in;  a standalone
+      # dispatch without one plans it here instead (the same read-only
+      # --plan-build-only, on the App Store Connect credential above).
+      - name: Resolve the release build
+        id: build
+        if: steps.gate.outputs.should_ship == '1'
+        env:
+          BUILD_INPUT: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BUILD_INPUT:-}" ]; then
+            [[ "$BUILD_INPUT" =~ ^[1-9][0-9]{11}$ ]] || { echo "::error::build input is not a 12-digit merge-timestamp build"; exit 1; }
+            build="$BUILD_INPUT"
+            echo "[ios-ship] release build from the caller: $build"
+          else
+            echo "[ios-ship] no build input; planning it on this runner"
+            build="$(bash scripts/ios-fleet/ship-testflight.sh contactlogo --repo-root "$GITHUB_WORKSPACE" --plan-build-only)"
+            [[ "$build" =~ ^[1-9][0-9]{11}$ ]] || { echo "::error::plan-build: malformed build '${build}'"; exit 1; }
+            echo "[ios-ship] planned release build: $build"
+          fi
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+
       - name: Ship ContactLogo to TestFlight
         if: steps.gate.outputs.should_ship == '1'
         env:
           # Owner binding 2026-09-08:  What to Test is published on every upload.
           IOS_TF_RELEASE_NOTES: "1"
           EXPORT_ONLY_INPUT: ${{ inputs.export_only }}
+          RELEASE_BUILD: ${{ steps.build.outputs.build }}
         run: |
-          args=()
+          args=(--build "$RELEASE_BUILD")
           if [ "${EXPORT_ONLY_INPUT:-false}" = "true" ]; then
             echo "[ios-ship] export_only=true: archive + export the IPA, no upload"
             args+=(--export-only)
