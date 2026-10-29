@@ -17,6 +17,14 @@ test('shared counter takes the max across iOS and macOS', () => {
   assert.deepEqual(next({...input, iosBuilds: ['1100'], macBuilds: ['1200']}), {build: '1201', ignoredIos: 0});
   assert.deepEqual(next({...input, iosBuilds: ['1300'], macBuilds: ['1200']}), {build: '1301', ignoredIos: 0});
 });
+test('paired apps concatenate: max across both apps plus a floor (owner rule)', () => {
+  // next-shared-build passes IOS(app)+IOS(paired) as iosBuilds and
+  // MAC_OS(app)+MAC_OS(paired) as macBuilds; the planner takes the max.
+  assert.deepEqual(
+    next({iosBuilds: ['1200', '1500'], macBuilds: ['1100', '1300'], extraFloors: [1400], complete: true}),
+    {build: '1501', ignoredIos: 0}
+  );
+});
 test('extra floors raise the counter above 999', () => {
   assert.deepEqual(next({...input, extraFloors: [986]}), {build: '1000', ignoredIos: 0});
   assert.deepEqual(next({...input, extraFloors: [1500]}), {build: '1501', ignoredIos: 0});

@@ -1375,7 +1375,28 @@ async function main() {
           failExit(res.status);
         }
         for (const b of res.parsed.data) out.push(b?.attributes?.version);
-        url = res.parsed.links?.next || "";
+        // The pager shape is checked before links.next is read:  a malformed
+        // page must fail the query, never truncate the inventory into a low
+        // counter.
+        const parsed = res.parsed;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          console.error("next-shared-build: malformed pagination");
+          process.exit(2);
+        }
+        let next = "";
+        if (parsed.links !== undefined) {
+          if (!parsed.links || typeof parsed.links !== "object" || Array.isArray(parsed.links)) {
+            console.error("next-shared-build: malformed pagination");
+            process.exit(2);
+          }
+          const rawNext = parsed.links.next;
+          if (rawNext !== undefined && rawNext !== null && typeof rawNext !== "string") {
+            console.error("next-shared-build: malformed pagination");
+            process.exit(2);
+          }
+          next = rawNext || "";
+        }
+        url = next;
       }
       if (url) {
         console.error("next-shared-build: incomplete pagination");
@@ -1383,9 +1404,31 @@ async function main() {
       }
       return out;
     }
-    const iosBuilds = await allBuilds(resolved.appId, "IOS");
-    let macBuilds = await allBuilds(resolved.appId, "MAC_OS");
-    if (macAppId) macBuilds = macBuilds.concat(await allBuilds(macAppId, "MAC_OS"));
+    // One counter per app across iOS and macOS:  when the paired bundle id
+    // resolves to a different app, both platforms of both apps join it
+    // (iosBuilds = IOS(app)+IOS(paired), macBuilds = MAC_OS(app)+
+    // MAC_OS(paired)).  The inventories are independent, so they are fetched
+    // concurrently; each keeps the 100-page cap and fails closed past it
+    // (see allBuilds), never truncates.
+    let iosBuilds;
+    let macBuilds;
+    if (macAppId) {
+      const [appIos, appMac, pairedIos, pairedMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS"),
+        allBuilds(resolved.appId, "MAC_OS"),
+        allBuilds(macAppId, "IOS"),
+        allBuilds(macAppId, "MAC_OS")
+      ]);
+      iosBuilds = appIos.concat(pairedIos);
+      macBuilds = appMac.concat(pairedMac);
+    } else {
+      const [appIos, appMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS"),
+        allBuilds(resolved.appId, "MAC_OS")
+      ]);
+      iosBuilds = appIos;
+      macBuilds = appMac;
+    }
     try {
       const planned = nextSharedBuild({ iosBuilds, macBuilds, extraFloors, complete: true });
       console.error(`next-shared-build: ${iosBuilds.length} iOS build(s) + ${macBuilds.length} macOS build(s) inspected; ignored ${planned.ignoredIos} iOS timestamp build(s); next is ${planned.build}`);
