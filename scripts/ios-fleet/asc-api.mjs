@@ -27,6 +27,7 @@
  *   node asc-api.mjs latest-build-seq <bundleId> <prefix> [platform] [appleId]
  *   node asc-api.mjs latest-marketing-patch <bundleId> <prefix> [platform] [appleId]
  *   node asc-api.mjs build-floor <bundleId> <version> [platform] [appleId]
+ *   node asc-api.mjs next-shared-build <bundleId> [macBundleId] [floor...]
  *
  * The version-numbering rules live in ./version-plan.mjs (pure, no I/O); this
  * client only fetches the App Store Connect state they need.
@@ -42,6 +43,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { normalizePrivateKey } from "./asc-key.mjs";
+import { nextSharedBuild } from "./shared-build.mjs";
 import {
   buildFloor,
   isDriftTrain,
@@ -739,6 +741,7 @@ async function main() {
     console.error("       node asc-api.mjs latest-build-seq <bundleId> <prefix> [platform] [appleId]");
     console.error("       node asc-api.mjs latest-marketing-patch <bundleId> <prefix> [platform] [appleId]");
     console.error("       node asc-api.mjs build-floor <bundleId> <version> [platform] [appleId]");
+    console.error("       node asc-api.mjs next-shared-build <bundleId> [macBundleId] [floor...]");
     process.exit(1);
   }
 
@@ -1317,6 +1320,123 @@ async function main() {
     // floors it prints in the version-plan log line.
     console.error(`build-floor: train=${trainFloor} app=${appFloor} -> floor=${floor}`);
     console.log(String(floor));
+    process.exit(0);
+  }
+
+  // Read-only, fully paged shared four-digit counter (owner, Oct 28 2026):
+  // next = max(every iOS build on ALL trains, every macOS build on ALL trains,
+  // every extra floor, 999) + 1, floored at 1000.  iOS UTC timestamp builds are
+  // ignored by the planner (those trains are closed); macOS builds all count.
+  if (method === "next-shared-build") {
+    const restArgs = process.argv.slice(3);
+    const bundleId = restArgs[0] || "";
+    const rest = restArgs.slice(1);
+    if (!bundleId) {
+      console.error("Usage: node asc-api.mjs next-shared-build <bundleId> [macBundleId] [floor...]");
+      process.exit(2);
+    }
+    // A pure-integer second arg is a floor, not a bundle id (bundle ids are
+    // never bare integers), so a caller with no mac app passes only floors.
+    let macBundleId = "";
+    let floorArgs = [];
+    if (rest.length > 0) {
+      if (/^[0-9]+$/.test(rest[0])) floorArgs = rest;
+      else { macBundleId = rest[0] || ""; floorArgs = rest.slice(1); }
+    }
+    const extraFloors = [];
+    for (const f of floorArgs) {
+      if (!/^[0-9]+$/.test(f) || !Number.isSafeInteger(Number(f))) {
+        console.error(`next-shared-build: floor ${JSON.stringify(f)} is not a non-negative safe integer`);
+        process.exit(2);
+      }
+      extraFloors.push(Number(f));
+    }
+    const resolved = await resolveAscAppId(bundleId, "", "next-shared-build");
+    if (!resolved.appId) {
+      console.error("next-shared-build: app not found");
+      process.exit(2);
+    }
+    let macAppId = "";
+    if (macBundleId && macBundleId !== bundleId) {
+      const macResolved = await resolveAscAppId(macBundleId, "", "next-shared-build");
+      if (!macResolved.appId) {
+        console.error("next-shared-build: mac app not found");
+        process.exit(2);
+      }
+      macAppId = macResolved.appId;
+    }
+    async function allBuilds(forAppId, platform) {
+      const out = [];
+      let url = `/v1/builds?filter[app]=${forAppId}&filter[preReleaseVersion.platform]=${platform}&limit=200`;
+      for (let page = 0; page < 100 && url; page++) {
+        const res = await ascGet(url);
+        if (!res.ok || !Array.isArray(res.parsed?.data)) {
+          console.error("next-shared-build: inventory unavailable");
+          failExit(res.status);
+        }
+        for (const b of res.parsed.data) out.push(b?.attributes?.version);
+        // The pager shape is checked before links.next is read:  a malformed
+        // page must fail the query, never truncate the inventory into a low
+        // counter.
+        const parsed = res.parsed;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          console.error("next-shared-build: malformed pagination");
+          process.exit(2);
+        }
+        let next = "";
+        if (parsed.links !== undefined) {
+          if (!parsed.links || typeof parsed.links !== "object" || Array.isArray(parsed.links)) {
+            console.error("next-shared-build: malformed pagination");
+            process.exit(2);
+          }
+          const rawNext = parsed.links.next;
+          if (rawNext !== undefined && rawNext !== null && typeof rawNext !== "string") {
+            console.error("next-shared-build: malformed pagination");
+            process.exit(2);
+          }
+          next = rawNext || "";
+        }
+        url = next;
+      }
+      if (url) {
+        console.error("next-shared-build: incomplete pagination");
+        process.exit(2);
+      }
+      return out;
+    }
+    // One counter per app across iOS and macOS:  when the paired bundle id
+    // resolves to a different app, both platforms of both apps join it
+    // (iosBuilds = IOS(app)+IOS(paired), macBuilds = MAC_OS(app)+
+    // MAC_OS(paired)).  The inventories are independent, so they are fetched
+    // concurrently; each keeps the 100-page cap and fails closed past it
+    // (see allBuilds), never truncates.
+    let iosBuilds;
+    let macBuilds;
+    if (macAppId) {
+      const [appIos, appMac, pairedIos, pairedMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS"),
+        allBuilds(resolved.appId, "MAC_OS"),
+        allBuilds(macAppId, "IOS"),
+        allBuilds(macAppId, "MAC_OS")
+      ]);
+      iosBuilds = appIos.concat(pairedIos);
+      macBuilds = appMac.concat(pairedMac);
+    } else {
+      const [appIos, appMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS"),
+        allBuilds(resolved.appId, "MAC_OS")
+      ]);
+      iosBuilds = appIos;
+      macBuilds = appMac;
+    }
+    try {
+      const planned = nextSharedBuild({ iosBuilds, macBuilds, extraFloors, complete: true });
+      console.error(`next-shared-build: ${iosBuilds.length} iOS build(s) + ${macBuilds.length} macOS build(s) inspected; ignored ${planned.ignoredIos} iOS timestamp build(s); next is ${planned.build}`);
+      console.log(planned.build);
+    } catch (error) {
+      console.error(`next-shared-build: ${error.message}`);
+      process.exit(3);
+    }
     process.exit(0);
   }
 

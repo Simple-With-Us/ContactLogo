@@ -79,6 +79,12 @@ jobs:
   ship:
     name: TestFlight archive + upload
     if: github.event.repository.fork == false && github.ref == 'refs/heads/main'
+    # Shared with mac-testflight.yml's ship job: the fixed-version build
+    # counter is one per app across iOS and macOS, so the two lanes must
+    # never plan a build at the same time.  Queued, never cancelled.
+    concurrency:
+      group: contactlogo-testflight
+      cancel-in-progress: false
     runs-on: macos-latest
     timeout-minutes: 90
     env:

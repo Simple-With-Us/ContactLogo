@@ -187,6 +187,7 @@ ALLOW_DIRTY=0
 FORCE_SHIP=0
 ALLOW_UNVERIFIED_SEQ=0
 SYNC_PROJECT_VERSION=0
+FIXED_MODE=0
 
 die() { echo "error: $*" >&2; exit 1; }
 log() { echo "[ios-ship] $*"; }
@@ -219,6 +220,48 @@ elif isinstance(val, list):
     print(",".join(val), end="")
 else:
     print(val, end="")
+PY
+}
+
+json_paired_referrer() {
+  # json_paired_referrer <bundle_id>: the bundle id of the apps.json entry
+  # whose pairedBundleId or macBundleId equals <bundle_id>.  Lets a macOS
+  # entry with no paired key find the iOS entry that names it, so iOS builds
+  # join the counter.  First match in sorted key order wins, so the answer
+  # is deterministic.
+  # Exit contract:  "no entry points at it" prints nothing and exits 0 (the
+  # caller ships unpaired); a broken registry (unreadable or unparsable
+  # apps.json, a missing apps object, a malformed entry, or a referrer with
+  # no bundleId) prints the reason on stderr and exits 1, so the caller can
+  # fail closed instead of shipping unpaired off a lower counter.
+  /usr/bin/python3 - "$APPS_JSON" "$1" <<'PY'
+import json, sys
+path, want = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except OSError as e:
+    print("json_paired_referrer: cannot read %s: %s" % (path, e), file=sys.stderr)
+    sys.exit(1)
+except ValueError as e:
+    print("json_paired_referrer: cannot parse %s: %s" % (path, e), file=sys.stderr)
+    sys.exit(1)
+apps = data.get("apps") if isinstance(data, dict) else None
+if not isinstance(apps, dict):
+    print("json_paired_referrer: %s has no apps object" % path, file=sys.stderr)
+    sys.exit(1)
+for key in sorted(apps):
+    app = apps[key]
+    if not isinstance(app, dict):
+        print("json_paired_referrer: entry %s in %s is malformed" % (key, path), file=sys.stderr)
+        sys.exit(1)
+    if app.get("pairedBundleId") == want or app.get("macBundleId") == want:
+        referrer = app.get("bundleId")
+        if not referrer or not isinstance(referrer, str):
+            print("json_paired_referrer: entry %s in %s has no bundleId" % (key, path), file=sys.stderr)
+            sys.exit(1)
+        print(referrer, end="")
+        break
 PY
 }
 
@@ -618,6 +661,129 @@ asc_build_floor() {
   printf '%s %s %s' "$out" "${train:-$out}" "${app:-$out}"
 }
 
+# The next shared four-digit build for a fixed marketing version (owner, Oct 28 2026):
+# ONE counter per app across iOS and macOS: max(every iOS build on ALL trains,
+# every macOS build, every extra floor, 999) + 1, floored at 1000.  Prints the
+# build on stdout.  Returns 1 (and prints nothing) when it cannot be worked out.
+#
+# This helper runs inside $(...), so it must not call load_secrets:  the temp
+# key dir would be created in the subshell and the EXIT trap that removes it
+# runs in the main shell.  The main shell resolves the credential once before
+# the first call (see the FIXED_MODE block below); here a missing credential
+# fails closed.
+#
+# The pairedBuildFeed must be an https URL, is fetched time- and size-bounded
+# over https only, and its max numeric <sparkle:version> (whitespace around
+# the digits is allowed) must be 1..9998:  a larger value cannot yield a valid
+# four-digit build.  Every feed failure fails closed with the feed URL and
+# the reason on stderr; a feed with no numeric version is never "no floor".
+asc_next_shared_build() {
+  local out rc paired_id feed feed_xml max floor curl_err curl_msg ios_key paired_err paired_msg
+  command -v "$ASC_NODE" >/dev/null 2>&1 || return 1
+  if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" || -z "${ASC_KEY_P8:-}" ]] \
+    && [[ -z "${APPLE_API_KEY_ID:-}" || -z "${APPLE_API_ISSUER_ID:-}" || -z "${APPLE_API_KEY_P8_BASE64:-}" ]]; then
+    logerr "shared build: no App Store Connect credential in the environment; cannot verify the counter"
+    return 1
+  fi
+  paired_id="$(json_get "$APP_KEY" pairedBundleId 2>/dev/null || true)"
+  [[ "$paired_id" == "null" ]] && paired_id=""
+  if [[ -z "$paired_id" ]]; then
+    paired_id="$(json_get "$APP_KEY" macBundleId 2>/dev/null || true)"
+    [[ "$paired_id" == "null" ]] && paired_id=""
+  fi
+  if [[ -z "$paired_id" && "${PLATFORM:-}" == "macOS" && "$APP_KEY" == *-mac ]]; then
+    ios_key="${APP_KEY%-mac}"
+    paired_id="$(json_get "$ios_key" bundleId 2>/dev/null || true)"
+    [[ "$paired_id" == "null" ]] && paired_id=""
+    [[ "$paired_id" == "$BUNDLE_ID" ]] && paired_id=""
+  fi
+  if [[ -z "$paired_id" && "${PLATFORM:-}" == "macOS" ]]; then
+    # A broken registry fails closed here:  shipping unpaired off it would
+    # plan a lower counter.  "No referrer" (exit 0, empty) still ships
+    # unpaired.  The lookup's stderr is kept, never discarded, and logged.
+    paired_err="$(mktemp "${TMPDIR:-/tmp}/paired-referrer-err.XXXXXX")" || {
+      logerr "paired lookup: cannot make a temp file to read the registry"
+      return 1
+    }
+    set +e
+    paired_id="$(json_paired_referrer "$BUNDLE_ID" 2>"$paired_err")"
+    rc=$?
+    set -e
+    paired_msg="$(tr '\n' ' ' <"$paired_err" 2>/dev/null || true)"
+    rm -f "$paired_err" >/dev/null 2>&1 || true
+    if [[ $rc -ne 0 ]]; then
+      logerr "paired lookup: cannot find the iOS entry for ${BUNDLE_ID}${paired_msg:+: ${paired_msg}}"
+      return 1
+    fi
+    [[ "$paired_id" == "null" ]] && paired_id=""
+    [[ "$paired_id" == "$BUNDLE_ID" ]] && paired_id=""
+  fi
+  feed="$(json_get "$APP_KEY" pairedBuildFeed 2>/dev/null || true)"
+  [[ "$feed" == "null" ]] && feed=""
+  floor=""
+  if [[ -n "$feed" ]]; then
+    case "$feed" in
+      https://*) ;;
+      *)
+        logerr "paired feed: refusing non-https feed $feed"
+        return 1
+        ;;
+    esac
+    if ! command -v curl >/dev/null 2>&1; then
+      logerr "paired feed: curl is missing; cannot read $feed"
+      return 1
+    fi
+    curl_err="$(mktemp "${TMPDIR:-/tmp}/asc-feed-err.XXXXXX")" || {
+      logerr "paired feed: cannot make a temp file to read $feed"
+      return 1
+    }
+    set +e
+    feed_xml="$(curl -fsSL --proto =https --proto-redir =https --connect-timeout 10 --max-time 30 --max-filesize 5000000 "$feed" 2>"$curl_err")"
+    rc=$?
+    set -e
+    curl_msg="$(tr '\n' ' ' <"$curl_err" 2>/dev/null || true)"
+    rm -f "$curl_err" >/dev/null 2>&1 || true
+    if [[ $rc -ne 0 ]]; then
+      logerr "paired feed: could not fetch $feed (curl rc=$rc)${curl_msg:+: $curl_msg}"
+      return 1
+    fi
+    if [[ -z "$feed_xml" ]]; then
+      logerr "paired feed: no numeric <sparkle:version> in $feed (empty response)"
+      return 1
+    fi
+    max="$(printf '%s' "$feed_xml" | grep -o -E '<sparkle:version>[[:space:]]*[0-9]+[[:space:]]*</sparkle:version>' 2>/dev/null | grep -o -E '[0-9]+' 2>/dev/null | sort -n 2>/dev/null | tail -n 1 2>/dev/null || true)"
+    if [[ ! "$max" =~ ^[0-9]+$ ]]; then
+      logerr "paired feed: no numeric <sparkle:version> in $feed"
+      return 1
+    fi
+    # A feed floor outside 1..9998 cannot yield a valid four-digit build, so
+    # it fails closed.  The length guard keeps absurd values out of
+    # arithmetic; 10# keeps leading zeros decimal instead of octal.
+    if [[ "${#max}" -gt 18 || "10#$max" -lt 1 || "10#$max" -gt 9998 ]]; then
+      logerr "paired feed: floor $max from $feed is outside 1..9998; cannot yield a four-digit build"
+      return 1
+    fi
+    floor="$max"
+  fi
+  set +e
+  if [[ -n "$paired_id" && -n "$floor" ]]; then
+    out=$(asc_client next-shared-build "$BUNDLE_ID" "$paired_id" "$floor")
+    rc=$?
+  elif [[ -n "$paired_id" ]]; then
+    out=$(asc_client next-shared-build "$BUNDLE_ID" "$paired_id")
+    rc=$?
+  elif [[ -n "$floor" ]]; then
+    out=$(asc_client next-shared-build "$BUNDLE_ID" "$floor")
+    rc=$?
+  else
+    out=$(asc_client next-shared-build "$BUNDLE_ID")
+    rc=$?
+  fi
+  set -e
+  [[ $rc -eq 0 && "$out" =~ ^[1-9][0-9]{3}$ ]] || return 1
+  printf '%s' "$out"
+}
+
 # The major.minor train a marketing version belongs to: "2.0.123" -> "2.0",
 # "3" -> "3.0".  The floor is per-train, so the train has to come from the
 # version actually being shipped rather than always from the default.
@@ -835,6 +1001,20 @@ PROJECT_REL="$(json_get "$APP_KEY" projectRel)"
 PROJECT_REL_ALT="$(json_get "$APP_KEY" projectRelAlt)"
 XCODEGEN_DIR="$(json_get "$APP_KEY" xcodegenDir)"
 DEFAULT_MARKETING="$(json_get "$APP_KEY" marketingVersionDefault)"
+# Optional fixed-version policy (owner, Oct 28 2026): the marketing version does
+# not count up per ship; the build is one shared four-digit counter per app
+# across iOS and macOS (see asc-api.mjs next-shared-build and shared-build.mjs).
+# apps.json keys: fixedMarketingVersion ("1.1.2"), optional pairedBundleId (the
+# paired app whose builds join the counter: the Mac bundle id on an iOS entry,
+# the iOS bundle id on a macOS entry; macBundleId is an accepted alias),
+# optional pairedBuildFeed (an https Sparkle appcast URL whose max numeric
+# <sparkle:version>, 1..9998, joins the counter).  A macOS entry with neither
+# key pairs with the iOS entry its key names ("wl-mac" pairs with "wl"), or
+# with the entry whose pairedBundleId/macBundleId names this entry's bundle
+# id.  Absent fixedMarketingVersion keeps the next-patch behaviour.  Fixed
+# mode works on both platforms: the counter sits above every Mac build, which
+# is what macOS needs.
+FIXED_MARKETING="$(json_get "$APP_KEY" fixedMarketingVersion)"
 
 if [[ -z "$PLATFORM" ]]; then
   if [[ "$APP_KEY" == *-mac || "$SCHEME" == *[Mm]ac* ]]; then
@@ -947,6 +1127,22 @@ if [[ -n "$UPLOAD_ONLY_IPA" ]]; then
 else
   PLAN_READY=1
 
+  if [[ -n "$FIXED_MARKETING" && ( -z "$FORCE_VERSION" || "$FORCE_VERSION" == "$FIXED_MARKETING" ) ]]; then
+    [[ "$FIXED_MARKETING" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+      || die "fixedMarketingVersion '${FIXED_MARKETING}' for ${APP_KEY} in apps.json is not M.m.p (three dot-separated integers).  Nothing was shipped."
+    FORCE_VERSION="$FIXED_MARKETING"
+    FIXED_MODE=1
+    log "version: fixed marketing version ${FIXED_MARKETING} from apps.json; it does not count up per ship"
+  fi
+
+  # Fixed mode resolves the build inside $(asc_next_shared_build), where a
+  # load_secrets call would leak its temp key dir (created in the subshell,
+  # removed by the main shell's EXIT trap), so the credential is resolved
+  # once here in the main shell instead.
+  if [[ "$FIXED_MODE" -eq 1 && "${AUTH_MODE:-none}" != "api_key" ]]; then
+    load_secrets
+  fi
+
   # The repo commit count:  the build number names the exact commit a build
   # came from, so it is the starting point for CFBundleVersion.  It is not
   # enough on its own -- the App Store Connect floor below raises it when it
@@ -1004,6 +1200,11 @@ else
 
   # ---- the build number ---------------------------------------------------
   if [[ -n "$FORCE_BUILD" ]]; then
+    if [[ "$FIXED_MODE" -eq 1 ]]; then
+      [[ "$FORCE_BUILD" =~ ^[1-9][0-9]{3}$ ]] || die "fixed mode requires a four-digit build 1000..9999; nothing shipped"
+      _minimum="$(asc_next_shared_build)" || die "cannot verify four-digit build floor; nothing shipped"
+      [[ "$FORCE_BUILD" -ge "$_minimum" ]] || die "requested build is below the planned four-digit minimum ${_minimum}; nothing shipped"
+    fi
     # An explicit --build is honoured exactly, and it does NOT move the
     # marketing version:  the two numbers are independent.
     BUILD_NUM="$FORCE_BUILD"
@@ -1013,6 +1214,9 @@ else
       die "--build ${BUILD_NUM} equals the patch of ${MARKETING}, which would ship ${MARKETING} (${BUILD_NUM}): the 1.0.N (N) form the owner retired (AFC-517).  Pass a different --build."
     fi
     log "version: operator override (--build/--version); the local build-seq counter is not consulted"
+  elif [[ "$FIXED_MODE" -eq 1 ]]; then
+    BUILD_NUM="$(asc_next_shared_build)" || die "cannot work out the next shared four-digit build: incomplete inventory or floor outside 1000..9999; nothing shipped"
+    log "build: shared four-digit build ${BUILD_NUM} for fixed version ${MARKETING}"
   else
     [[ "$PLAN_COMMIT_COUNT" =~ ^[0-9]+$ ]] || die "could not read the commit count from ${REPO_ROOT}; CFBundleVersion is the repo commit count and UTC timestamps are retired"
 
@@ -1069,7 +1273,9 @@ else
     fi
     # A ship must never look like "1.0.N (N)":  if the build number happens
     # to be the patch number of the marketing version, move it one up.
-    if [[ -n "$PLAN_TARGET_PATCH" && "$BUILD_NUM" -eq "$PLAN_TARGET_PATCH" ]]; then
+    # Not in fixed mode:  the shared counter is its own sequence and a bump here
+    # could push it past the four-digit cap checked above.
+    if [[ "$FIXED_MODE" -ne 1 && -n "$PLAN_TARGET_PATCH" && "$BUILD_NUM" -eq "$PLAN_TARGET_PATCH" ]]; then
       _bumped="$((BUILD_NUM + 1))"
       log "build: ${BUILD_NUM} equals the patch number; using ${_bumped} so the ship does not read ${MARKETING} (${BUILD_NUM})"
       BUILD_NUM="$_bumped"
@@ -1115,8 +1321,12 @@ if [[ "$SYNC_PROJECT_VERSION" -eq 1 ]]; then
   log "synced project.pbxproj -> MARKETING_VERSION=${MARKETING} CURRENT_PROJECT_VERSION=${BUILD_NUM}"
   log "commit that change; it is the repo's record of this version"
 fi
-AUTH_MODE="none"
-load_secrets
+# Fixed mode already resolved the credential above; resolving it twice would
+# ask Infisical twice for the same key.
+if [[ "${AUTH_MODE:-none}" != "api_key" ]]; then
+  AUTH_MODE="none"
+  load_secrets
+fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT_ROOT="${TMPDIR:-/tmp}/ios-ship-${APP_KEY}-${STAMP}"
