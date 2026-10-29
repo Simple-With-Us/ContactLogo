@@ -1072,7 +1072,13 @@ if [[ -z "${DEVELOPER_DIR:-}" || "$DEVELOPER_DIR" == *Xcode-beta* ]]; then
 fi
 if [[ -n "${DEVELOPER_DIR:-}" ]]; then
   log "using DEVELOPER_DIR=${DEVELOPER_DIR}"
-  xcodebuild -version || die "xcodebuild broken under DEVELOPER_DIR=${DEVELOPER_DIR}"
+  # --plan-build-only prints exactly the build on stdout, so skip the
+  # xcodebuild sanity check here: its version banner would pollute stdout
+  # (and xcodebuild is not needed to plan).  The hard requirement lives
+  # after the plan-build exit below (need_cmd xcodebuild).
+  if [[ "$PLAN_BUILD_ONLY" -eq 0 ]]; then
+    xcodebuild -version || die "xcodebuild broken under DEVELOPER_DIR=${DEVELOPER_DIR}"
+  fi
 fi
 
 
