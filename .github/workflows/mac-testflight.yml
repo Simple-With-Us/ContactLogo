@@ -139,6 +139,12 @@ jobs:
     name: Mac App Store archive and TestFlight upload
     needs: gate
     if: needs.gate.outputs.should_ship == '1'
+    # Shared with ios-testflight.yml's ship job: the fixed-version build
+    # counter is one per app across iOS and macOS, so the two lanes must
+    # never plan a build at the same time.  Queued, never cancelled.
+    concurrency:
+      group: contactlogo-testflight
+      cancel-in-progress: false
     runs-on: macos-latest
     timeout-minutes: 90
     env:

@@ -225,18 +225,42 @@ PY
 
 json_paired_referrer() {
   # json_paired_referrer <bundle_id>: the bundle id of the apps.json entry
-  # whose pairedBundleId or macBundleId equals <bundle_id> ("" when no entry
-  # points at it).  Lets a macOS entry with no paired key find the iOS entry
-  # that names it, so iOS builds join the counter.  First match in sorted
-  # key order wins, so the answer is deterministic.
+  # whose pairedBundleId or macBundleId equals <bundle_id>.  Lets a macOS
+  # entry with no paired key find the iOS entry that names it, so iOS builds
+  # join the counter.  First match in sorted key order wins, so the answer
+  # is deterministic.
+  # Exit contract:  "no entry points at it" prints nothing and exits 0 (the
+  # caller ships unpaired); a broken registry (unreadable or unparsable
+  # apps.json, a missing apps object, a malformed entry, or a referrer with
+  # no bundleId) prints the reason on stderr and exits 1, so the caller can
+  # fail closed instead of shipping unpaired off a lower counter.
   /usr/bin/python3 - "$APPS_JSON" "$1" <<'PY'
 import json, sys
 path, want = sys.argv[1], sys.argv[2]
-data = json.load(open(path))
-for key in sorted(data["apps"]):
-    app = data["apps"][key]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except OSError as e:
+    print("json_paired_referrer: cannot read %s: %s" % (path, e), file=sys.stderr)
+    sys.exit(1)
+except ValueError as e:
+    print("json_paired_referrer: cannot parse %s: %s" % (path, e), file=sys.stderr)
+    sys.exit(1)
+apps = data.get("apps") if isinstance(data, dict) else None
+if not isinstance(apps, dict):
+    print("json_paired_referrer: %s has no apps object" % path, file=sys.stderr)
+    sys.exit(1)
+for key in sorted(apps):
+    app = apps[key]
+    if not isinstance(app, dict):
+        print("json_paired_referrer: entry %s in %s is malformed" % (key, path), file=sys.stderr)
+        sys.exit(1)
     if app.get("pairedBundleId") == want or app.get("macBundleId") == want:
-        print(app.get("bundleId") or "", end="")
+        referrer = app.get("bundleId")
+        if not referrer or not isinstance(referrer, str):
+            print("json_paired_referrer: entry %s in %s has no bundleId" % (key, path), file=sys.stderr)
+            sys.exit(1)
+        print(referrer, end="")
         break
 PY
 }
@@ -654,7 +678,7 @@ asc_build_floor() {
 # four-digit build.  Every feed failure fails closed with the feed URL and
 # the reason on stderr; a feed with no numeric version is never "no floor".
 asc_next_shared_build() {
-  local out rc paired_id feed feed_xml max floor curl_err curl_msg ios_key
+  local out rc paired_id feed feed_xml max floor curl_err curl_msg ios_key paired_err paired_msg
   command -v "$ASC_NODE" >/dev/null 2>&1 || return 1
   if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" || -z "${ASC_KEY_P8:-}" ]] \
     && [[ -z "${APPLE_API_KEY_ID:-}" || -z "${APPLE_API_ISSUER_ID:-}" || -z "${APPLE_API_KEY_P8_BASE64:-}" ]]; then
@@ -674,7 +698,23 @@ asc_next_shared_build() {
     [[ "$paired_id" == "$BUNDLE_ID" ]] && paired_id=""
   fi
   if [[ -z "$paired_id" && "${PLATFORM:-}" == "macOS" ]]; then
-    paired_id="$(json_paired_referrer "$BUNDLE_ID" 2>/dev/null || true)"
+    # A broken registry fails closed here:  shipping unpaired off it would
+    # plan a lower counter.  "No referrer" (exit 0, empty) still ships
+    # unpaired.  The lookup's stderr is kept, never discarded, and logged.
+    paired_err="$(mktemp "${TMPDIR:-/tmp}/paired-referrer-err.XXXXXX")" || {
+      logerr "paired lookup: cannot make a temp file to read the registry"
+      return 1
+    }
+    set +e
+    paired_id="$(json_paired_referrer "$BUNDLE_ID" 2>"$paired_err")"
+    rc=$?
+    set -e
+    paired_msg="$(tr '\n' ' ' <"$paired_err" 2>/dev/null || true)"
+    rm -f "$paired_err" >/dev/null 2>&1 || true
+    if [[ $rc -ne 0 ]]; then
+      logerr "paired lookup: cannot find the iOS entry for ${BUNDLE_ID}${paired_msg:+: ${paired_msg}}"
+      return 1
+    fi
     [[ "$paired_id" == "null" ]] && paired_id=""
     [[ "$paired_id" == "$BUNDLE_ID" ]] && paired_id=""
   fi

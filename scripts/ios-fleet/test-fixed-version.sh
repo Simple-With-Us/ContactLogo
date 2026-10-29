@@ -146,6 +146,19 @@ run_helper() {
   ERR="$err"
 }
 
+# run_lookup <apps_json> <bundle_id>: a direct json_paired_referrer call
+# against the given registry.  Sets LOUT (stdout), LRC, LERR (stderr file).
+run_lookup() {
+  local err="${tmp}/lookup.err"
+  : > "$err"
+  LOUT=""
+  set +e
+  LOUT="$(bash -c 'source "'"$funcs"'"; APPS_JSON="$1"; json_paired_referrer "$2"' _ "$1" "$2" 2>"$err")"
+  LRC=$?
+  set -e
+  LERR="$err"
+}
+
 export ASC_KEY_ID="dummy-key" ASC_ISSUER_ID="dummy-issuer" ASC_KEY_P8="dummy-pem"
 
 # 1. Feed ok:  curl is https-only, time- and size-bounded, and the max
@@ -277,5 +290,53 @@ if grep -q '/usr/bin/python3 -c' "$funcs"; then
   fail "feed max still uses /usr/bin/python3 -c"
 fi
 grep -q 'sort -n' "$funcs" || fail "feed max is not computed with POSIX sort"
+
+# 14. No referrer is not an error: the lookup exits 0 with empty output and
+# silent stderr, and a macOS entry no other entry names ships unpaired.
+run_lookup "$APPS_JSON" "com.example.nobody"
+[[ "$LRC" -eq 0 && -z "$LOUT" ]] || fail "no-referrer lookup: rc=$LRC out=$LOUT"
+[[ ! -s "$LERR" ]] || fail "no-referrer lookup wrote to stderr: $(cat "$LERR")"
+: > "${tmp}/asc-calls.log"
+run_helper lonely-mac com.example.lonely.mac macOS
+[[ "$RC" -eq 0 && "$OUT" == "1501" ]] || fail "no-referrer ship did not proceed unpaired: rc=$RC out=$OUT err=$(cat "$ERR")"
+[[ "$(tail -1 "${tmp}/asc-calls.log")" == "next-shared-build com.example.lonely.mac" ]] \
+  || fail "no-referrer ship mispassed: $(tail -1 "${tmp}/asc-calls.log")"
+
+# 15. A broken registry fails the reverse lookup closed (non-zero exit with
+# the reason on stderr), and a macOS ship with no paired key refuses to
+# ship unpaired off it: no build is planned and the ASC client is never
+# reached.
+printf '{ broken json\n' > "${tmp}/apps-broken.json"
+cat > "${tmp}/apps-badentry.json" <<'JSON'
+{"apps": {"odd": "not-a-dict"}}
+JSON
+cat > "${tmp}/apps-nobundle.json" <<'JSON'
+{"apps": {"x": {"pairedBundleId": "com.example.target"}}}
+JSON
+run_lookup "${tmp}/apps-broken.json" "com.example.lonely.mac"
+[[ "$LRC" -ne 0 && -z "$LOUT" ]] || fail "malformed registry lookup did not fail: rc=$LRC out=$LOUT"
+grep -q "cannot parse" "$LERR" || fail "parse reason missing from: $(cat "$LERR")"
+run_lookup "${tmp}/apps-badentry.json" "com.example.lonely.mac"
+[[ "$LRC" -ne 0 && -z "$LOUT" ]] || fail "malformed-entry lookup did not fail: rc=$LRC out=$LOUT"
+grep -q "malformed" "$LERR" || fail "entry reason missing from: $(cat "$LERR")"
+run_lookup "${tmp}/apps-missing.json" "com.example.lonely.mac"
+[[ "$LRC" -ne 0 && -z "$LOUT" ]] || fail "missing-registry lookup did not fail: rc=$LRC out=$LOUT"
+grep -q "cannot read" "$LERR" || fail "read reason missing from: $(cat "$LERR")"
+run_lookup "${tmp}/apps-nobundle.json" "com.example.target"
+[[ "$LRC" -ne 0 && -z "$LOUT" ]] || fail "bundle-less referrer lookup did not fail: rc=$LRC out=$LOUT"
+grep -q "no bundleId" "$LERR" || fail "bundle reason missing from: $(cat "$LERR")"
+cp "$APPS_JSON" "${tmp}/apps-good.json"
+printf '{ broken json\n' > "$APPS_JSON"
+: > "${tmp}/asc-calls.log"
+run_helper lonely-mac com.example.lonely.mac macOS
+BROKEN_RC="$RC"; BROKEN_OUT="$OUT"; BROKEN_ERR="$(cat "$ERR")"
+cp "${tmp}/apps-good.json" "$APPS_JSON"
+[[ "$BROKEN_RC" -eq 1 && -z "$BROKEN_OUT" ]] || fail "broken-registry ship did not fail closed: rc=$BROKEN_RC out=$BROKEN_OUT"
+printf '%s' "$BROKEN_ERR" | grep -q "paired lookup" || fail "paired-lookup reason missing from: $BROKEN_ERR"
+[[ ! -s "${tmp}/asc-calls.log" ]] || fail "ASC client was reached after a broken registry"
+# The fixture is restored: the next run pairs again.
+run_helper revmac com.example.rev.mac macOS
+[[ "$(tail -1 "${tmp}/asc-calls.log")" == "next-shared-build com.example.rev.mac com.example.rev.ios" ]] \
+  || fail "fixture was not restored after the broken-registry case"
 
 echo "ok: fixed-version shared build (bounded https-only feed, whitespace-tolerant scrape, range-checked floor, paired passthrough incl. macOS reverse lookup, credentials fail closed)"
