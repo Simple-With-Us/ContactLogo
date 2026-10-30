@@ -94,13 +94,31 @@ def push_paths(paths_block):
     return paths
 
 
-GATE_PREFIX_RE = re.compile(r"--path-prefix\s+(?:'([^']+)'|\"([^\"]+)\"|(\S+))")
+# Bare value excludes a backslash (from HEAD) so a wrapped `--path-prefix e/f/ \`
+# line never captures the continuation marker; quoted alternatives are main's.
+# Unanchored on purpose: findall scans multi-line gate-call chunks, so no $ anchor.
+GATE_PREFIX_RE = re.compile(r"--path-prefix\s+(?:'([^']+)'|\"([^\"]+)\"|([^\s\\]+))")
 
 
-def gate_prefixes(code):
-    """--path-prefix values in a gate step, whatever their quoting: single, double or none."""
-    cleaned = "\n".join(ln.split("#", 1)[0] for ln in code.splitlines())
-    return [a or b or c for (a, b, c) in GATE_PREFIX_RE.findall(cleaned)]
+def gate_prefixes(text):
+    """--path-prefix values from scheduled-ship-gate.sh calls only, whatever their quoting."""
+    prefixes = []
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        if "scheduled-ship-gate.sh" in lines[i]:
+            chunk = [lines[i]]
+            j = i + 1
+            while chunk[-1].rstrip().endswith("\\") and j < len(lines):
+                chunk.append(lines[j])
+                j += 1
+            cleaned = "\n".join(ln.split("#", 1)[0] for ln in "\n".join(chunk).splitlines())
+            for single, double, bare in GATE_PREFIX_RE.findall(cleaned):
+                prefixes.append(single or double or bare)
+            i = j
+        else:
+            i += 1
+    return prefixes
 
 
 def gate_step(wf_code):
@@ -132,14 +150,32 @@ _SAMPLE_PUSH = (
 )
 check(push_paths(_SAMPLE_PUSH) == ["a/**", "b/**", "c/**", "d/**"],
       "push-path extractor keeps single, double, bare and trailing-comment entries")
+_SAMPLE_PUSH_BLOCK = (
+    "    branches: [main]\n"
+    "    paths:  # push filter\n"
+    "      - 'a/b/'\n"
+    '      - "c/d/"\n'
+    "      - e/f/\n"
+    "      - 'g/h/' # trailing reason\n"
+    "    paths-ignore:\n"
+    "      - 'zzz/'\n"
+)
+_sample_header = re.search(r"^    paths:\s*(?:#.*)?$", _SAMPLE_PUSH_BLOCK, re.MULTILINE)
+check(push_paths(block(_SAMPLE_PUSH_BLOCK,
+                       _sample_header.group(0) if _sample_header else "    paths:", 4))
+      == ["a/b/", "c/d/", "e/f/", "g/h/"],
+      "push-path extraction tolerates a trailing comment on 'paths:' and ignores paths-ignore")
 _SAMPLE_GATE = (
+    "          bash scripts/ios-fleet/scheduled-ship-gate.sh \\\n"
+    "            --event schedule \\\n"
     "            --path-prefix 'a/**' \\\n"
     '            --path-prefix "b/**" \\\n'
     "            --path-prefix c/** \\\n"
-    "            --path-prefix 'd/**' # reason \\\n"
+    "            --path-prefix 'd/**' # reason\n"
+    "      - run: echo --path-prefix 'zzz/'\n"
 )
 check(gate_prefixes(_SAMPLE_GATE) == ["a/**", "b/**", "c/**", "d/**"],
-      "gate-prefix extractor keeps single, double, bare and trailing-comment entries")
+      "gate-prefix extractor keeps single, double, bare and trailing-comment entries (gate calls only)")
 _SAMPLE_GATE_STEP = (
     "      - name: Scheduled ship gate (skip unless a release path changed)\n"
     "        id: gate\n"
@@ -180,8 +216,10 @@ check(
 # The scheduled backstop must ship exactly what the push trigger would have
 # shipped, so every gate mirrors on.push.paths entry for entry (globs and
 # '!' exclusions verbatim).  The push list is the single source of truth:
-# it is read out of the workflow file here, not repeated.
-PUSH_PATHS = push_paths(block(owner_push, "    paths:", 4))
+# it is read out of the workflow file here, not repeated.  The header match
+# tolerates a trailing comment (from HEAD: `paths:  # push filter`).
+_paths_header = re.search(r"^    paths:\s*(?:#.*)?$", owner_push, re.MULTILINE)
+PUSH_PATHS = push_paths(block(owner_push, _paths_header.group(0) if _paths_header else "    paths:", 4))
 check(len(PUSH_PATHS) >= 10, "the owner push filter is readable as a path list")
 for needed in (
     "Apps/ContactLogoiOS/**",
