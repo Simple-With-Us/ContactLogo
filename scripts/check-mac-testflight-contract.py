@@ -76,8 +76,9 @@ def code_lines(text):
     return [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
 
 
-PUSH_ITEM_RE = re.compile(r"""^\s+-\s+['"]?([^'"\s]+)['"]?\s*$""", re.MULTILINE)
-GATE_PREFIX_RE = re.compile(r"""--path-prefix\s+(?:'([^']+)'|"([^"]+)"|([^\s\\]+))""")
+PUSH_ITEM_RE = re.compile(r"""^\s+-\s+['"]?([^'"\s]+)['"]?\s*(?:#.*)?$""", re.MULTILINE)
+# Unanchored on purpose: findall scans multi-line gate-call chunks, so no $ anchor.
+GATE_PREFIX_RE = re.compile(r"""--path-prefix\s+(?:'([^']+)'|"([^"]+)"|([^\s\\]+))(?:\s+#.*)?""")
 
 
 def push_paths(push_block):
@@ -114,23 +115,25 @@ _SAMPLE_PUSH = (
     "      - 'a/b/'\n"
     '      - "c/d/"\n'
     "      - e/f/\n"
+    "      - 'g/h/' # trailing reason\n"
     "    paths-ignore:\n"
     "      - 'zzz/'\n"
 )
-check(push_paths(_SAMPLE_PUSH) == ["a/b/", "c/d/", "e/f/"],
-      "push-path extractor accepts single, double and bare styles (paths only)")
+check(push_paths(_SAMPLE_PUSH) == ["a/b/", "c/d/", "e/f/", "g/h/"],
+      "push-path extractor accepts single, double and bare styles, keeps trailing comments (paths only)")
 _SAMPLE_GATE = (
     "          bash scripts/ios-fleet/scheduled-ship-gate.sh \\\n"
     "            --event schedule \\\n"
     "            --path-prefix 'a/b/' \\\n"
     '            --path-prefix "c/d/" \\\n'
     "            --path-prefix e/f/ \\\n"
+    "            --path-prefix 'g/h/' # trailing reason\n"
     '            --repo-root "$GITHUB_WORKSPACE" \\\n'
     "            myapp\n"
     "      - run: echo --path-prefix 'zzz/'\n"
 )
-check(gate_prefixes(_SAMPLE_GATE) == ["a/b/", "c/d/", "e/f/"],
-      "gate-prefix extractor accepts single, double and bare styles (gate calls only)")
+check(gate_prefixes(_SAMPLE_GATE) == ["a/b/", "c/d/", "e/f/", "g/h/"],
+      "gate-prefix extractor accepts single, double and bare styles, keeps trailing comments (gate calls only)")
 
 
 # ---------------------------------------------------------------- release owner
