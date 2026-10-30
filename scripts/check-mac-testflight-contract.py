@@ -83,7 +83,8 @@ GATE_PREFIX_RE = re.compile(r"""--path-prefix\s+(?:'([^']+)'|"([^"]+)"|([^\s\\]+
 
 def push_paths(push_block):
     """Values of the on.push.paths list only, any quote style."""
-    paths_block = block(push_block, "    paths:", 4)
+    header = re.search(r"^    paths:\s*(?:#.*)?$", push_block, re.MULTILINE)
+    paths_block = block(push_block, header.group(0) if header else "    paths:", 4)
     cleaned = "\n".join(ln.split("#", 1)[0] for ln in paths_block.splitlines())
     return PUSH_ITEM_RE.findall(cleaned)
 
@@ -111,7 +112,7 @@ def gate_prefixes(text):
 print("== extractor self-check ==")
 _SAMPLE_PUSH = (
     "    branches: [main]\n"
-    "    paths:\n"
+    "    paths:  # push filter\n"
     "      - 'a/b/'\n"
     '      - "c/d/"\n'
     "      - e/f/\n"
@@ -120,7 +121,7 @@ _SAMPLE_PUSH = (
     "      - 'zzz/'\n"
 )
 check(push_paths(_SAMPLE_PUSH) == ["a/b/", "c/d/", "e/f/", "g/h/"],
-      "push-path extractor accepts single, double and bare styles, keeps trailing comments (paths only)")
+      "push-path extractor accepts single, double and bare styles, keeps trailing comments (paths only, header tolerant)")
 _SAMPLE_GATE = (
     "          bash scripts/ios-fleet/scheduled-ship-gate.sh \\\n"
     "            --event schedule \\\n"
