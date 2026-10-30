@@ -37,11 +37,12 @@ name: Mac TestFlight
 #   The one-hour rate gate skips a merge that lands inside the window of the
 #   previous ship, and a skipped push never ships later by itself.  The
 #   release caller's catch-up ticks find that merge:
-#   scripts/ios-fleet/scheduled-ship-gate.sh passes only when
-#   Apps/ContactLogoMac/, Apps/ContactLogoMacAppStore/, Sources/ or project.yml
-#   changed since the last successful ship, so a web, Android or iOS-only commit
-#   never produces a Mac build.  The gate below re-verifies on a cheap Linux
-#   runner; the macOS job starts only when it votes to ship.
+#   scripts/ios-fleet/scheduled-ship-gate.sh takes the release workflow's
+#   full on.push.paths list and passes when anything in it changed since the
+#   last successful ship, so a tooling-only merge a missed push never shipped
+#   still goes out, while a web, Android or docs-only commit never produces
+#   a build.  The gate below re-verifies on a cheap Linux runner; the macOS
+#   job starts only when it votes to ship.
 #
 # Ship state (the last ship's time and sha) lives in ~/.cache/ios-fleet and is
 # kept between runs with actions/cache, because a hosted runner starts empty.
@@ -131,15 +132,35 @@ jobs:
           restore-keys: |
             ios-fleet-mac-contactlogo-
 
-      - name: Scheduled ship gate (skip unless the Mac app changed)
+      # The release workflow's full on.push.paths list, entry for entry (the
+      # contract test enforces the mirror):  a schedule event path-diffs, a
+      # standalone dispatch votes ship.
+      - name: Scheduled ship gate (skip unless a release path changed)
         id: gate
         run: |
           bash scripts/ios-fleet/scheduled-ship-gate.sh \
             --event "${{ github.event_name }}" \
-            --path-prefix 'Apps/ContactLogoMac/' \
-            --path-prefix 'Apps/ContactLogoMacAppStore/' \
-            --path-prefix 'Sources/' \
+            --path-prefix 'Apps/ContactLogoiOS/**' \
+            --path-prefix 'Apps/ContactLogoMac/**' \
+            --path-prefix 'Apps/ContactLogoMacAppStore/**' \
+            --path-prefix 'Sources/**' \
             --path-prefix 'project.yml' \
+            --path-prefix '.github/workflows/testflight.yml' \
+            --path-prefix '.github/workflows/ios-testflight.yml' \
+            --path-prefix '.github/workflows/mac-testflight.yml' \
+            --path-prefix '.github/actions/infisical-secrets/**' \
+            --path-prefix 'scripts/ios-ship-testflight.sh' \
+            --path-prefix 'scripts/ios-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/ios-stage-asc-key.sh' \
+            --path-prefix 'scripts/ios-collect-ship-logs.sh' \
+            --path-prefix 'scripts/ios-fleet/**' \
+            --path-prefix 'scripts/ios-fleet-pin.sh' \
+            --path-prefix 'scripts/ios-fleet.sha256' \
+            --path-prefix 'scripts/mac-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/mac-export-appstore-pkg.sh' \
+            --path-prefix 'scripts/mac-install-appstore-profiles.sh' \
+            --path-prefix '!scripts/ios-fleet/check-built-sentry-dsn.sh' \
+            --path-prefix '!scripts/ios-fleet/upload-sentry-dsyms.sh' \
             --repo-root "$GITHUB_WORKSPACE" \
             contactlogo-mac
 
