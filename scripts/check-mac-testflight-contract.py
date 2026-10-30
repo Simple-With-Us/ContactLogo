@@ -104,7 +104,9 @@ def gate_prefixes(code):
 
 
 def gate_step(wf_code):
-    """The Scheduled ship gate step: from its `- name:` line to the next step at the same indent."""
+    """The Scheduled ship gate step: from its `- name:` line to the next step
+    at the same indent or the next job header (the Mac gate is the last step
+    of its job, so without the job break it would slurp the ship job)."""
     out = []
     inside = False
     for line in wf_code.splitlines():
@@ -114,6 +116,8 @@ def gate_step(wf_code):
                 out.append(line)
             continue
         if re.match(r"      - ", line):
+            break
+        if re.match(r"  \S", line):
             break
         out.append(line)
     return "\n".join(out)
@@ -136,6 +140,22 @@ _SAMPLE_GATE = (
 )
 check(gate_prefixes(_SAMPLE_GATE) == ["a/**", "b/**", "c/**", "d/**"],
       "gate-prefix extractor keeps single, double, bare and trailing-comment entries")
+_SAMPLE_GATE_STEP = (
+    "      - name: Scheduled ship gate (skip unless a release path changed)\n"
+    "        id: gate\n"
+    "        run: |\n"
+    "          bash scripts/ios-fleet/scheduled-ship-gate.sh \\\n"
+    "            --path-prefix 'a/**' \\\n"
+    "            contactlogo-mac\n"
+    "\n"
+    "  ship:\n"
+    "    name: Ship\n"
+    "    steps:\n"
+    "      - uses: actions/checkout@v7\n"
+)
+check("  ship:" not in gate_step(_SAMPLE_GATE_STEP)
+      and gate_prefixes(gate_step(_SAMPLE_GATE_STEP)) == ["a/**"],
+      "gate_step stops at the next job header when the gate is the last step")
 
 
 # ---------------------------------------------------------------- release owner
