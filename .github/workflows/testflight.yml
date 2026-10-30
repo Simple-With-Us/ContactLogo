@@ -24,16 +24,24 @@ name: ContactLogo TestFlight
 #   schedule, the twice-hourly iOS catch-up plus the hourly Mac catch-up;
 #   workflow_dispatch, with the merged lane inputs (below).
 #
-# Gates:  the union push filter cannot express per-lane intent (a Mac-only
-# merge matches it), so gate-ios and gate-mac ALWAYS take the path-diff
-# (--event schedule):  each lane ships only when its own source tree changed
-# since its last successful ship, on push and dispatch exactly as on cron.
-# A standalone dispatch of a lane file stays an explicit per-lane instruction
-# (its own gate still votes ship);  that is the escape hatch for a no-change
-# rebuild.  When a gate skips, its lane is never called and nothing uploads.
-# The fleet script's own same-HEAD skip and rate gate still apply inside
-# every ship;  nothing here sets IOS_TF_MIN_INTERVAL_SEC or passes
-# --force-ship as a standing value.
+# Gates:  both gates take the FULL on.push.paths list below, entry for entry
+# (--path-prefix per entry, globs and `!` exclusions verbatim; the gate
+# script translates `!` into a git :(exclude) pathspec).  The scheduled
+# backstop must catch every merge the push trigger would have shipped (owner
+# rule, Oct 29 2026: unless they built recently they should automatically
+# build):  a push event can be missed (workflow disabled at merge time,
+# GitHub dropping the event, a bot merge that fires no push run), and a
+# source-tree-only gate would let a tooling-only merge through the cron
+# unshipped.  So gate-ios and gate-mac ALWAYS take the path-diff (--event
+# schedule), on push and dispatch exactly as on cron, and a merge matching
+# the push filter ships every lane whose state is behind; per-lane source
+# filtering is deliberately NOT re-applied here.  A standalone dispatch of
+# a lane file stays an explicit per-lane instruction (its own gate still
+# votes ship);  that is the escape hatch for a no-change rebuild.  When a
+# gate skips, its lane is never called and nothing uploads.  The fleet
+# script's own same-HEAD skip and rate gate still apply inside every ship;
+# nothing here sets IOS_TF_MIN_INTERVAL_SEC or passes --force-ship as a
+# standing value.
 #
 # Dispatch inputs are lane-scoped:  export_only is the iOS signing check
 # (archive + export, no upload), so it skips the Mac call rather than
@@ -138,16 +146,35 @@ jobs:
             ios-fleet-contactlogo-
 
       # Always the path-diff (--event schedule), on push and dispatch exactly
-      # as on cron:  the union push filter above cannot express per-lane
-      # intent, so a Mac-only merge must not ship iOS (and vice versa).
-      - name: Ship gate (skip unless iOS code changed)
+      # as on cron.  The full on.push.paths list above, entry for entry:  the
+      # contract test enforces the mirror, so edit the push filter and the
+      # gates together.
+      - name: Ship gate (skip unless a release path changed)
         id: gate
         run: |
           bash scripts/ios-fleet/scheduled-ship-gate.sh \
             --event schedule \
-            --path-prefix 'Apps/ContactLogoiOS/' \
-            --path-prefix 'Sources/ContactLogoKit/' \
+            --path-prefix 'Apps/ContactLogoiOS/**' \
+            --path-prefix 'Apps/ContactLogoMac/**' \
+            --path-prefix 'Apps/ContactLogoMacAppStore/**' \
+            --path-prefix 'Sources/**' \
             --path-prefix 'project.yml' \
+            --path-prefix '.github/workflows/testflight.yml' \
+            --path-prefix '.github/workflows/ios-testflight.yml' \
+            --path-prefix '.github/workflows/mac-testflight.yml' \
+            --path-prefix '.github/actions/infisical-secrets/**' \
+            --path-prefix 'scripts/ios-ship-testflight.sh' \
+            --path-prefix 'scripts/ios-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/ios-stage-asc-key.sh' \
+            --path-prefix 'scripts/ios-collect-ship-logs.sh' \
+            --path-prefix 'scripts/ios-fleet/**' \
+            --path-prefix 'scripts/ios-fleet-pin.sh' \
+            --path-prefix 'scripts/ios-fleet.sha256' \
+            --path-prefix 'scripts/mac-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/mac-export-appstore-pkg.sh' \
+            --path-prefix 'scripts/mac-install-appstore-profiles.sh' \
+            --path-prefix '!scripts/ios-fleet/check-built-sentry-dsn.sh' \
+            --path-prefix '!scripts/ios-fleet/upload-sentry-dsyms.sh' \
             --repo-root "$GITHUB_WORKSPACE" \
             contactlogo
 
@@ -174,16 +201,34 @@ jobs:
           restore-keys: |
             ios-fleet-mac-contactlogo-
 
-      # Always the path-diff (--event schedule):  see gate-ios above.
-      - name: Ship gate (skip unless the Mac app changed)
+      # Always the path-diff (--event schedule):  see gate-ios above.  The
+      # same full on.push.paths list, entry for entry.
+      - name: Ship gate (skip unless a release path changed)
         id: gate
         run: |
           bash scripts/ios-fleet/scheduled-ship-gate.sh \
             --event schedule \
-            --path-prefix 'Apps/ContactLogoMac/' \
-            --path-prefix 'Apps/ContactLogoMacAppStore/' \
-            --path-prefix 'Sources/' \
+            --path-prefix 'Apps/ContactLogoiOS/**' \
+            --path-prefix 'Apps/ContactLogoMac/**' \
+            --path-prefix 'Apps/ContactLogoMacAppStore/**' \
+            --path-prefix 'Sources/**' \
             --path-prefix 'project.yml' \
+            --path-prefix '.github/workflows/testflight.yml' \
+            --path-prefix '.github/workflows/ios-testflight.yml' \
+            --path-prefix '.github/workflows/mac-testflight.yml' \
+            --path-prefix '.github/actions/infisical-secrets/**' \
+            --path-prefix 'scripts/ios-ship-testflight.sh' \
+            --path-prefix 'scripts/ios-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/ios-stage-asc-key.sh' \
+            --path-prefix 'scripts/ios-collect-ship-logs.sh' \
+            --path-prefix 'scripts/ios-fleet/**' \
+            --path-prefix 'scripts/ios-fleet-pin.sh' \
+            --path-prefix 'scripts/ios-fleet.sha256' \
+            --path-prefix 'scripts/mac-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/mac-export-appstore-pkg.sh' \
+            --path-prefix 'scripts/mac-install-appstore-profiles.sh' \
+            --path-prefix '!scripts/ios-fleet/check-built-sentry-dsn.sh' \
+            --path-prefix '!scripts/ios-fleet/upload-sentry-dsyms.sh' \
             --repo-root "$GITHUB_WORKSPACE" \
             contactlogo-mac
 

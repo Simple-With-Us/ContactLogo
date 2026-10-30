@@ -28,9 +28,10 @@ name: ContactLogo iOS TestFlight
 # Nothing here depends on a repository variable.  The numeric app id lives in
 # scripts/ios-fleet/apps.json.
 #
-# The scheduled-ship gate below re-verifies intent on this runner (seconds):
-# only the caller's schedule event is path-diffed here, because the caller
-# already gated the lane;  a tick with nothing to ship ends before Xcode.
+# The scheduled-ship gate below re-verifies intent on this runner (seconds)
+# against the release workflow's full on.push.paths list:  only the caller's
+# schedule event is path-diffed here, because the caller already gated the
+# lane;  a tick with nothing to ship ends before Xcode.
 #
 # Ship state (last-ship sha and time, build sequence cache) lives in
 # ~/.cache/ios-fleet, which a hosted runner starts empty every job.  It is
@@ -120,15 +121,34 @@ jobs:
 
       # Runs FIRST so a tick with nothing to ship costs seconds.  The release
       # caller already gated this lane;  this re-verifies on the ship runner
-      # (a standalone dispatch votes ship:  an explicit per-lane instruction).
-      - name: Scheduled ship gate (skip unless iOS code changed)
+      # against the same full on.push.paths list (a standalone dispatch votes
+      # ship:  an explicit per-lane instruction).
+      - name: Scheduled ship gate (skip unless a release path changed)
         id: gate
         run: |
           bash "$GITHUB_WORKSPACE/scripts/ios-fleet/scheduled-ship-gate.sh" \
             --event "${{ github.event_name }}" \
-            --path-prefix 'Apps/ContactLogoiOS/' \
-            --path-prefix 'Sources/ContactLogoKit/' \
+            --path-prefix 'Apps/ContactLogoiOS/**' \
+            --path-prefix 'Apps/ContactLogoMac/**' \
+            --path-prefix 'Apps/ContactLogoMacAppStore/**' \
+            --path-prefix 'Sources/**' \
             --path-prefix 'project.yml' \
+            --path-prefix '.github/workflows/testflight.yml' \
+            --path-prefix '.github/workflows/ios-testflight.yml' \
+            --path-prefix '.github/workflows/mac-testflight.yml' \
+            --path-prefix '.github/actions/infisical-secrets/**' \
+            --path-prefix 'scripts/ios-ship-testflight.sh' \
+            --path-prefix 'scripts/ios-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/ios-stage-asc-key.sh' \
+            --path-prefix 'scripts/ios-collect-ship-logs.sh' \
+            --path-prefix 'scripts/ios-fleet/**' \
+            --path-prefix 'scripts/ios-fleet-pin.sh' \
+            --path-prefix 'scripts/ios-fleet.sha256' \
+            --path-prefix 'scripts/mac-appstore-gm-prepare.sh' \
+            --path-prefix 'scripts/mac-export-appstore-pkg.sh' \
+            --path-prefix 'scripts/mac-install-appstore-profiles.sh' \
+            --path-prefix '!scripts/ios-fleet/check-built-sentry-dsn.sh' \
+            --path-prefix '!scripts/ios-fleet/upload-sentry-dsyms.sh' \
             --repo-root "$GITHUB_WORKSPACE" \
             contactlogo
 

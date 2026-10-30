@@ -14,8 +14,9 @@ or a merge that never ships:
 
   * the owner must fire on a push to main that touches either native tree,
     must keep both catch-up crons, must be dispatchable with the merged
-    inputs, must gate each lane by its own paths, must plan one build and
-    hand the same value to both lanes;
+    inputs, must mirror the push paths in every gate (so a missed push
+    still ships on the cron), must plan one build and hand the same value
+    to both lanes;
   * each lane must require the planned build, must pass it via --build, must
     fetch full history, must ship through the fleet script with the mandatory
     What to Test note, and must never set the rate gate override as a
@@ -76,21 +77,31 @@ def code_lines(text):
     return [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
 
 
-PUSH_ITEM_RE = re.compile(r"""^\s+-\s+['"]?([^'"\s]+)['"]?\s*(?:#.*)?$""", re.MULTILINE)
+def _unquote(token):
+    token = token.strip()
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in "'\"":
+        return token[1:-1]
+    return token
+
+
+def push_paths(paths_block):
+    """Entries of an on.push.paths list, whatever their quoting: single, double or none."""
+    paths = []
+    for line in paths_block.splitlines():
+        m = re.match(r"\s*-\s*(.+?)\s*(?:#.*)?$", line)
+        if m:
+            paths.append(_unquote(m.group(1)))
+    return paths
+
+
+# Bare value excludes a backslash (from HEAD) so a wrapped `--path-prefix e/f/ \`
+# line never captures the continuation marker; quoted alternatives are main's.
 # Unanchored on purpose: findall scans multi-line gate-call chunks, so no $ anchor.
-GATE_PREFIX_RE = re.compile(r"""--path-prefix\s+(?:'([^']+)'|"([^"]+)"|([^\s\\]+))(?:\s+#.*)?""")
-
-
-def push_paths(push_block):
-    """Values of the on.push.paths list only, any quote style."""
-    header = re.search(r"^    paths:\s*(?:#.*)?$", push_block, re.MULTILINE)
-    paths_block = block(push_block, header.group(0) if header else "    paths:", 4)
-    cleaned = "\n".join(ln.split("#", 1)[0] for ln in paths_block.splitlines())
-    return PUSH_ITEM_RE.findall(cleaned)
+GATE_PREFIX_RE = re.compile(r"--path-prefix\s+(?:'([^']+)'|\"([^\"]+)\"|([^\s\\]+))")
 
 
 def gate_prefixes(text):
-    """--path-prefix values from scheduled-ship-gate.sh calls only, any quote style."""
+    """--path-prefix values from scheduled-ship-gate.sh calls only, whatever their quoting."""
     prefixes = []
     lines = text.splitlines()
     i = 0
@@ -101,7 +112,8 @@ def gate_prefixes(text):
             while chunk[-1].rstrip().endswith("\\") and j < len(lines):
                 chunk.append(lines[j])
                 j += 1
-            for single, double, bare in GATE_PREFIX_RE.findall("\n".join(chunk)):
+            cleaned = "\n".join(ln.split("#", 1)[0] for ln in "\n".join(chunk).splitlines())
+            for single, double, bare in GATE_PREFIX_RE.findall(cleaned):
                 prefixes.append(single or double or bare)
             i = j
         else:
@@ -109,8 +121,36 @@ def gate_prefixes(text):
     return prefixes
 
 
+def gate_step(wf_code):
+    """The Scheduled ship gate step: from its `- name:` line to the next step
+    at the same indent or the next job header (the Mac gate is the last step
+    of its job, so without the job break it would slurp the ship job)."""
+    out = []
+    inside = False
+    for line in wf_code.splitlines():
+        if not inside:
+            if re.match(r"\s*- name: Scheduled ship gate", line):
+                inside = True
+                out.append(line)
+            continue
+        if re.match(r"      - ", line):
+            break
+        if re.match(r"  \S", line):
+            break
+        out.append(line)
+    return "\n".join(out)
+
+
 print("== extractor self-check ==")
 _SAMPLE_PUSH = (
+    "      - 'a/**'\n"
+    '      - "b/**"\n'
+    "      - c/**\n"
+    "      - 'd/**' # reason\n"
+)
+check(push_paths(_SAMPLE_PUSH) == ["a/**", "b/**", "c/**", "d/**"],
+      "push-path extractor keeps single, double, bare and trailing-comment entries")
+_SAMPLE_PUSH_BLOCK = (
     "    branches: [main]\n"
     "    paths:  # push filter\n"
     "      - 'a/b/'\n"
@@ -120,21 +160,38 @@ _SAMPLE_PUSH = (
     "    paths-ignore:\n"
     "      - 'zzz/'\n"
 )
-check(push_paths(_SAMPLE_PUSH) == ["a/b/", "c/d/", "e/f/", "g/h/"],
-      "push-path extractor accepts single, double and bare styles, keeps trailing comments (paths only, header tolerant)")
+_sample_header = re.search(r"^    paths:\s*(?:#.*)?$", _SAMPLE_PUSH_BLOCK, re.MULTILINE)
+check(push_paths(block(_SAMPLE_PUSH_BLOCK,
+                       _sample_header.group(0) if _sample_header else "    paths:", 4))
+      == ["a/b/", "c/d/", "e/f/", "g/h/"],
+      "push-path extraction tolerates a trailing comment on 'paths:' and ignores paths-ignore")
 _SAMPLE_GATE = (
     "          bash scripts/ios-fleet/scheduled-ship-gate.sh \\\n"
     "            --event schedule \\\n"
-    "            --path-prefix 'a/b/' \\\n"
-    '            --path-prefix "c/d/" \\\n'
-    "            --path-prefix e/f/ \\\n"
-    "            --path-prefix 'g/h/' # trailing reason\n"
-    '            --repo-root "$GITHUB_WORKSPACE" \\\n'
-    "            myapp\n"
+    "            --path-prefix 'a/**' \\\n"
+    '            --path-prefix "b/**" \\\n'
+    "            --path-prefix c/** \\\n"
+    "            --path-prefix 'd/**' # reason\n"
     "      - run: echo --path-prefix 'zzz/'\n"
 )
-check(gate_prefixes(_SAMPLE_GATE) == ["a/b/", "c/d/", "e/f/", "g/h/"],
-      "gate-prefix extractor accepts single, double and bare styles, keeps trailing comments (gate calls only)")
+check(gate_prefixes(_SAMPLE_GATE) == ["a/**", "b/**", "c/**", "d/**"],
+      "gate-prefix extractor keeps single, double, bare and trailing-comment entries (gate calls only)")
+_SAMPLE_GATE_STEP = (
+    "      - name: Scheduled ship gate (skip unless a release path changed)\n"
+    "        id: gate\n"
+    "        run: |\n"
+    "          bash scripts/ios-fleet/scheduled-ship-gate.sh \\\n"
+    "            --path-prefix 'a/**' \\\n"
+    "            contactlogo-mac\n"
+    "\n"
+    "  ship:\n"
+    "    name: Ship\n"
+    "    steps:\n"
+    "      - uses: actions/checkout@v7\n"
+)
+check("  ship:" not in gate_step(_SAMPLE_GATE_STEP)
+      and gate_prefixes(gate_step(_SAMPLE_GATE_STEP)) == ["a/**"],
+      "gate_step stops at the next job header when the gate is the last step")
 
 
 # ---------------------------------------------------------------- release owner
@@ -156,7 +213,14 @@ check(
     len(branch_lines) == 1 and re.fullmatch(r"\s*branches:\s*\[\s*main\s*\]", branch_lines[0]) is not None,
     "owner push trigger is limited to main (exactly `branches: [main]`)",
 )
-owner_push_paths = push_paths(owner_push)
+# The scheduled backstop must ship exactly what the push trigger would have
+# shipped, so every gate mirrors on.push.paths entry for entry (globs and
+# '!' exclusions verbatim).  The push list is the single source of truth:
+# it is read out of the workflow file here, not repeated.  The header match
+# tolerates a trailing comment (from HEAD: `paths:  # push filter`).
+_paths_header = re.search(r"^    paths:\s*(?:#.*)?$", owner_push, re.MULTILINE)
+PUSH_PATHS = push_paths(block(owner_push, _paths_header.group(0) if _paths_header else "    paths:", 4))
+check(len(PUSH_PATHS) >= 10, "the owner push filter is readable as a path list")
 for needed in (
     "Apps/ContactLogoiOS/**",
     "Apps/ContactLogoMac/**",
@@ -171,7 +235,7 @@ for needed in (
     "scripts/ios-fleet-pin.sh",
     "scripts/ios-fleet.sha256",
 ):
-    check(needed in owner_push_paths, f"owner push paths filter covers {needed}")
+    check(needed in PUSH_PATHS, f"owner push paths filter covers {needed}")
 check("workflow_dispatch:" in owner_on, "owner workflow_dispatch is available")
 owner_dispatch = block(owner_on, "  workflow_dispatch:", 2)
 for name in ("export_only:", "validate_only:", "force_ship:"):
@@ -183,12 +247,12 @@ check("cron: '19,49 * * * *'" in owner_on and "cron: '17 * * * *'" in owner_on,
 check("scripts/ios-fleet/scheduled-ship-gate.sh" in owner_code, "owner gates carry the path gate")
 check(owner_code.count("--event schedule") >= 2,
       "owner gates always take the path-diff (--event schedule)")
-owner_prefixes = gate_prefixes(owner_code)
-check(
-    set(owner_prefixes) == {"Apps/ContactLogoiOS/", "Sources/ContactLogoKit/", "project.yml",
-                            "Apps/ContactLogoMac/", "Apps/ContactLogoMacAppStore/", "Sources/"},
-    "owner gates watch both lanes' source paths",
-)
+for _job in ("gate-ios", "gate-mac"):
+    _gate_prefixes = gate_prefixes(block(owner, f"  {_job}:", 2))
+    check(bool(_gate_prefixes) and len(_gate_prefixes) == len(set(_gate_prefixes)),
+          f"{_job} passes each gate path exactly once")
+    check(set(_gate_prefixes) == set(PUSH_PATHS),
+          f"{_job} mirrors on.push.paths entry for entry")
 check(owner_code.count("fetch-depth: 0") >= 2, "owner gates checkout full history (fetch-depth: 0)")
 check("--plan-build-only" in owner_code, "owner plans the release build once (--plan-build-only)")
 check(owner_code.count("needs.plan-build.outputs.build") >= 2,
@@ -204,7 +268,7 @@ check("--force-ship" not in owner_code, "owner never passes --force-ship")
 check("contactlogo-testflight-release" in owner, "owner serializes releases")
 
 
-def check_lane(rel, prefixes, ship_via):
+def check_lane(rel, ship_via):
     print(f"== lane ({rel}) ==")
     wf = read(rel)
     wf_code = "\n".join(code_lines(wf))
@@ -220,8 +284,8 @@ def check_lane(rel, prefixes, ship_via):
     check("build:" in block(on_block, "  workflow_dispatch:", 2),
           f"{rel} dispatch takes or plans a build")
     check("scripts/ios-fleet/scheduled-ship-gate.sh" in wf_code, f"{rel} keeps its ship gate")
-    check(set(gate_prefixes(wf_code)) == set(prefixes),
-          f"{rel} gate watches the lane paths")
+    check(set(gate_prefixes(gate_step(wf_code))) == set(PUSH_PATHS),
+          f"{rel} gate mirrors the owner's push paths")
     check(ship_via in wf_code, f"{rel} ships through {ship_via}")
     check("--build" in wf_code, f"{rel} passes the planned build via --build")
     check("--plan-build-only" in wf_code, f"{rel} plans its own build on a standalone dispatch")
@@ -235,7 +299,6 @@ def check_lane(rel, prefixes, ship_via):
 
 ios_wf, ios_code, ios_on = check_lane(
     ".github/workflows/ios-testflight.yml",
-    ["Apps/ContactLogoiOS/", "Sources/ContactLogoKit/", "project.yml"],
     "scripts/ios-ship-testflight.sh",
 )
 check("github.ref == 'refs/heads/main'" in ios_code, "iOS lane uploads only from main")
@@ -243,7 +306,6 @@ check("--force-ship" not in ios_code, "iOS lane never passes --force-ship")
 
 mac_wf, mac_code, mac_on = check_lane(
     ".github/workflows/mac-testflight.yml",
-    ["Apps/ContactLogoMac/", "Apps/ContactLogoMacAppStore/", "Sources/", "project.yml"],
     "scripts/ios-fleet/ship-testflight.sh",
 )
 check(mac_code.count("fetch-depth: 0") >= 2,
