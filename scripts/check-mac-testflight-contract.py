@@ -88,8 +88,7 @@ def push_paths(paths_block):
     """Entries of an on.push.paths list, whatever their quoting: single, double or none."""
     paths = []
     for line in paths_block.splitlines():
-        stripped = line.split("#", 1)[0]
-        m = re.match(r"\s*-\s*(.+?)\s*$", stripped)
+        m = re.match(r"\s*-\s*(.+?)\s*(?:#.*)?$", line)
         if m:
             paths.append(_unquote(m.group(1)))
     return paths
@@ -100,7 +99,8 @@ GATE_PREFIX_RE = re.compile(r"--path-prefix\s+(?:'([^']+)'|\"([^\"]+)\"|(\S+))")
 
 def gate_prefixes(code):
     """--path-prefix values in a gate step, whatever their quoting: single, double or none."""
-    return [a or b or c for (a, b, c) in GATE_PREFIX_RE.findall(code)]
+    cleaned = "\n".join(ln.split("#", 1)[0] for ln in code.splitlines())
+    return [a or b or c for (a, b, c) in GATE_PREFIX_RE.findall(cleaned)]
 
 
 def gate_step(wf_code):
@@ -117,6 +117,25 @@ def gate_step(wf_code):
             break
         out.append(line)
     return "\n".join(out)
+
+
+print("== extractor self-check ==")
+_SAMPLE_PUSH = (
+    "      - 'a/**'\n"
+    '      - "b/**"\n'
+    "      - c/**\n"
+    "      - 'd/**' # reason\n"
+)
+check(push_paths(_SAMPLE_PUSH) == ["a/**", "b/**", "c/**", "d/**"],
+      "push-path extractor keeps single, double, bare and trailing-comment entries")
+_SAMPLE_GATE = (
+    "            --path-prefix 'a/**' \\\n"
+    '            --path-prefix "b/**" \\\n'
+    "            --path-prefix c/** \\\n"
+    "            --path-prefix 'd/**' # reason \\\n"
+)
+check(gate_prefixes(_SAMPLE_GATE) == ["a/**", "b/**", "c/**", "d/**"],
+      "gate-prefix extractor keeps single, double, bare and trailing-comment entries")
 
 
 # ---------------------------------------------------------------- release owner
