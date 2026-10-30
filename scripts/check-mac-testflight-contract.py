@@ -76,6 +76,63 @@ def code_lines(text):
     return [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
 
 
+PUSH_ITEM_RE = re.compile(r"""^\s+-\s+['"]?([^'"\s]+)['"]?\s*$""", re.MULTILINE)
+GATE_PREFIX_RE = re.compile(r"""--path-prefix\s+(?:'([^']+)'|"([^"]+)"|([^\s\\]+))""")
+
+
+def push_paths(push_block):
+    """Values of the on.push.paths list only, any quote style."""
+    paths_block = block(push_block, "    paths:", 4)
+    cleaned = "\n".join(ln.split("#", 1)[0] for ln in paths_block.splitlines())
+    return PUSH_ITEM_RE.findall(cleaned)
+
+
+def gate_prefixes(text):
+    """--path-prefix values from scheduled-ship-gate.sh calls only, any quote style."""
+    prefixes = []
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        if "scheduled-ship-gate.sh" in lines[i]:
+            chunk = [lines[i]]
+            j = i + 1
+            while chunk[-1].rstrip().endswith("\\") and j < len(lines):
+                chunk.append(lines[j])
+                j += 1
+            for single, double, bare in GATE_PREFIX_RE.findall("\n".join(chunk)):
+                prefixes.append(single or double or bare)
+            i = j
+        else:
+            i += 1
+    return prefixes
+
+
+print("== extractor self-check ==")
+_SAMPLE_PUSH = (
+    "    branches: [main]\n"
+    "    paths:\n"
+    "      - 'a/b/'\n"
+    '      - "c/d/"\n'
+    "      - e/f/\n"
+    "    paths-ignore:\n"
+    "      - 'zzz/'\n"
+)
+check(push_paths(_SAMPLE_PUSH) == ["a/b/", "c/d/", "e/f/"],
+      "push-path extractor accepts single, double and bare styles (paths only)")
+_SAMPLE_GATE = (
+    "          bash scripts/ios-fleet/scheduled-ship-gate.sh \\\n"
+    "            --event schedule \\\n"
+    "            --path-prefix 'a/b/' \\\n"
+    '            --path-prefix "c/d/" \\\n'
+    "            --path-prefix e/f/ \\\n"
+    '            --repo-root "$GITHUB_WORKSPACE" \\\n'
+    "            myapp\n"
+    "      - run: echo --path-prefix 'zzz/'\n"
+)
+check(gate_prefixes(_SAMPLE_GATE) == ["a/b/", "c/d/", "e/f/"],
+      "gate-prefix extractor accepts single, double and bare styles (gate calls only)")
+
+
 # ---------------------------------------------------------------- release owner
 print("== release owner (.github/workflows/testflight.yml) ==")
 owner = read(".github/workflows/testflight.yml")
@@ -95,6 +152,7 @@ check(
     len(branch_lines) == 1 and re.fullmatch(r"\s*branches:\s*\[\s*main\s*\]", branch_lines[0]) is not None,
     "owner push trigger is limited to main (exactly `branches: [main]`)",
 )
+owner_push_paths = push_paths(owner_push)
 for needed in (
     "Apps/ContactLogoiOS/**",
     "Apps/ContactLogoMac/**",
@@ -109,7 +167,7 @@ for needed in (
     "scripts/ios-fleet-pin.sh",
     "scripts/ios-fleet.sha256",
 ):
-    check(f"- '{needed}'" in owner_push, f"owner push paths filter covers {needed}")
+    check(needed in owner_push_paths, f"owner push paths filter covers {needed}")
 check("workflow_dispatch:" in owner_on, "owner workflow_dispatch is available")
 owner_dispatch = block(owner_on, "  workflow_dispatch:", 2)
 for name in ("export_only:", "validate_only:", "force_ship:"):
@@ -121,7 +179,7 @@ check("cron: '19,49 * * * *'" in owner_on and "cron: '17 * * * *'" in owner_on,
 check("scripts/ios-fleet/scheduled-ship-gate.sh" in owner_code, "owner gates carry the path gate")
 check(owner_code.count("--event schedule") >= 2,
       "owner gates always take the path-diff (--event schedule)")
-owner_prefixes = re.findall(r"--path-prefix '([^']+)'", owner_code)
+owner_prefixes = gate_prefixes(owner_code)
 check(
     set(owner_prefixes) == {"Apps/ContactLogoiOS/", "Sources/ContactLogoKit/", "project.yml",
                             "Apps/ContactLogoMac/", "Apps/ContactLogoMacAppStore/", "Sources/"},
@@ -158,7 +216,7 @@ def check_lane(rel, prefixes, ship_via):
     check("build:" in block(on_block, "  workflow_dispatch:", 2),
           f"{rel} dispatch takes or plans a build")
     check("scripts/ios-fleet/scheduled-ship-gate.sh" in wf_code, f"{rel} keeps its ship gate")
-    check(set(re.findall(r"--path-prefix '([^']+)'", wf_code)) == set(prefixes),
+    check(set(gate_prefixes(wf_code)) == set(prefixes),
           f"{rel} gate watches the lane paths")
     check(ship_via in wf_code, f"{rel} ships through {ship_via}")
     check("--build" in wf_code, f"{rel} passes the planned build via --build")
