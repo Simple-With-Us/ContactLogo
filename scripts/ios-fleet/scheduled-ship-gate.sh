@@ -21,11 +21,15 @@
 #   scheduled-ship-gate.sh --path-prefix <path> [--path-prefix <path> ...] [options] <app_key> [app_key...]
 #
 # Options:
-#   --path-prefix P   Repo-relative path (a directory prefix such as ios/, or a
-#                     single file such as project.yml) that counts as app source.
-#                     Required, and repeatable:  ContactLogo's iOS app builds from
-#                     several trees (Apps/ContactLogoiOS/, Sources/ContactLogoKit/,
-#                     project.yml), so the gate takes every one of them.
+#   --path-prefix P   One entry of the caller workflow's on.push.paths list,
+#                     passed verbatim: a directory prefix such as ios/, a glob
+#                     such as 'Apps/MyApp/**', an exact file such as
+#                     project.yml, or a '!' exclusion such as
+#                     '!scripts/ios-fleet/ci-only.sh'.  Required, and
+#                     repeatable:  the gate must consider EVERY push path, so
+#                     the caller passes the whole list and the scheduled
+#                     backstop ships exactly what the push trigger would have
+#                     shipped.  A single --path-prefix call keeps working.
 #   --event NAME      GitHub event name (default: $GITHUB_EVENT_NAME).
 #                     Anything other than "schedule" votes ship=1 for every
 #                     app: a push already passed the workflow's paths filter,
@@ -70,6 +74,23 @@ done
 [[ "${#PATH_PREFIXES[@]}" -gt 0 ]] || die "--path-prefix is required"
 for _p in "${PATH_PREFIXES[@]}"; do
   [[ -n "$_p" ]] || die "--path-prefix must not be empty"
+done
+# Translate the push-paths entries into git pathspecs.  Globs, directory
+# prefixes and exact files pass through (git matches them the same way for
+# change detection); a leading '!' becomes a git :(exclude) pathspec, the
+# way the workflow's push filter treats it.
+GIT_SPEC=()
+for _p in "${PATH_PREFIXES[@]}"; do
+  case "$_p" in
+    '!'*)
+      _ex="${_p#!}"
+      [[ -n "$_ex" ]] || die "--path-prefix '!' must exclude something"
+      GIT_SPEC+=(":(exclude)${_ex}")
+      ;;
+    *)
+      GIT_SPEC+=("$_p")
+      ;;
+  esac
 done
 # Human-readable form of the pathspec list, for log lines only.
 PATH_LABEL="${PATH_PREFIXES[*]}"
@@ -142,7 +163,7 @@ for app in $APPS; do
         log "[${app}] last shipped sha ${last_sha} is unreachable from HEAD (shipped from another worktree/branch, or history was rewritten)."
         last_ts="$(awk 'NR==1{print $1}' "$state" 2>/dev/null || true)"
         if [[ "${last_ts:-}" =~ ^[0-9]+$ ]]; then
-          since_changed="$(git -C "$REPO_ROOT" log --since="@${last_ts}" --format= --name-only -- "${PATH_PREFIXES[@]}" 2>/dev/null | sed '/^$/d' | sort -u | head -20)"
+          since_changed="$(git -C "$REPO_ROOT" log --since="@${last_ts}" --format= --name-only -- "${GIT_SPEC[@]}" 2>/dev/null | sed '/^$/d' | sort -u | head -20)"
           if [[ -n "$since_changed" ]]; then
             log "[${app}] falling back to time: ${PATH_LABEL} changed after the last ship:"
             # Line-by-line, NOT `printf ... $var`: Socratic.Trade's iOS path is
@@ -168,7 +189,7 @@ for app in $APPS; do
       # Captured into a variable, not piped into `grep -q`: under pipefail an
       # early-exiting grep SIGPIPEs git and the pipeline reports failure even
       # though it matched.
-      changed="$(git -C "$REPO_ROOT" diff --name-only "$last_sha" HEAD -- "${PATH_PREFIXES[@]}" 2>/dev/null | head -20)"
+      changed="$(git -C "$REPO_ROOT" diff --name-only "$last_sha" HEAD -- "${GIT_SPEC[@]}" 2>/dev/null | head -20)"
       if [[ -n "$changed" ]]; then
         log "[${app}] ${PATH_LABEL} changed since ${last_sha}:"
         printf '%s\n' "$changed" | while IFS= read -r f; do echo "  $f"; done
