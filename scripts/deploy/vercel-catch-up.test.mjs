@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COOLDOWN_MS, classify, assertProject, assertCi, assertReceipt, deploymentSha, request } from './vercel-catch-up.mjs';
+import { COOLDOWN_MS, classify, assertProject, assertCi, ciPending, assertReceipt, deploymentSha, request } from './vercel-catch-up.mjs';
 const A = 'a'.repeat(40), B = 'b'.repeat(40), now = 1_800_000_000_000;
 const config = { projectId: 'prj_test', teamId: 'team_test', repoId: 17, rootDirectory: 'site' };
 const baseline = { projectId: 'prj_test', target: 'production', readyState: 'READY', created: now - COOLDOWN_MS - 1, gitSource: { sha: A }, url: 'test.vercel.app' };
@@ -96,4 +96,15 @@ test('entrypoint reconciles skipped site changes behind docs, rechecks and verif
   fixture.baseline.gitSource.sha=latest;result=execute('receipt',receipt);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/https:\/\/test.vercel.app/);
   fixture.project.targets.production.id='dpl_other';result=execute('receipt',receipt);assert.equal(result.status,1);assert.match(result.stderr,/current production target/);
  } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('a still-running exact-main CI run is pending, not a refusal', () => {
+ const run = { name: 'CI', head_sha: B, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', id: 1 };
+ assert.equal(ciPending([{...run,status:'in_progress',conclusion:null}],['CI'],B), true);
+ assert.equal(ciPending([{...run,status:'queued',conclusion:null}],['CI','E2E smoke'],B), true);
+ assert.equal(ciPending([run],['CI'],B), false);
+ assert.equal(ciPending([{...run,conclusion:'failure'}],['CI'],B), false);
+ assert.equal(ciPending([{...run,status:'in_progress',head_sha:A}],['CI'],B), false);
+ assert.equal(ciPending([{...run,status:'in_progress',event:'pull_request'}],['CI'],B), false);
+ assert.equal(ciPending([run,{...run,id:2,status:'in_progress'}],['CI'],B), true);
 });
