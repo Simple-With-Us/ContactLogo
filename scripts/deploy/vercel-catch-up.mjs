@@ -56,6 +56,19 @@ export function assertCi(runs, names, sha) {
     must(candidates.length > 0 && candidates[0].status === 'completed' && candidates[0].conclusion === 'success', `Exact-main CI not successful: ${name}`);
   }
 }
+// A catch-up started by one workflow (say "E2E smoke") can run while another
+// exact-main workflow ("CI") on the same SHA is still queued or running.  That
+// is not a failure: the running workflow's own completion re-triggers this
+// catch-up, so the run skips instead of going red.  A finished run that did
+// not succeed still refuses through assertCi.
+const RUNNING = new Set(['queued', 'in_progress', 'waiting', 'pending', 'requested']);
+export function ciPending(runs, names, sha) {
+  if (!Array.isArray(runs) || !Array.isArray(names)) return false;
+  return names.some(name => {
+    const newest = runs.filter(r => r.name === name && r.head_sha === sha && r.head_branch === 'main' && ['push', 'workflow_dispatch'].includes(r.event)).sort((a, b) => b.id - a.id)[0];
+    return Boolean(newest) && RUNNING.has(newest.status);
+  });
+}
 export function assertReceipt(d, config, sha) {
   must(object(d) && d.projectId === config.projectId && d.target === 'production' && d.readyState === 'READY', 'Deployment is not READY production for this project');
   must(deploymentSha(d) === sha, 'Deployment SHA mismatch');
@@ -109,13 +122,18 @@ async function main() {
     must(git(['merge-base', from, to]) === from, 'Deployed SHA is not an ancestor of main; investigate before deploying');
     return git(['diff', '--name-only', from, to, '--', ...config.watch]).length > 0;
   } });
+  let result = decision;
   if (decision.deploy) {
     const ci = await gh(`/actions/runs?head_sha=${target}&per_page=100`);
     must(!ci.total_count || ci.total_count <= 100, 'CI run history truncated');
-    assertCi(ci.workflow_runs, config.ciWorkflows, target);
+    if (ciPending(ci.workflow_runs, config.ciWorkflows, target)) {
+      result = { deploy: false, reason: 'exact-main CI still running; its completion re-runs this catch-up' };
+    } else {
+      assertCi(ci.workflow_runs, config.ciWorkflows, target);
+    }
   }
-  console.log(JSON.stringify(decision));
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deploy=${decision.deploy}\n`);
+  console.log(JSON.stringify(result));
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deploy=${result.deploy}\n`);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => { console.error(`Vercel catch-up refused: ${error.message}`); process.exitCode = 1; });
