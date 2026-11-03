@@ -27,7 +27,9 @@ jobs:
 
       - name: Check canonical repository layout
         working-directory: .
-        run: python3 scripts/check-platform-layout.py
+        run: |
+          python3 scripts/test-platform-layout.py
+          python3 scripts/check-platform-layout.py
 
       - uses: actions/setup-node@v7
         with:
