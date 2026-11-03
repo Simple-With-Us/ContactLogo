@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { matchContact } from "./match.ts";
@@ -51,7 +51,27 @@ type CorpusCase = {
 };
 
 const here = dirname(fileURLToPath(import.meta.url));
-const corpusPath = join(here, "..", "..", "..", "..", "fixtures", "golden-corpus.json");
+function findRepositoryRoot(start: string): string {
+  let current = start;
+  while (true) {
+    if (
+      existsSync(
+        join(
+          current,
+          "apps/android/app/src/main/java/com/contactlogo/ContactLogoApp.kt",
+        ),
+      )
+    ) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) throw new Error("ContactLogo repository root not found");
+    current = parent;
+  }
+}
+
+const repositoryRoot = findRepositoryRoot(here);
+const corpusPath = join(repositoryRoot, "fixtures", "golden-corpus.json");
 const corpus = JSON.parse(readFileSync(corpusPath, "utf8")) as { cases: CorpusCase[] };
 
 function toBookContact(c: CorpusCase["contact"]): BookContact {
