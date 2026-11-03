@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- 2026-10-17 (CL-203): entitlements for the Mac App Store / TestFlight build.
-     Identical to Apps/ContactLogoMac/ContactLogoMac.entitlements except that
+     Identical to apps/macos/ContactLogoMac.entitlements except that
      the Sparkle InstallerLauncher mach-lookup exceptions are gone: this build
      does not link Sparkle, and a temporary exception is the kind of entry the
      store questions.  Keep the two files in step for everything else. -->

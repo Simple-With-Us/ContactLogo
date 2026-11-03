@@ -23,7 +23,7 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 git_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
-# Nested scripts (site/, web/, apps/site) watch their own folder.
+# Nested scripts (site/, apps/web/, apps/site) watch their own folder.
 # A repo-root script (DealDex) watches the tree minus native/docs/CI.
 watch_args=()
 if [[ -n "${VERCEL_IGNORE_WATCH:-}" ]]; then

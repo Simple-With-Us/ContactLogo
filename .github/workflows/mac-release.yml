@@ -27,7 +27,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Apps/ContactLogoMac/**'
+      - 'apps/macos/**'
       - 'Sources/**'
       - 'project.yml'
       - 'scripts/mac-release-build.sh'
@@ -37,7 +37,7 @@ on:
   # way, and never published.
   pull_request:
     paths:
-      - 'Apps/ContactLogoMac/**'
+      - 'apps/macos/**'
       - 'Sources/**'
       - 'project.yml'
       - 'scripts/mac-release-build.sh'

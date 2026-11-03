@@ -51,7 +51,7 @@ type CorpusCase = {
 };
 
 const here = dirname(fileURLToPath(import.meta.url));
-const corpusPath = join(here, "..", "..", "..", "fixtures", "golden-corpus.json");
+const corpusPath = join(here, "..", "..", "..", "..", "fixtures", "golden-corpus.json");
 const corpus = JSON.parse(readFileSync(corpusPath, "utf8")) as { cases: CorpusCase[] };
 
 function toBookContact(c: CorpusCase["contact"]): BookContact {

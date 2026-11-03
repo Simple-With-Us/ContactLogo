@@ -17,9 +17,9 @@ and the web.
 **Acronym:** `CL`
 
 Production hosting is Vercel (auto-deployed from main, no Docker container in use).
-The `web/` directory is the Vercel root directory per dashboard configuration.
+The `apps/web/` directory is the intended Vercel root directory.  The external project root still requires a separately managed cutover.
 Security headers, cache policy for `/assets/*`, and build configuration are in
-`vercel.json`.  `web/server.mjs` and `web/Dockerfile` are local/dev leftovers,
+`vercel.json`.  `apps/web/server.mjs` and `apps/web/Dockerfile` are local/dev leftovers,
 not production.  `/healthz` is 404 on Vercel by design.  Do not invent Apple or
 DNS credentials.  Do not treat Grok Publish (`contact-logo.grok.me`,
 `contactlogo.grok.me`, `bizlogo.grok.me`) as the product URL.  Do not attach
@@ -59,7 +59,7 @@ artifacts.
 
 ## Visual verification
 
-UI changes must be covered by automated visual verification where feasible: Playwright screenshot assertions for web surfaces, `xcrun simctl io booted screenshot` for iOS simulator.  The owner never takes manual screenshots and does not run local UI preview sessions.  Native Mac app UI is verified through code review and CI.  Web visual specs live in `web/tests/e2e/` and run in the `E2E smoke` workflow.
+UI changes must be covered by automated visual verification where feasible: Playwright screenshot assertions for web surfaces, `xcrun simctl io booted screenshot` for iOS simulator.  The owner never takes manual screenshots and does not run local UI preview sessions.  Native Mac app UI is verified through code review and CI.  Web visual specs live in `apps/web/tests/e2e/` and run in the `E2E smoke` workflow.
 
 ## Bundle identifiers (canonical, post-2026-09-22 migration)
 
@@ -69,9 +69,9 @@ UI changes must be covered by automated visual verification where feasible: Play
 | macOS app (`ContactLogoMac`) | `com.contactlogo.macos` | unchanged |
 | ContactLogoKit iOS framework | `com.contactlogo.kit.ios` | renamed from `com.contactlogo.kit` |
 | ContactLogoKit macOS framework | `com.contactlogo.kit.macos` | unchanged |
-| iOS BGTaskScheduler identifier | `com.contactlogo.ios.match` | renamed from `com.contactlogo.match`; must match `BGTaskSchedulerPermittedIdentifiers` in `Apps/ContactLogoiOS/Info.plist` |
+| iOS BGTaskScheduler identifier | `com.contactlogo.ios.match` | renamed from `com.contactlogo.match`; must match `BGTaskSchedulerPermittedIdentifiers` in `apps/ios/Info.plist` |
 | iOS match-ready notification identifier | `com.contactlogo.ios.match-ready` | renamed from `com.contactlogo.match-ready` |
-| App Group (new, both shells) | `group.com.contactlogo` | registered per-App-ID in Apple Developer Portal; the iOS side is `Apps/ContactLogoiOS/ContactLogoiOS.entitlements`, the macOS side is `Apps/ContactLogoMac/ContactLogoMac.entitlements` |
+| App Group (new, both shells) | `group.com.contactlogo` | registered per-App-ID in Apple Developer Portal; the iOS side is `apps/ios/ContactLogoiOS.entitlements`, the macOS side is `apps/macos/ContactLogoMac.entitlements` |
 | Associated Domain (new, iOS only) | `contactlogo.com` | `applinks:contactlogo.com`, `webcredentials:contactlogo.com` in the iOS entitlements; requires AASA at `https://contactlogo.com/.well-known/apple-app-site-association` |
 
 The Keychain service name `com.contactlogo.credentials` inside
@@ -96,10 +96,10 @@ touching any setting, credential, or build-time env var.
   being retired; `settings:pull` refuses any other env).  Never invent,
   guess, or commit secret values; document keys as "to be filled by admin".
 - The web app is a static Vite SPA: the loader runs at provisioning time.
-  `npm run settings:pull` (in `web/`, with `INFISICAL_CLIENT_ID` /
+  `npm run settings:pull` (in `apps/web/`, with `INFISICAL_CLIENT_ID` /
   `INFISICAL_CLIENT_SECRET` from the operator's secret store) writes
   `.env.local` from Infisical; Vercel production env is a synced copy of
-  the prod environment.  The client (`web/scripts/infisical-settings.ts`)
+  the prod environment.  The client (`apps/web/scripts/infisical-settings.ts`)
   is a vendored equivalent of the fleet-shared `createInfisicalSettings`.
 - Per-user settings stay out of Infisical: web Settings-page values live in
   localStorage, native credentials in the Keychain, native scan prefs in

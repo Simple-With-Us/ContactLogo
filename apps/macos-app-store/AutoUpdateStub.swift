@@ -3,7 +3,7 @@ import Foundation
 
 // The Mac App Store / TestFlight build of ContactLogo for Mac (CL-203).
 //
-// This file stands in for Apps/ContactLogoMac/AutoUpdate.swift, which imports
+// This file stands in for apps/macos/AutoUpdate.swift, which imports
 // Sparkle.  The App Store build must not contain Sparkle: the store delivers
 // updates itself, and Sparkle's Autoupdate and Updater.app executables are not
 // sandboxed, so App Store Connect refuses an upload that carries them.  The

@@ -4,7 +4,7 @@ Owner ruling, Tue, Sep 29, 2026: every fleet Mac app updates itself seamlessly, 
 
 ## What Happens
 
-1. A PR merges to `main` and changes the Mac app (`Apps/ContactLogoMac/`, `Sources/`, `project.yml`, or the build scripts).
+1. A PR merges to `main` and changes the Mac app (`apps/macos/`, `Sources/`, `project.yml`, or the build scripts).
 2. `.github/workflows/mac-release.yml` builds a universal Release bundle with `xcodegen` + `xcodebuild`, signs it with the Developer ID Application certificate (hardened runtime, secure timestamp, nested code signed inside-out), notarizes and staples the app and the DMG, and writes an appcast whose one item is the new ZIP, signed with ContactLogo's EdDSA key.
 3. The workflow publishes a GitHub release tagged `v<VERSION>-build.<N>`, marked latest, carrying `ContactLogo.zip`, `ContactLogo.dmg`, their `.sha256` files, and `appcast.xml`, then confirms the live feed names build N.
 4. Every installed copy checks `https://github.com/Simple-With-Us/ContactLogo/releases/latest/download/appcast.xml` once an hour, downloads the new ZIP in the background, verifies its EdDSA signature before unpacking it, and checks that it is signed by the same Developer ID team.
@@ -12,16 +12,16 @@ Owner ruling, Tue, Sep 29, 2026: every fleet Mac app updates itself seamlessly, 
 
 Settings shows an "Automatic updates: On/Off" line and a **Check For Updates…** button.  The same command is in the app menu after About.
 
-The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.yml` archives and uploads to TestFlight on every merge to `main` that touches the iOS app (`Apps/ContactLogoiOS/**`, `Sources/ContactLogoKit/**`, `project.yml`, the ship tooling under `scripts/ios-fleet/`).  It needs no repository variable.  A scheduled catch-up (twice an hour, behind a path gate) ships a merge that landed inside the rate window.  See [iOS TestFlight](#ios-testflight).
+The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.yml` archives and uploads to TestFlight on every merge to `main` that touches the iOS app (`apps/ios/**`, `Sources/ContactLogoKit/**`, `project.yml`, the ship tooling under `scripts/ios-fleet/`).  It needs no repository variable.  A scheduled catch-up (twice an hour, behind a path gate) ships a merge that landed inside the rate window.  See [iOS TestFlight](#ios-testflight).
 
 ## The Pieces
 
 | Piece | Role |
 |---|---|
 | `project.yml` | Sparkle 2 (`https://github.com/sparkle-project/Sparkle`, from 2.10.0) as an xcodegen package dependency of the `ContactLogoMac` target only. |
-| `Apps/ContactLogoMac/AutoUpdate.swift` | `AutoUpdateAvailability` (should this build run Sparkle at all) and `AppUpdater` (owns `SPUStandardUpdaterController`, installs as soon as the app is idle). |
-| `Apps/ContactLogoMac/ContactLogoMacApp.swift` | Starts the updater first thing, adds **Check For Updates…** to the app menu. |
-| `Apps/ContactLogoMac/SettingsView.swift` | Settings shows the update status line and the check button. |
+| `apps/macos/AutoUpdate.swift` | `AutoUpdateAvailability` (should this build run Sparkle at all) and `AppUpdater` (owns `SPUStandardUpdaterController`, installs as soon as the app is idle). |
+| `apps/macos/ContactLogoMacApp.swift` | Starts the updater first thing, adds **Check For Updates…** to the app menu. |
+| `apps/macos/SettingsView.swift` | Settings shows the update status line and the check button. |
 | `scripts/mac-release-build.sh` | xcodegen + xcodebuild a universal Release, embed and assert `Sparkle.framework`, write the Sparkle Info.plist keys, sign inside-out, run `codesign --verify --deep --strict`, notarize with an App Store Connect API key when `NOTARY_KEY_*` are set, and run `spctl --assess` on the stapled app and DMG. |
 | `scripts/make_appcast.sh` | Runs Sparkle's `generate_appcast` over one archive and checks the result: one item, EdDSA-signed, pointing at the right URL. |
 | `.github/workflows/mac-release.yml` | The release job.  Also builds and verifies (never publishes) on PRs that touch the bundle. |
@@ -74,7 +74,7 @@ Owner ask, Sat, Oct 17, 2026 (CL-203): a merge to `main` that changes the Mac ap
 
 ### What Happens
 
-1. A PR merges to `main` and touches `Apps/ContactLogoMac/`, `Apps/ContactLogoMacAppStore/`, `Sources/`, `project.yml`, or the ship tooling.
+1. A PR merges to `main` and touches `apps/macos/`, `apps/macos-app-store/`, `Sources/`, `project.yml`, or the ship tooling.
 2. `.github/workflows/mac-testflight.yml` starts.  A cheap Linux job runs `scripts/ios-fleet/scheduled-ship-gate.sh`;  a push or a manual dispatch always passes it.
 3. The macOS job loads the App Store Connect key, the Apple Distribution certificate and the Mac installer certificate from Fleet Secrets (Fleet-OPS, `prod`, `/asc` and `/mac-certs`), imports the certificates into a throwaway keychain, and runs `scripts/ios-fleet/ship-testflight.sh contactlogo-mac`.
 4. The ship script regenerates the project with XcodeGen, installs the `ContactLogo for Mac AppStore` profile (`scripts/mac-install-appstore-profiles.sh`), archives the `ContactLogoMacAppStore` scheme, wraps the archive into a signed installer package (`scripts/mac-export-appstore-pkg.sh`), uploads it with `altool`, declares export compliance, and publishes the What to Test note.
@@ -88,7 +88,7 @@ A run on any ref other than `main`, or a dispatch with `validate_only`, builds t
 
 `ContactLogoMacAppStore` compiles the same sources and uses the same bundle id, Info.plist and assets as `ContactLogoMac`, with two differences:
 
-- It does not link Sparkle.  The Mac App Store forbids a self-updating app, and Sparkle's `Autoupdate` and `Updater.app` executables are not sandboxed, which App Store Connect rejects.  `Apps/ContactLogoMacAppStore/AutoUpdateStub.swift` replaces `AutoUpdate.swift` and defines the same two names (`AppUpdater`, `AutoUpdateAvailability`), so no call site changes.  Settings shows "Automatic updates: Off" and "Check For Updates…" stays greyed out.
+- It does not link Sparkle.  The Mac App Store forbids a self-updating app, and Sparkle's `Autoupdate` and `Updater.app` executables are not sandboxed, which App Store Connect rejects.  `apps/macos-app-store/AutoUpdateStub.swift` replaces `AutoUpdate.swift` and defines the same two names (`AppUpdater`, `AutoUpdateAvailability`), so no call site changes.  Settings shows "Automatic updates: Off" and "Check For Updates…" stays greyed out.
 - Its entitlements (`ContactLogoMacAppStore.entitlements`) drop the Sparkle InstallerLauncher mach-lookup exceptions.  Keep the two entitlement files in step for everything else.
 
 Developer ID releases still ship the `ContactLogoMac` target from `mac-release.yml`.

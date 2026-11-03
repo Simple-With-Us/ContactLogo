@@ -21,15 +21,19 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: web
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
+
+      - name: Check canonical repository layout
+        working-directory: .
+        run: python3 scripts/check-platform-layout.py
 
       - uses: actions/setup-node@v7
         with:
           node-version: "26"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install
         run: npm ci --no-audit --no-fund
@@ -58,7 +62,7 @@ jobs:
       - name: Swift tests
         run: swift test
 
-  # Builds the SwiftUI app shells (Apps/) that `swift test` never touches,
+  # Builds the SwiftUI app shells (apps/) that `swift test` never touches,
   # because they live in an XcodeGen-generated Xcode project, not the SwiftPM
   # package. Regenerates the project from project.yml so it always reflects
   # the committed spec, then builds each app target without codesigning.
@@ -98,7 +102,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .build/DerivedData
-          key: ${{ runner.os }}-xcode-${{ matrix.target }}-${{ hashFiles('project.yml', 'Package.swift', 'Sources/**', 'Apps/**') }}
+          key: ${{ runner.os }}-xcode-${{ matrix.target }}-${{ hashFiles('project.yml', 'Package.swift', 'Sources/**', 'apps/**') }}
           restore-keys: |
             ${{ runner.os }}-xcode-${{ matrix.target }}-
 
@@ -191,7 +195,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: Apps/ContactLogoAndroid
+        working-directory: apps/android
     steps:
       - uses: actions/checkout@v7
 
@@ -257,5 +261,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: android-test-report
-          path: Apps/ContactLogoAndroid/app/build/reports/tests/testDebugUnitTest
+          path: apps/android/app/build/reports/tests/testDebugUnitTest
           retention-days: 7

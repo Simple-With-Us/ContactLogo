@@ -64,9 +64,9 @@ run_gate() {
   local event="$1"; shift
   bash "$GATE" \
     --event "$event" \
-    --path-prefix "Apps/ContactLogoiOS/**" \
-    --path-prefix "Apps/ContactLogoMac/**" \
-    --path-prefix "Apps/ContactLogoMacAppStore/**" \
+    --path-prefix "apps/ios/**" \
+    --path-prefix "apps/macos/**" \
+    --path-prefix "apps/macos-app-store/**" \
     --path-prefix "Sources/**" \
     --path-prefix "project.yml" \
     --path-prefix ".github/workflows/testflight.yml" \
@@ -134,18 +134,18 @@ out="$(run_gate schedule demo)"
 check "HEAD already shipped -> should_ship" 0 "$(field "$out" should_ship)"
 
 echo "== 4. web, Android, docs, server and README commits do NOT ship =="
-commit "web/src/page.tsx" "web change" "feat(web): unrelated to any lane" >/dev/null
+commit "apps/web/src/page.tsx" "web change" "feat(web): unrelated to any lane" >/dev/null
 commit "docs/notes.md" "docs" "docs: nothing a tester can see" >/dev/null
-commit "Apps/ContactLogoAndroid/app/Main.kt" "kt" "feat(android): unrelated" >/dev/null
-commit "web/server.mjs" "// server" "fix(server): backend only" >/dev/null
+commit "apps/android/app/Main.kt" "kt" "feat(android): unrelated" >/dev/null
+commit "apps/web/server.mjs" "// server" "fix(server): backend only" >/dev/null
 commit "README.md" "base v2" "docs: readme touch-up" >/dev/null
 out="$(run_gate schedule demo)"
 check "no release-path change -> should_ship" 0 "$(field "$out" should_ship)"
 
 echo "== 5. a change under any push path DOES ship =="
-ships "Apps/ContactLogoMac change" "Apps/ContactLogoMac/ContentView.swift" "// ui"
-ships "Apps/ContactLogoiOS change" "Apps/ContactLogoiOS/View.swift" "// ios"
-ships "Apps/ContactLogoMacAppStore change" "Apps/ContactLogoMacAppStore/AutoUpdateStub.swift" "// stub"
+ships "apps/macos change" "apps/macos/ContentView.swift" "// ui"
+ships "apps/ios change" "apps/ios/View.swift" "// ios"
+ships "apps/macos-app-store change" "apps/macos-app-store/AutoUpdateStub.swift" "// stub"
 ships "Sources (Kit) change" "Sources/ContactLogoKit/Engine.swift" "// kit"
 ships "Sources (non-Kit) change" "Sources/contactlogo/Thing.swift" "// shared"
 ships "project.yml (a single file path) change" "project.yml" "name: demo"
@@ -219,10 +219,10 @@ check "bare '!' exclusion -> exit 2" 2 "$?"
 echo "== 11. the old single-prefix call keeps working =="
 set_state demo "$(git -C "$REPO" rev-parse HEAD)"
 commit "scripts/ios-fleet/ship-testflight.sh" "# fleet ship tooling v3" "fix(ios-fleet): tooling only" >/dev/null
-out="$(bash "$GATE" --event schedule --path-prefix 'Apps/ContactLogoMac/' --repo-root "$REPO" --state-dir "$STATE" demo 2>&1)"
+out="$(bash "$GATE" --event schedule --path-prefix 'apps/macos/' --repo-root "$REPO" --state-dir "$STATE" demo 2>&1)"
 check "single prefix, no match -> should_ship" 0 "$(field "$out" should_ship)"
-commit "Apps/ContactLogoMac/ContentView.swift" "// ui v2" "fix(mac): visible change" >/dev/null
-out="$(bash "$GATE" --event schedule --path-prefix 'Apps/ContactLogoMac/' --repo-root "$REPO" --state-dir "$STATE" demo 2>&1)"
+commit "apps/macos/ContentView.swift" "// ui v2" "fix(mac): visible change" >/dev/null
+out="$(bash "$GATE" --event schedule --path-prefix 'apps/macos/' --repo-root "$REPO" --state-dir "$STATE" demo 2>&1)"
 check "single prefix, match -> should_ship" 1 "$(field "$out" should_ship)"
 
 echo

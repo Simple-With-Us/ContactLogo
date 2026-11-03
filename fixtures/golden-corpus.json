@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "Language-neutral conformance fixture for the ContactLogo matching engine. Every case is decidable offline from docs/ENGINE-CONTRACT.md with no network access. ContactLogoKit (Swift), web/src/engine (TypeScript) and Apps/ContactLogoAndroid (Kotlin) must all produce the same answer for every case.",
+  "about": "Language-neutral conformance fixture for the ContactLogo matching engine. Every case is decidable offline from docs/ENGINE-CONTRACT.md with no network access. ContactLogoKit (Swift), apps/web/src/engine (TypeScript) and apps/android (Kotlin) must all produce the same answer for every case.",
   "schema": {
     "contact": {
       "displayName": "string",

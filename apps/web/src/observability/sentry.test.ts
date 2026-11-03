@@ -19,7 +19,7 @@ test("Android native Sentry inits masked Replay and profiling", () => {
   const app = readFileSync(
     join(
       dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoAndroid/app/src/main/java/com/contactlogo/ContactLogoApp.kt",
+      "../../../android/app/src/main/java/com/contactlogo/ContactLogoApp.kt",
     ),
     "utf8",
   );
@@ -32,7 +32,7 @@ test("Android native Sentry inits masked Replay and profiling", () => {
   const gradle = readFileSync(
     join(
       dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoAndroid/app/build.gradle.kts",
+      "../../../android/app/build.gradle.kts",
     ),
     "utf8",
   );
@@ -57,25 +57,25 @@ test("native Cocoa and the ship helper inject DSN and upload dSYMs", () => {
   const ios = readFileSync(
     join(
       dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoiOS/SentryTelemetry.swift",
+      "../../../ios/SentryTelemetry.swift",
     ),
     "utf8",
   );
   const mac = readFileSync(
     join(
       dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoMac/SentryTelemetry.swift",
+      "../../../macos/SentryTelemetry.swift",
     ),
     "utf8",
   );
   const ci = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/ci.yml"),
+    join(dirname(fileURLToPath(import.meta.url)), "../../../../.github/workflows/ci.yml"),
     "utf8",
   );
   const dsym = readFileSync(
     join(
       dirname(fileURLToPath(import.meta.url)),
-      "../../../scripts/ios-fleet/upload-sentry-dsyms.sh",
+      "../../../../scripts/ios-fleet/upload-sentry-dsyms.sh",
     ),
     "utf8",
   );
@@ -110,7 +110,7 @@ test("web Sentry sets a release and emits logs when a DSN is present", () => {
   assert.match(viteSrc, /project:\s*"contactlogo"/);
   assert.match(viteSrc, /\.\.\.\(release\s*\?/);
   const ciSrc = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/ci.yml"),
+    join(dirname(fileURLToPath(import.meta.url)), "../../../../.github/workflows/ci.yml"),
     "utf8",
   );
   assert.match(ciSrc, /cli\.sentry\.dev\/install/);

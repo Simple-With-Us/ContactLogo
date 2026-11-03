@@ -313,7 +313,7 @@
 				B57A945885E5C85324DE0C5A /* SettingsView.swift */,
 			);
 			name = ContactLogoiOS;
-			path = Apps/ContactLogoiOS;
+			path = apps/ios;
 			sourceTree = "<group>";
 		};
 		994642C717A1CAC159D09A37 /* Products */ = {
@@ -341,7 +341,7 @@
 				19B063D75543B34805CD5F1C /* SettingsView.swift */,
 			);
 			name = ContactLogoMac;
-			path = Apps/ContactLogoMac;
+			path = apps/macos;
 			sourceTree = "<group>";
 		};
 		EBF814245F3FD0B7A13324C9 /* Sources */ = {
@@ -703,11 +703,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Apps/ContactLogoMac/ContactLogoMac.entitlements;
+				CODE_SIGN_ENTITLEMENTS = apps/macos/ContactLogoMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoMac/Info.plist;
+				INFOPLIST_FILE = apps/macos/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -853,7 +853,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoiOS/Info.plist;
+				INFOPLIST_FILE = apps/ios/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -906,7 +906,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoiOS/Info.plist;
+				INFOPLIST_FILE = apps/ios/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -931,11 +931,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Apps/ContactLogoMac/ContactLogoMac.entitlements;
+				CODE_SIGN_ENTITLEMENTS = apps/macos/ContactLogoMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoMac/Info.plist;
+				INFOPLIST_FILE = apps/macos/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";

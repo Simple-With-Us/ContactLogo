@@ -183,7 +183,7 @@ object Normalize {
     /**
      * 2026-09-20 audit — business legal-form suffixes.  Mirrors
      * ContactLogoKit/Normalize/WordLists.swift ::businessSuffix and
-     * web/src/engine/classify.ts ::BUSINESS_SUFFIX_RE.  `companyKey` strips
+     * apps/web/src/engine/classify.ts ::BUSINESS_SUFFIX_RE.  `companyKey` strips
      * these before the catalog lookup, so `looksLikeBusinessName` re-checks
      * the cleaned candidate.
      */

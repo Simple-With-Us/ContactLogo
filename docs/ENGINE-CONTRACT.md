@@ -10,8 +10,8 @@ listed in §14:
 | Engine | Path |
 | --- | --- |
 | Swift | `Sources/ContactLogoKit/{Normalize,Identity,Pipeline,Rank}` |
-| TypeScript | `web/src/engine/{normalize,classify,match,catalog,phones,logos}.ts` |
-| Kotlin | `Apps/ContactLogoAndroid/app/src/main/java/com/contactlogo/engine/` |
+| TypeScript | `apps/web/src/engine/{normalize,classify,match,catalog,phones,logos}.ts` |
+| Kotlin | `apps/android/app/src/main/java/com/contactlogo/engine/` |
 
 The conformance suite is `fixtures/golden-corpus.json` (§14). Every case in it is
 decidable from this document with **no network access**.
@@ -239,7 +239,7 @@ companyKey("Costco") == "cost"   companyKey("Cisco")  == "cis"
 companyKey("Medico") == "medi"   companyKey("TRICO")  == "tri"
 ```
 
-Verified against `web/src/engine/normalize.ts`: `lookupCompanyDomain("Costco")`
+Verified against `apps/web/src/engine/normalize.ts`: `lookupCompanyDomain("Costco")`
 and `lookupCompanyDomain("Cisco")` both return `undefined` today, so two catalog
 brands are unreachable, `Medico` escapes the GENERIC blocklist, and `TRICO`
 guesses `tri.com`. Requiring a real separator before the suffix fixes all four
@@ -801,9 +801,9 @@ also print `via-website`, and MUST NOT print `guessed-domain` next to a
 **R13.1** The canonical slug map (domain → slug) is the union of the three
 engine tables, which MUST stay in lockstep:
 
-- `web/src/engine/logos.ts` (`SIMPLE_SLUGS`)
+- `apps/web/src/engine/logos.ts` (`SIMPLE_SLUGS`)
 - `Sources/ContactLogoKit/Sources/SimpleIconsSource.swift` (`slugs`)
-- `Apps/ContactLogoAndroid/app/src/main/java/com/contactlogo/engine/SimpleIcons.kt`
+- `apps/android/app/src/main/java/com/contactlogo/engine/SimpleIcons.kt`
 
 Do not keep a second copy of the table here; it will rot (issue #37). Every
 mapped slug must 200 on `https://cdn.simpleicons.org/{slug}`. `.github/workflows/simpleicons-liveness.yml`
@@ -835,7 +835,7 @@ cases also assert `simpleIconsSlug` (R13). Compare flags as a **set**.
 **R14.2** Each engine ships one test that loads the JSON, runs its own static
 path, and asserts all six fields per case. No network, no image fetch, no clock.
 Swift reads it in `Tests/ContactLogoKitTests/GoldenCorpusTests.swift`;
-TypeScript in `web/src/engine/corpus.test.ts`; Kotlin in
+TypeScript in `apps/web/src/engine/corpus.test.ts`; Kotlin in
 `EngineContractConformanceTest.kt`. All three run in `ci.yml`.
 
 **R14.3** A case that an engine cannot yet satisfy is a **failing test**, never

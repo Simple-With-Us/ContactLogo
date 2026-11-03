@@ -222,9 +222,9 @@ _paths_header = re.search(r"^    paths:\s*(?:#.*)?$", owner_push, re.MULTILINE)
 PUSH_PATHS = push_paths(block(owner_push, _paths_header.group(0) if _paths_header else "    paths:", 4))
 check(len(PUSH_PATHS) >= 10, "the owner push filter is readable as a path list")
 for needed in (
-    "Apps/ContactLogoiOS/**",
-    "Apps/ContactLogoMac/**",
-    "Apps/ContactLogoMacAppStore/**",
+    "apps/ios/**",
+    "apps/macos/**",
+    "apps/macos-app-store/**",
     "Sources/**",
     "project.yml",
     ".github/workflows/testflight.yml",
@@ -332,7 +332,7 @@ target = block(spec, "  ContactLogoMacAppStore:", 2)
 check(bool(target.strip()), "the ContactLogoMacAppStore target exists")
 check("Sparkle" not in "\n".join(code_lines(target)), "the App Store target has no Sparkle dependency")
 check("AutoUpdate.swift" in target and "excludes:" in target, "the App Store target excludes AutoUpdate.swift")
-check("Apps/ContactLogoMacAppStore" in target, "the App Store target compiles the update stub folder")
+check("apps/macos-app-store" in target, "the App Store target compiles the update stub folder")
 check("PRODUCT_BUNDLE_IDENTIFIER: com.contactlogo.macos" in target, "the App Store target keeps the Mac bundle id")
 check("ContactLogoMacAppStore.entitlements" in target, "the App Store target uses its own entitlements")
 check("CODE_SIGN_STYLE: Manual" in target and 'CODE_SIGN_IDENTITY: "Apple Distribution"' in target,
@@ -365,11 +365,11 @@ check(spec_profile is not None and profile_map.get("com.contactlogo.macos") == s
 
 # ----------------------------------------------------- entitlements and stub
 print("== App Store build contents ==")
-ents = read("Apps/ContactLogoMacAppStore/ContactLogoMacAppStore.entitlements")
+ents = read("apps/macos-app-store/ContactLogoMacAppStore.entitlements")
 check("com.apple.security.app-sandbox" in ents, "the App Store build is sandboxed")
 check("temporary-exception" not in ents, "the App Store build has no temporary-exception entitlement")
 check("group.com.contactlogo" in ents, "the App Store build keeps the App Group")
-stub = read("Apps/ContactLogoMacAppStore/AutoUpdateStub.swift")
+stub = read("apps/macos-app-store/AutoUpdateStub.swift")
 check("import Sparkle" not in stub, "the update stub does not import Sparkle")
 check("enum AutoUpdateAvailability" in stub and "final class AppUpdater" in stub,
       "the update stub defines AppUpdater and AutoUpdateAvailability")

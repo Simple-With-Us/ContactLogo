@@ -19,7 +19,7 @@
   a Swift package with zero platform-specific imports except a thin
   `ContactsProvider` protocol. macOS/iOS implement it over `Contacts.framework`;
   the web shell implements it over parsed vCards.
-- **Web engine parity**: `web/src/engine` reimplements the same rules in
+- **Web engine parity**: `apps/web/src/engine` reimplements the same rules in
   TypeScript (MATCHING-ENGINE.md is the source of truth; Swift and TS tests
   cover the catalog/phone/classification cases).
 
@@ -54,7 +54,7 @@
   updated `.vcf`.
 - Privacy: vCard held in memory only; deleted after download. No account
   needed for free tier.
-- Stack: Vite + TypeScript engine in `web/src/engine`. Stripe Pro remains a
+- Stack: Vite + TypeScript engine in `apps/web/src/engine`. Stripe Pro remains a
   later phase.
 
 ## Rate-limit & key policy

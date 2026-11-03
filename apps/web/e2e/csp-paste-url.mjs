@@ -4,7 +4,7 @@
  * `connect-src`, because `composeFromUrl` loads through `<img>` and a canvas
  * instead of `fetch`.
  *
- * `web/vercel.json` is applied only by Vercel, so nothing in `npm test` or
+ * `apps/web/vercel.json` is applied only by Vercel, so nothing in `npm test` or
  * `npm run build` exercises it — a policy that breaks this action looks
  * perfectly healthy in CI.  `src/csp.test.ts` asserts the *shape* of the
  * policy; this asserts that the app actually works under it.  The policy is
