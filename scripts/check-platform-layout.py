@@ -14,7 +14,8 @@ EXPECTED = {
 }
 
 missing = sorted(path for path in EXPECTED if not (ROOT / path).is_dir())
-legacy = sorted(path for path in ("Apps", "web") if (ROOT / path).exists())
+root_names = {path.name for path in ROOT.iterdir()}
+legacy = sorted(path for path in ("Apps", "web") if path in root_names)
 tracked = subprocess.run(
     ["git", "-C", str(ROOT), "ls-files", "-z"], check=True, capture_output=True
 ).stdout.split(b"\0")
