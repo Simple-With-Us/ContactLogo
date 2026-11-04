@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COOLDOWN_MS, classify, assertProject, assertCi, ciPending, assertReceipt, deploymentSha, request } from './vercel-catch-up.mjs';
+import { COOLDOWN_MS, classify, assertProject, assertCi, ciPending, assertReceipt, deploymentSha, deploymentDirty, assertCleanCheckout, request } from './vercel-catch-up.mjs';
 const A = 'a'.repeat(40), B = 'b'.repeat(40), now = 1_800_000_000_000;
 const config = { projectId: 'prj_test', teamId: 'team_test', repoId: 17, rootDirectory: 'site' };
 const baseline = { projectId: 'prj_test', target: 'production', readyState: 'READY', created: now - COOLDOWN_MS - 1, gitSource: { sha: A }, url: 'test.vercel.app' };
@@ -38,6 +38,29 @@ test('CLI baseline SHA from gitCommitSha/commitSha metadata', () => {
  assert.equal(deploymentSha({meta:{gitCommitSha:A, gitDirty:'0'}}), A);
  assert.throws(() => deploymentSha({meta:{gitCommitSha:A, gitDirty:'1'}}));
 });
+test('an unverifiable baseline is republished instead of trusted', () => {
+ const dirty = { ...baseline, meta: { fleetCommitSha: A, gitDirty: '1' } };
+ assert.equal(deploymentDirty(dirty), true);
+ assert.equal(deploymentDirty({ ...baseline, meta: { fleetCommitSha: A, gitDirty: '0' } }), false);
+ assert.equal(deploymentDirty(baseline), false);
+ const decision = classify({ deployments: [old], baseline: dirty, target: B, now, projectId: config.projectId, changed: () => true });
+ assert.equal(decision.deploy, true);
+ assert.match(decision.reason, /not verifiable/);
+ // The republish still waits for the cooldown.
+ assert.equal(classify({ deployments: [old], baseline: dirty, target: B, now: now - COOLDOWN_MS + 1, projectId: config.projectId, changed: () => true }).deploy, false);
+ // A clean baseline with the same target stays a no-op.
+ assert.equal(decide({ target: A }).deploy, false);
+ // A baseline with no usable commit is refused instead of republished.
+ assert.throws(() => classify({ deployments: [old], baseline: { ...baseline, gitSource: undefined, meta: { gitDirty: '1' } }, target: B, now, projectId: config.projectId, changed: () => true }), /names no usable commit/);
+ // The ancestor rule still applies to a republish.
+ assert.throws(() => classify({ deployments: [old], baseline: dirty, target: B, now, projectId: config.projectId, changed: () => { throw new Error('Deployed SHA is not an ancestor of main; investigate before deploying'); } }), /not an ancestor/);
+});
+test('a dirty checkout is refused before a publish', () => {
+ assert.doesNotThrow(() => assertCleanCheckout(''));
+ assert.doesNotThrow(() => assertCleanCheckout('  \n'));
+ assert.throws(() => assertCleanCheckout('?? web/dist/\n'), /Checkout is not clean/);
+ assert.throws(() => assertCleanCheckout(' M web/api/logo/[domain].js'), /web\/api\/logo/);
+});
 test('binding checks stable repo ID and preserves root', () => {
  assert.doesNotThrow(() => assertProject(project,config));
  assert.doesNotThrow(() => assertProject({...project,link:{...project.link,org:'old-owner'}},config));
@@ -74,6 +97,10 @@ import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 test('entrypoint reconciles skipped site changes behind docs, rechecks and verifies receipt', () => {
  const dir = mkdtempSync(join(tmpdir(),'vercel-catch-up-'));
+ // The fixture repo must stay clean: the catch-up refuses to publish from a
+ // dirty checkout, and the mock, fixture, output and receipt files are
+ // scratch, so they live outside the repository.
+ const scratch = mkdtempSync(join(tmpdir(),'vercel-catch-up-scratch-'));
  const runGit = (...args) => execFileSync('git',args,{cwd:dir,encoding:'utf8'}).trim();
  try {
   mkdirSync(join(dir,'scripts/deploy'),{recursive:true});
@@ -85,17 +112,17 @@ test('entrypoint reconciles skipped site changes behind docs, rechecks and verif
   writeFileSync(join(dir,'site/index.html'),'new');runGit('add','.');runGit('commit','-qm','site change skipped inside window');
   writeFileSync(join(dir,'README.md'),'docs');runGit('add','.');runGit('commit','-qm','later docs');const latest=runGit('rev-parse','HEAD');
   const fixture={project:{...project,targets:{production:{id:'dpl_fixture'}}},baseline:{...baseline,gitSource:{sha:first},created:Date.now()-COOLDOWN_MS-60_000},history:{deployments:[{...old,created:Date.now()-COOLDOWN_MS-60_000}],pagination:{}},head:latest,ci:{total_count:1,workflow_runs:[{id:1,name:'CI',head_sha:latest,head_branch:'main',event:'push',status:'completed',conclusion:'success'}]}};
-  const fixtureFile=join(dir,'fixture.json');const output=join(dir,'output');const receipt=join(dir,'receipt.json');
+  const fixtureFile=join(scratch,'fixture.json');const output=join(scratch,'output');const receipt=join(scratch,'receipt.json');
   writeFileSync(receipt,JSON.stringify({status:'ok',deployment:{id:'dpl_fixture'}}));
-  writeFileSync(join(dir,'mock.mjs'),`import {readFileSync} from 'node:fs';const f=JSON.parse(readFileSync(process.env.FIXTURE));globalThis.fetch=async(url,options)=>{if(options.method && options.method!=='GET')throw new Error('write forbidden');const u=new URL(url);let body;if(u.pathname.endsWith('/git/ref/heads/main'))body={object:{sha:f.head}};else if(u.pathname.endsWith('/actions/runs'))body=f.ci;else if(u.pathname.startsWith('/v9/projects/'))body=f.project;else if(u.pathname.startsWith('/v13/deployments/'))body=f.baseline;else if(u.pathname==='/v7/deployments')body=f.history;else throw new Error('unexpected URL');return {ok:true,json:async()=>body}};`);
-  const execute=(...args)=>{writeFileSync(fixtureFile,JSON.stringify(fixture));writeFileSync(output,'');return spawnSync(process.execPath,['--import',join(dir,'mock.mjs'),'scripts/deploy/vercel-catch-up.mjs',...args],{cwd:dir,encoding:'utf8',env:{...process.env,GITHUB_REPOSITORY:'owner/repo',GH_TOKEN:'fixture',VERCEL_TOKEN:'fixture',FIXTURE:fixtureFile,GITHUB_OUTPUT:output}});};
+  writeFileSync(join(scratch,'mock.mjs'),`import {readFileSync} from 'node:fs';const f=JSON.parse(readFileSync(process.env.FIXTURE));globalThis.fetch=async(url,options)=>{if(options.method && options.method!=='GET')throw new Error('write forbidden');const u=new URL(url);let body;if(u.pathname.endsWith('/git/ref/heads/main'))body={object:{sha:f.head}};else if(u.pathname.endsWith('/actions/runs'))body=f.ci;else if(u.pathname.startsWith('/v9/projects/'))body=f.project;else if(u.pathname.startsWith('/v13/deployments/'))body=f.baseline;else if(u.pathname==='/v7/deployments')body=f.history;else throw new Error('unexpected URL');return {ok:true,json:async()=>body}};`);
+  const execute=(...args)=>{writeFileSync(fixtureFile,JSON.stringify(fixture));writeFileSync(output,'');return spawnSync(process.execPath,['--import',join(scratch,'mock.mjs'),'scripts/deploy/vercel-catch-up.mjs',...args],{cwd:dir,encoding:'utf8',env:{...process.env,GITHUB_REPOSITORY:'owner/repo',GH_TOKEN:'fixture',VERCEL_TOKEN:'fixture',FIXTURE:fixtureFile,GITHUB_OUTPUT:output}});};
   let result=execute('prepare');assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(output,'utf8'),'deploy=true\n');
   fixture.head=A;result=execute();assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(output,'utf8'),'deploy=false\n');fixture.head=latest;
   fixture.ci.workflow_runs[0].conclusion='failure';result=execute();assert.equal(result.status,1);assert.match(result.stderr,/Exact-main CI/);fixture.ci.workflow_runs[0].conclusion='success';
   fixture.history.pagination.next=1;fixture.history.deployments[0].created=Date.now()-1;result=execute();assert.equal(result.status,1);assert.match(result.stderr,/history truncated/);fixture.history.pagination={};
   fixture.baseline.gitSource.sha=latest;result=execute('receipt',receipt);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/https:\/\/test.vercel.app/);
   fixture.project.targets.production.id='dpl_other';result=execute('receipt',receipt);assert.equal(result.status,1);assert.match(result.stderr,/current production target/);
- } finally { rmSync(dir,{recursive:true,force:true}); }
+ } finally { rmSync(dir,{recursive:true,force:true}); rmSync(scratch,{recursive:true,force:true}); }
 });
 
 test('a still-running exact-main CI run is pending, not a refusal', () => {
