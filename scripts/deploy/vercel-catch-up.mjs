@@ -11,12 +11,24 @@ const ACTIVE = new Set(['QUEUED', 'INITIALIZING', 'BUILDING']);
 const STATES = new Set([...ACTIVE, 'READY', 'ERROR', 'CANCELED']);
 function must(ok, message) { if (!ok) throw new Error(message); }
 function object(x) { return x !== null && typeof x === 'object' && !Array.isArray(x); }
+export function deploymentDirty(d) {
+  const dirty = d?.meta?.gitDirty;
+  return Boolean(dirty && dirty !== '0' && dirty !== 'false' && dirty !== false);
+}
+export function claimedSha(d) {
+  const values = [d?.gitSource?.sha, d?.meta?.githubCommitSha, d?.meta?.fleetCommitSha, d?.meta?.gitCommitSha, d?.meta?.commitSha].filter(Boolean);
+  if (values.length === 0) return null;
+  return values.every(x => SHA.test(x) && x === values[0]) ? values[0] : null;
+}
 export function deploymentSha(d) {
-  const dirty = d.meta?.gitDirty;
-  must(!(dirty && dirty !== '0' && dirty !== 'false' && dirty !== false), 'CLI deployment was dirty; its SHA is not a verified baseline');
-  const values = [d.gitSource?.sha, d.meta?.githubCommitSha, d.meta?.fleetCommitSha, d.meta?.gitCommitSha, d.meta?.commitSha].filter(Boolean);
-  must(values.length > 0 && values.every(x => SHA.test(x) && x === values[0]), 'Deployment commit missing or conflicting');
-  return values[0];
+  must(!deploymentDirty(d), 'CLI deployment was dirty; its SHA is not a verified baseline');
+  const sha = claimedSha(d);
+  must(sha, 'Deployment commit missing or conflicting');
+  return sha;
+}
+export function assertCleanCheckout(status) {
+  const dirty = typeof status === 'string' ? status.trim() : '';
+  must(dirty === '', `Checkout is not clean; refusing to publish: ${dirty.split('\n').slice(0, 5).join(' | ')}`);
 }
 export function assertProject(p, config) {
   must(object(p) && p.id === config.projectId, 'Wrong Vercel project');
@@ -43,9 +55,22 @@ export function classify({ deployments, baseline, target, now, changed, projectI
   }
   must(object(baseline) && baseline.target === 'production' && (baseline.readyState ?? baseline.state) === 'READY', 'No verified current production baseline');
   if (active) return { deploy: false, reason: 'production build in flight' };
-  const deployed = deploymentSha(baseline);
+  // A deployment the CLI marked dirty cannot prove which content it published,
+  // so its SHA is not a baseline.  Refusing alone cannot repair that: the next
+  // run would read the same unverifiable baseline and refuse again.  Republish
+  // main from a clean checkout instead, so the baseline becomes verifiable.
+  const verifiable = !deploymentDirty(baseline);
+  const deployed = verifiable ? deploymentSha(baseline) : null;
   if (deployed === target) return { deploy: false, reason: 'current main is already deployed' };
   if (now - newest < COOLDOWN_MS) return { deploy: false, reason: '3h production cooldown', eligibleAt: new Date(newest + COOLDOWN_MS).toISOString() };
+  if (!verifiable) {
+    const claimed = claimedSha(baseline);
+    must(claimed, 'Production baseline is not verifiable and names no usable commit; investigate before deploying');
+    // Keep the ancestor rule before any republish: production has to be behind
+    // main, so a republish only ever moves production forward.
+    changed(claimed, target);
+    return { deploy: true, reason: 'production baseline is not verifiable; republishing main to restore a verifiable baseline' };
+  }
   if (!changed(deployed, target)) return { deploy: false, reason: 'no site changes since deployed SHA' };
   return { deploy: true, reason: 'eligible main differs from production', target };
 }
@@ -132,6 +157,10 @@ async function main() {
       assertCi(ci.workflow_runs, config.ciWorkflows, target);
     }
   }
+  // The Vercel CLI marks a deployment dirty when the tree it uploaded from was
+  // not clean, and the receipt check refuses a dirty deployment, so a dirty
+  // checkout is refused here instead of failing the receipt after the upload.
+  if (result.deploy) assertCleanCheckout(git(['status', '--porcelain']));
   console.log(JSON.stringify(result));
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deploy=${result.deploy}\n`);
 }
