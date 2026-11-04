@@ -2,6 +2,8 @@
 """Check canonical platform paths and the temporary read-only web bridge."""
 from pathlib import Path
 import hashlib
+import os
+import re
 import stat
 import subprocess
 import sys
@@ -32,6 +34,65 @@ wrong_case_roots = sorted(
     and name not in {"apps", "web"}
 )
 missing_bridge = not (ROOT / "web").is_dir()
+
+# The deploy job builds the bridge root, and the production catch-up refuses
+# any deployment whose CLI tree was dirty.  A build output that is not
+# ignored leaves the checkout dirty, so the deployment carries a dirty marker
+# and the receipt check fails after the upload.  Both web roots must ignore
+# their build output for the catch-up to be able to publish.
+unignored_build_output = []
+tracked_build_output = []
+negated_build_output = []
+# Ignore rules that can cover a build output directory.
+IGNORE_FILES = (".gitignore", "apps/.gitignore", "apps/web/.gitignore", "web/.gitignore")
+
+
+def negation_inside(prefix):
+    """Ignore rules that un-ignore a path inside a build output directory."""
+    hits = []
+    for relative in IGNORE_FILES:
+        ignore_file = ROOT / relative
+        if not ignore_file.is_file():
+            continue
+        base = os.path.dirname(relative)
+        for raw in ignore_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line.startswith("!"):
+                continue
+            pattern = line[1:].strip()
+            if not pattern:
+                continue
+            literal = re.split(r"[*?\[]", pattern, maxsplit=1)[0].strip("/")
+            effective = f"{base}/{literal}" if base else literal
+            if effective == prefix or effective.startswith(prefix + "/"):
+                hits.append(f"{relative}: {line}")
+    return hits
+
+
+for web_root in ("apps/web", "web"):
+    build_output = f"{web_root}/dist"
+    # The trailing slash makes git treat the path as a directory, so a
+    # directory-only ignore rule counts as covered.
+    ignored = subprocess.run(
+        ["git", "-C", str(ROOT), "check-ignore", "-q", f"{build_output}/"]
+    ).returncode == 0
+    # A nested path proves the whole output is covered: a nested un-ignore
+    # exception stays invisible to the directory probe.
+    nested_ignored = subprocess.run(
+        ["git", "-C", str(ROOT), "check-ignore", "-q", f"{build_output}/index.html"]
+    ).returncode == 0
+    # Tracked build output is rewritten by the build, so it dirties the
+    # checkout even when an ignore rule matches.
+    tracked = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", f"{build_output}"],
+        check=True, capture_output=True, text=True
+    ).stdout.strip()
+    if not ignored or not nested_ignored:
+        unignored_build_output.append(build_output)
+    if tracked:
+        tracked_build_output.append(build_output)
+    for rule in negation_inside(build_output):
+        negated_build_output.append(f"{build_output} ({rule})")
 
 index = subprocess.run(
     ["git", "-C", str(ROOT), "ls-files", "-s", "-z"], check=True, capture_output=True
@@ -89,11 +150,17 @@ for prefix, files in (("apps/web/", source), ("web/", bridge)):
         if blob != expected_blob or mode != expected_mode:
             changed_worktree_files.append(path)
 
-if missing or directory_symlinks or missing_bridge or wrong_case_roots or root_collisions or collisions or non_regular or missing_bridge_files or extra_bridge_files or changed_bridge_files or missing_worktree_files or changed_worktree_files:
+if missing or directory_symlinks or missing_bridge or wrong_case_roots or root_collisions or collisions or non_regular or missing_bridge_files or extra_bridge_files or changed_bridge_files or missing_worktree_files or changed_worktree_files or unignored_build_output or tracked_build_output or negated_build_output:
     for path in missing:
         print(f"missing canonical directory: {path}")
     if missing_bridge:
         print("missing required legacy web deployment bridge: web")
+    for path in unignored_build_output:
+        print(f"web build output is not gitignored: {path}")
+    for path in tracked_build_output:
+        print(f"web build output is tracked: {path}")
+    for path in negated_build_output:
+        print(f"web build output is un-ignored by a negation rule: {path}")
     for path in directory_symlinks:
         print(f"canonical source and web bridge directories cannot be symlinks: {path}")
     for path in wrong_case_roots:

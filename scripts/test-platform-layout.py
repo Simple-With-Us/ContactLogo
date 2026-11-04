@@ -31,6 +31,9 @@ class PlatformLayoutFixtures(unittest.TestCase):
         self._mirror()
         (self.root / "scripts").mkdir()
         shutil.copyfile(GATE, self.root / "scripts/check-platform-layout.py")
+        (self.root / ".gitignore").write_text(
+            "apps/web/dist/\nweb/dist/\n", encoding="utf-8"
+        )
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         subprocess.run(
             ["git", "-C", str(self.root), "-c", "user.name=Fixture", "-c",
@@ -105,6 +108,35 @@ class PlatformLayoutFixtures(unittest.TestCase):
         result = self._run_gate()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("directories cannot be symlinks: web", result.stdout)
+
+    def test_unignored_web_build_output_fails(self):
+        (self.root / ".gitignore").write_text(
+            "apps/web/dist/\n", encoding="utf-8"
+        )
+        self._stage()
+        result = self._run_gate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("web build output is not gitignored: web/dist", result.stdout)
+
+    def test_nested_unignored_build_output_fails(self):
+        (self.root / ".gitignore").write_text(
+            "apps/web/dist/\nweb/dist/\n!web/dist/keep.txt\n", encoding="utf-8"
+        )
+        self._stage()
+        result = self._run_gate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("web build output is un-ignored by a negation rule: web/dist", result.stdout)
+
+    def test_tracked_build_output_fails(self):
+        (self.root / "web/dist").mkdir(parents=True)
+        (self.root / "web/dist/tracked.html").write_text("tracked\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "-C", str(self.root), "add", "-f", "web/dist/tracked.html"],
+            check=True,
+        )
+        result = self._run_gate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("web build output is tracked: web/dist", result.stdout)
 
     def test_casefold_path_collision_fails(self):
         lower_directory = self.root / "apps/ios"
