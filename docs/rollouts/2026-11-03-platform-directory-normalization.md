@@ -20,4 +20,8 @@ The rollout order is: merge this bridge and validation change; switch the Vercel
 
 `scripts/deploy/vercel-config.json` keeps `rootDirectory` on `web` for the whole bridge phase, and `watch` on `web/**` with it.  The production catch-up asserts the live Vercel project root against that value before it looks at anything else, so declaring `apps/web` while the project still points at `web` makes the deploy job refuse with a root directory drift and blocks every deployment until the switch actually happens.  Flip both values together, in the cutover phase, after the Vercel project root has been switched and the new-root deployment has been verified.
 
-The repository build and hosted CI checks validate canonical directories, case-fold uniqueness and byte/mode equality of the temporary bridge.  This phase does not claim that Vercel configuration was updated or deployed.
+The repository build and hosted CI checks validate canonical directories, case-fold uniqueness and byte/mode equality of the temporary bridge.  This phase does not claim that Vercel configuration was updated or deployed.
+
+## Bridge build output has to stay ignored
+
+The bridge left the build-output ignore rule on the pre-bridge path, so the ignore rule still named `apps/web/dist/` while the deploy job builds `web/`.  `vercel build` writes `web/dist/`, the deploy checkout was therefore dirty at publish time, and the Vercel CLI stamps a dirty marker on any deployment made from a dirty tree.  The production catch-up refuses a deployment carrying that marker because its SHA is not a verified baseline, so the deploy job uploaded the build, aliased production, and then failed its receipt check.  The layout gate now requires the build output of both web roots to be ignored, which keeps the deploy checkout clean so a published deployment can be verified against a commit.

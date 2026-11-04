@@ -33,6 +33,22 @@ wrong_case_roots = sorted(
 )
 missing_bridge = not (ROOT / "web").is_dir()
 
+# The deploy job builds the bridge root, and the production catch-up refuses
+# any deployment whose CLI tree was dirty.  A build output that is not
+# ignored leaves the checkout dirty, so the deployment carries a dirty marker
+# and the receipt check fails after the upload.  Both web roots must ignore
+# their build output for the catch-up to be able to publish.
+unignored_build_output = []
+for web_root in ("apps/web", "web"):
+    build_output = f"{web_root}/dist"
+    # The trailing slash makes git treat the path as a directory, so a
+    # directory-only ignore rule counts as covered.
+    ignored = subprocess.run(
+        ["git", "-C", str(ROOT), "check-ignore", "-q", f"{build_output}/"]
+    ).returncode == 0
+    if not ignored:
+        unignored_build_output.append(build_output)
+
 index = subprocess.run(
     ["git", "-C", str(ROOT), "ls-files", "-s", "-z"], check=True, capture_output=True
 ).stdout.split(b"\0")
@@ -89,11 +105,13 @@ for prefix, files in (("apps/web/", source), ("web/", bridge)):
         if blob != expected_blob or mode != expected_mode:
             changed_worktree_files.append(path)
 
-if missing or directory_symlinks or missing_bridge or wrong_case_roots or root_collisions or collisions or non_regular or missing_bridge_files or extra_bridge_files or changed_bridge_files or missing_worktree_files or changed_worktree_files:
+if missing or directory_symlinks or missing_bridge or wrong_case_roots or root_collisions or collisions or non_regular or missing_bridge_files or extra_bridge_files or changed_bridge_files or missing_worktree_files or changed_worktree_files or unignored_build_output:
     for path in missing:
         print(f"missing canonical directory: {path}")
     if missing_bridge:
         print("missing required legacy web deployment bridge: web")
+    for path in unignored_build_output:
+        print(f"web build output is not gitignored: {path}")
     for path in directory_symlinks:
         print(f"canonical source and web bridge directories cannot be symlinks: {path}")
     for path in wrong_case_roots:
