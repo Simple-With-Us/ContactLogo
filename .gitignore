@@ -10,7 +10,7 @@ Package.resolved
 node_modules/
 .next/
 .vercel
-web/dist/
+apps/web/dist/
 
 # Android
 .gradle/

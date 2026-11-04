@@ -30,7 +30,7 @@ settings:
     # carried `.macos`).  New App Group group.com.contactlogo on both
     # native shells; Associated Domain contactlogo.com on iOS.
     # Must stay >= the language mode implied by Package.swift's
-    # `swift-tools-version: 6.0` — Apps/ uses `@retroactive` conformances,
+    # `swift-tools-version: 6.0` — apps/ uses `@retroactive` conformances,
     # which require Swift 5.10+, and Sources/ContactLogoKit is compiled by
     # both this Xcode project and SwiftPM from the same sources.
     SWIFT_VERSION: "6.0"
@@ -103,7 +103,7 @@ targets:
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - path: Apps/ContactLogoiOS
+      - path: apps/ios
     dependencies:
       - target: ContactLogoKit
       - package: Sentry
@@ -124,9 +124,9 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         GENERATE_INFOPLIST_FILE: YES
         # Array keys (UIBackgroundModes, BGTaskSchedulerPermittedIdentifiers)
-        # do not merge from INFOPLIST_KEY_* on Xcode 26.  Apps/ContactLogoiOS/Info.plist
+        # do not merge from INFOPLIST_KEY_* on Xcode 26.  apps/ios/Info.plist
         # holds them; GENERATE_INFOPLIST_FILE still fills the scalar keys.  CL-05.
-        INFOPLIST_FILE: Apps/ContactLogoiOS/Info.plist
+        INFOPLIST_FILE: apps/ios/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   ContactLogoMac:
@@ -134,7 +134,7 @@ targets:
     platform: macOS
     deploymentTarget: "14.0"
     sources:
-      - path: Apps/ContactLogoMac
+      - path: apps/macos
     dependencies:
       - target: ContactLogoKitMac
       - package: Sentry
@@ -156,8 +156,8 @@ targets:
         # Custom SENTRY_DSN key does not merge from INFOPLIST_KEY_* .
         # Empty unless xcodebuild/CI passes SENTRY_DSN=... (Infisical
         # SENTRY_DSN_MACOS).  Do not put a live DSN in git.
-        INFOPLIST_FILE: Apps/ContactLogoMac/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Apps/ContactLogoMac/ContactLogoMac.entitlements
+        INFOPLIST_FILE: apps/macos/Info.plist
+        CODE_SIGN_ENTITLEMENTS: apps/macos/ContactLogoMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   # 2026-10-17 (CL-203) - Mac App Store / TestFlight build of the Mac app.
@@ -165,7 +165,7 @@ targets:
   # never links Sparkle: the Mac App Store forbids a self-updating app, and
   # Sparkle's Autoupdate and Updater.app executables are not sandboxed, so
   # App Store Connect rejects an upload that contains them.  The one Sparkle
-  # file (AutoUpdate.swift) is replaced by Apps/ContactLogoMacAppStore/
+  # file (AutoUpdate.swift) is replaced by apps/macos-app-store/
   # AutoUpdateStub.swift, which keeps the AppUpdater / AutoUpdateAvailability
   # names the app code already calls, so no call site changes.  Developer ID
   # releases (mac-release.yml) keep shipping the ContactLogoMac target.
@@ -181,11 +181,11 @@ targets:
     platform: macOS
     deploymentTarget: "14.0"
     sources:
-      - path: Apps/ContactLogoMac
+      - path: apps/macos
         excludes:
           - AutoUpdate.swift
           - ContactLogoMac.entitlements
-      - path: Apps/ContactLogoMacAppStore
+      - path: apps/macos-app-store
     dependencies:
       - target: ContactLogoKitMac
       - package: Sentry
@@ -200,8 +200,8 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_FILE: Apps/ContactLogoMac/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Apps/ContactLogoMacAppStore/ContactLogoMacAppStore.entitlements
+        INFOPLIST_FILE: apps/macos/Info.plist
+        CODE_SIGN_ENTITLEMENTS: apps/macos-app-store/ContactLogoMacAppStore.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         Release:

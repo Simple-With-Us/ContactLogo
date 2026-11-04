@@ -8,8 +8,8 @@ Oracle RAG.  Sentry and PagerDuty stay as-is when those keys exist.
 
 | Surface | What ships | Notes |
 |---|---|---|
-| ContactLogo Web (Vercel) | Browser logs + RUM only | UI exists.  Init in `web/src/observability/datadog.ts`.  Vercel is a serverless CDN, not a Node runtime. |
-| Local development server | `dd-trace` APM + JSON stdout logs | `web/server.mjs` and `npm start`.  Agent on `DD_AGENT_HOST:DD_TRACE_AGENT_PORT`.  Not the production path. |
+| ContactLogo Web (Vercel) | Browser logs + RUM only | UI exists.  Init in `apps/web/src/observability/datadog.ts`.  Vercel is a serverless CDN, not a Node runtime. |
+| Local development server | `dd-trace` APM + JSON stdout logs | `apps/web/server.mjs` and `npm start`.  Agent on `DD_AGENT_HOST:DD_TRACE_AGENT_PORT`.  Not the production path. |
 | macOS / iOS | none in this change | No local Mac/iOS ship from this work. |
 | Android | none in this change | Native RUM can reuse the same public RUM env later. |
 
@@ -34,7 +34,7 @@ Set these in Coolify / Infisical.  Never commit values.
 names.  `DD_API_KEY` is not an alias and is never exposed to the browser.
 
 RUM ids are baked in at `vite build`.  Coolify must pass `DD_APPLICATION_ID`
-and `DD_CLIENT_TOKEN` as build-time env (see `web/Dockerfile` `ARG`s), not
+and `DD_CLIENT_TOKEN` as build-time env (see `apps/web/Dockerfile` `ARG`s), not
 only as runtime secrets.
 
 ## Stay dark

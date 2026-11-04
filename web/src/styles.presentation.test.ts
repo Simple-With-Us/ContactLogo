@@ -1,7 +1,7 @@
 // Presentation-lane tests for docs/UI-CONTRACT.md compliance.
 //
-// These check the static contents of web/src/styles.css, web/index.html and
-// web/public/manifest.webmanifest — the three files this lane owns — against
+// These check the static contents of apps/web/src/styles.css, apps/web/index.html and
+// apps/web/public/manifest.webmanifest — the three files this lane owns — against
 // the token set, selector rules and contrast minimums the contract lays out.
 // Run directly (not part of the shared `npm test` glob, which this lane does
 // not own):

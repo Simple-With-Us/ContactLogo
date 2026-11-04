@@ -23,7 +23,7 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 git_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
-# Nested scripts (site/, web/, apps/site) watch their own folder.
+# Nested scripts (site/, apps/web/, apps/site) watch their own folder.
 # A repo-root script (DealDex) watches the tree minus native/docs/CI.
 watch_args=()
 if [[ -n "${VERCEL_IGNORE_WATCH:-}" ]]; then
@@ -85,8 +85,11 @@ if [[ -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_PROJECT_ID:-}" ]]; then
   if [[ -n "$team" ]]; then
     qs="${qs}&teamId=${team}"
   fi
-  created=$(curl -fsS -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-    "https://api.vercel.com/v6/deployments?${qs}" \
+  api_url="https://api.vercel.com/v6/deployments?${qs}"
+  created=$(python3 -c 'import json, os, sys
+print("url = " + json.dumps(sys.argv[1]))
+print("header = " + json.dumps("Authorization: Bearer " + os.environ["VERCEL_TOKEN"]))' "$api_url" \
+    | curl -fsS --config - \
     | python3 -c "import json,sys
 d=json.load(sys.stdin)
 deps=d.get('deployments') or []

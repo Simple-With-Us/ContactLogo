@@ -128,9 +128,9 @@ jobs:
         run: |
           bash "$GITHUB_WORKSPACE/scripts/ios-fleet/scheduled-ship-gate.sh" \
             --event "${{ github.event_name }}" \
-            --path-prefix 'Apps/ContactLogoiOS/**' \
-            --path-prefix 'Apps/ContactLogoMac/**' \
-            --path-prefix 'Apps/ContactLogoMacAppStore/**' \
+            --path-prefix 'apps/ios/**' \
+            --path-prefix 'apps/macos/**' \
+            --path-prefix 'apps/macos-app-store/**' \
             --path-prefix 'Sources/**' \
             --path-prefix 'project.yml' \
             --path-prefix '.github/workflows/testflight.yml' \
