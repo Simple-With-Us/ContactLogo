@@ -1,8 +1,10 @@
 // CI and cloud fetches use explicitly scoped, read-only service tokens.
 // A legacy universal-auth login remains only for vercel-catch-up.yml, and
-// only when INFISICAL_SERVICE_TOKEN is empty and both INFISICAL_CLIENT_ID
-// and INFISICAL_CLIENT_SECRET are set.  It exists solely until a Fleet-OPS
-// VERCEL_TOKEN read token is minted.  asc-mode refuses that path.
+// only when INFISICAL_ALLOW_UNIVERSAL_AUTH=true, INFISICAL_SERVICE_TOKEN is
+// empty, and both INFISICAL_CLIENT_ID and INFISICAL_CLIENT_SECRET are set.
+// It exists solely until a Fleet-OPS VERCEL_TOKEN read token is minted.
+// Missing service tokens never silently fall back to universal-auth.
+// asc-mode refuses that path.
 import { appendFileSync, realpathSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -149,8 +151,16 @@ export async function loginUniversalAuth({ siteUrl, clientId, clientSecret, fetc
  * for vercel-catch-up until a Fleet-OPS VERCEL_TOKEN read token is minted. */
 export async function resolveVaultValues({ siteUrl, projectId, token, clientId = "", clientSecret = "", environment, secretPath, fetchImpl, log = () => {} }) {
   if (token) {
-    // Scope errors fail closed rather than disguising a broad token as a fallback.
-    await validateServiceToken({ siteUrl, token, projectId, environment, secretPath, fetchImpl });
+    // Scope mismatches fail closed.  Transport/metadata outages warn and fall
+    // through to GH_FALLBACK_* instead of aborting the step.
+    try {
+      await validateServiceToken({ siteUrl, token, projectId, environment, secretPath, fetchImpl });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("must have exactly the requested")) throw err;
+      log(`::warning::Infisical service token metadata unavailable; using GitHub secret fallbacks only.`);
+      return new Map();
+    }
     try {
       return await listSecretsRaw({ siteUrl, token, projectId, environment, secretPath, fetchImpl });
     } catch {
@@ -219,8 +229,15 @@ export async function run({ env = process.env, fetchImpl = fetch, log = (line) =
   const githubEnvPath = env.GITHUB_ENV || "";
   // Legacy universal-auth exists solely for vercel-catch-up until a
   // Fleet-OPS VERCEL_TOKEN read token is minted.  A service token wins.
+  // Fail closed: never silently degrade to universal-auth when the scoped
+  // token is missing — the caller must set INFISICAL_ALLOW_UNIVERSAL_AUTH.
   // asc-mode and the cloud shell export are service-token only.
-  const legacyUniversalAuth = !token && env.INFISICAL_ASC_MODE !== "true" && !env.INFISICAL_SHELL_FILE && clientId && clientSecret;
+  const legacyUniversalAuth = env.INFISICAL_ALLOW_UNIVERSAL_AUTH === "true"
+    && !token
+    && env.INFISICAL_ASC_MODE !== "true"
+    && !env.INFISICAL_SHELL_FILE
+    && clientId
+    && clientSecret;
 
   const vaultValues = await resolveVaultValues({
     siteUrl,
@@ -257,18 +274,27 @@ export async function run({ env = process.env, fetchImpl = fetch, log = (line) =
   const unresolved = [];
   for (const name of names) {
     let value = vaultValues.get(name) || "";
-    if (!value) {
-      value = env[`GH_FALLBACK_${name}`] || "";
-    }
-    if (!value) {
-      const message = `${name} is empty after the Infisical ${environment} export and the GitHub secret fallback.`;
-      if (required.has(name)) {
-        missingRequired.push(name);
-        log(`::error::${message}`);
+    // An unresolved cross-folder reference is treated like an empty vault hit
+    // so GH_FALLBACK_<NAME> can still satisfy best-effort steps (Sentry/Sparkle).
+    if (!value || isUnresolvedReference(value)) {
+      const fallback = env[`GH_FALLBACK_${name}`] || "";
+      if (fallback && !isUnresolvedReference(fallback)) {
+        value = fallback;
+      } else if (!value) {
+        const message = `${name} is empty after the Infisical ${environment} export and the GitHub secret fallback.`;
+        if (required.has(name)) {
+          missingRequired.push(name);
+          log(`::error::${message}`);
+        } else {
+          log(`::warning::${message}`);
+        }
+        continue;
       } else {
-        log(`::warning::${message}`);
+        // Vault returned a reference and fallback is missing or itself a reference.
+        unresolved.push(name);
+        log(`::error::${name} is still an unresolved Infisical secret reference after the ${environment} export; check the target exists and use a separate scoped token for the target folder.`);
+        continue;
       }
-      continue;
     }
     if (isUnresolvedReference(value)) {
       // Name the KEY only -- never the value, even though it is a reference.

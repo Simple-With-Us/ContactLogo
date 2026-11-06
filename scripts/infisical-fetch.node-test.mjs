@@ -355,7 +355,7 @@ test('wrong project, environment, folder, multi-folder, and write tokens fail be
   }
 });
 
-test("legacy universal-auth is used only when the service token is empty", async () => {
+test("legacy universal-auth requires an explicit allow flag when the service token is empty", async () => {
   const { dir, path } = tempGithubEnv();
   try {
     const calls = [];
@@ -410,15 +410,36 @@ test("legacy universal-auth is used only when the service token is empty", async
     assert.equal(calls.length, 1);
     assert.match(calls[0].url, /\/api\/v2\/service-token/);
 
-    // Empty service token plus both client credentials takes the legacy login.
-    // That path exists solely for vercel-catch-up until a Fleet-OPS
-    // VERCEL_TOKEN read token is minted, and it still expands references.
+    // Empty service token plus client credentials alone must NOT silently
+    // fall back to universal-auth (Kody least-privilege rule).
+    calls.length = 0;
+    let silentFetch = false;
+    await run({
+      env: {
+        INFISICAL_NAMES: "FOO",
+        INFISICAL_PROJECT_ID: "proj",
+        INFISICAL_SERVICE_TOKEN: "",
+        INFISICAL_CLIENT_ID: "old-id",
+        INFISICAL_CLIENT_SECRET: "old-secret",
+        GH_FALLBACK_FOO: SENTINEL_FALLBACK,
+        GITHUB_ENV: path,
+      },
+      fetchImpl: async () => { silentFetch = true; throw new Error("must not be called"); },
+      log: () => {},
+    });
+    assert.equal(silentFetch, false);
+    assert.match(readFileSync(path, "utf8"), new RegExp(SENTINEL_FALLBACK));
+
+    // Explicit INFISICAL_ALLOW_UNIVERSAL_AUTH=true opts into the legacy login
+    // used solely by vercel-catch-up until a Fleet-OPS VERCEL_TOKEN read token
+    // is minted; that path still expands references.
     calls.length = 0;
     await run({
       env: {
         INFISICAL_NAMES: "FOO",
         INFISICAL_PROJECT_ID: "proj",
         INFISICAL_SERVICE_TOKEN: "",
+        INFISICAL_ALLOW_UNIVERSAL_AUTH: "true",
         INFISICAL_CLIENT_ID: "old-id",
         INFISICAL_CLIENT_SECRET: "old-secret",
         GITHUB_ENV: path,
@@ -530,8 +551,48 @@ test('cloud export safely quotes shell metacharacters and preserves multiline va
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('metadata transport errors cannot echo credentials', async () => {
+test('metadata transport errors cannot echo credentials and fall through to GH_FALLBACK', async () => {
   const sentinel = 'synthetic-secret-must-not-leak';
-  await assert.rejects(run({ env: tokenEnv, fetchImpl: async () => { throw new Error(sentinel); }, log: () => {} }), e => !e.message.includes(sentinel) && /metadata unavailable/.test(e.message));
+  const { dir, path } = tempGithubEnv();
+  try {
+    const lines = [];
+    await run({
+      env: { ...tokenEnv, GH_FALLBACK_FOO: SENTINEL_FALLBACK, GITHUB_ENV: path },
+      fetchImpl: async () => { throw new Error(sentinel); },
+      log: (l) => lines.push(l),
+    });
+    assert.ok(lines.some((l) => l.includes('::warning::') && l.includes('metadata unavailable')));
+    assert.equal(lines.some((l) => l.includes(sentinel)), false);
+    assert.match(readFileSync(path, 'utf8'), new RegExp(SENTINEL_FALLBACK));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('unresolved vault reference falls through to GH_FALLBACK when present', async () => {
+  const { dir, path } = tempGithubEnv();
+  try {
+    const lines = [];
+    await run({
+      env: { ...tokenEnv, GH_FALLBACK_FOO: SENTINEL_FALLBACK, GITHUB_ENV: path },
+      fetchImpl: stubFetch({ FOO: '${prod.other.FOO}' }),
+      log: (l) => lines.push(l),
+    });
+    assert.match(readFileSync(path, 'utf8'), new RegExp(SENTINEL_FALLBACK));
+    assert.equal(lines.some((l) => l.includes('::error::')), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('unresolved vault reference without a usable fallback still fails', async () => {
+  await assert.rejects(
+    run({
+      env: tokenEnv,
+      fetchImpl: stubFetch({ FOO: '${prod.other.FOO}' }),
+      log: () => {},
+    }),
+    /Unresolved Infisical secret reference/,
+  );
 });
 

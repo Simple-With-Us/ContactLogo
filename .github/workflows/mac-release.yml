@@ -88,6 +88,10 @@ jobs:
       - name: Load ASC credentials (Fleet-OPS prod /asc)
         if: github.event_name != 'pull_request'
         uses: ./.github/actions/infisical-secrets
+        # Missing INFISICAL_ASC_READ_TOKEN or a failed /asc read must not abort
+        # the run: the gate below sees missing ASC_* and skips publishing while
+        # the bundle is still built and verified.
+        continue-on-error: true
         with:
           names: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
           required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8

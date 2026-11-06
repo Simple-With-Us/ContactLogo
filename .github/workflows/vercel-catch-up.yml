@@ -65,6 +65,8 @@ jobs:
           INFISICAL_REQUIRED: VERCEL_TOKEN
           INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_AUTOMATION_CLIENT_ID }}
           INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_AUTOMATION_CLIENT_SECRET }}
+          # Explicit opt-in: do not silently fall back to universal-auth elsewhere.
+          INFISICAL_ALLOW_UNIVERSAL_AUTH: "true"
         run: |
           # Name the missing org secret instead of letting infisical-fetch.mjs
           # report only the downstream "VERCEL_TOKEN is empty" error.

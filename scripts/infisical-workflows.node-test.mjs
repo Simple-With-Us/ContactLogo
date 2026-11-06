@@ -80,6 +80,7 @@ test("mac-release asc-mode stages the key and TestFlight lanes stay plain", () =
   const asc = infisicalSteps(mac).find((block) => /secret-path:\s*\/asc/.test(block));
   assert.ok(asc);
   assert.match(asc, /asc-mode:\s*"true"/);
+  assert.match(asc, /continue-on-error:\s*true/, "ASC load must soft-fail so the publish gate can skip");
   assert.doesNotMatch(mac, /GH_FALLBACK_ASC_/);
 
   for (const name of ["testflight.yml", "ios-testflight.yml", "mac-testflight.yml"]) {
@@ -104,6 +105,7 @@ test("github workflows keep universal-auth only in vercel-catch-up", () => {
   const catchUp = readFileSync(join(GITHUB, "workflows/vercel-catch-up.yml"), "utf8");
   assert.match(catchUp, /INFISICAL_CLIENT_ID:/);
   assert.match(catchUp, /INFISICAL_CLIENT_SECRET:/);
+  assert.match(catchUp, /INFISICAL_ALLOW_UNIVERSAL_AUTH:\s*"true"/);
   assert.doesNotMatch(catchUp, /INFISICAL_SERVICE_TOKEN/);
   assert.match(catchUp, /node scripts\/infisical-fetch\.mjs/);
 });
