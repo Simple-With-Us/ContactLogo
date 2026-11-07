@@ -61,10 +61,12 @@ name: ContactLogo TestFlight
 # empty every job.  The gates restore only;  the ships save.
 #
 # Secrets (names only; no value is ever printed):  the plan-build job loads
-# ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 exactly the way the ship jobs do
-# (Fleet Secrets Fleet-OPS prod /asc through the Simple-With-Us org machine
-# identity; same-named repository secrets are only the GH_FALLBACK_ path).
-# Lane secrets pass through secrets: inherit.
+# ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 from Fleet-OPS prod /asc with the
+# scoped read-only token INFISICAL_ASC_READ_TOKEN.  Plain mode keeps the PEM
+# in ASC_KEY_P8 because ship-testflight.sh --plan-build-only reads that
+# variable and does not accept ASC_KEY_PATH as a credential.  Same-named
+# repository secrets are only the GH_FALLBACK_ path.  Lane secrets pass
+# through secrets: inherit.
 on:
   push:
     branches: [main]
@@ -257,8 +259,7 @@ jobs:
           required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /asc
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+          service-token: ${{ secrets.INFISICAL_ASC_READ_TOKEN }}
         env:
           GH_FALLBACK_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           GH_FALLBACK_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
