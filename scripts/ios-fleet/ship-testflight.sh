@@ -45,6 +45,8 @@
 #                      workflow runs this once per release and hands the value
 #                      to every platform ship job via --build; stdout is exactly
 #                      the build)
+#   --verify-tf-ready-only  Re-run ensure-tf-ready for an uploaded build (needs
+#                      --build; used by CI after standing-tester sync)
 #   --allow-unverified-seq  Ship even if App Store Connect cannot be consulted
 #                           (dangerous: the marketing version and the build
 #                           number are then planned from unverified state)
@@ -195,6 +197,7 @@ ALLOW_UNVERIFIED_SEQ=0
 SYNC_PROJECT_VERSION=0
 FIXED_MODE=0
 PLAN_BUILD_ONLY=0
+VERIFY_TF_READY_ONLY=0
 
 die() { echo "error: $*" >&2; exit 1; }
 log() {
@@ -396,6 +399,82 @@ load_secrets() {
 # and the offline tests point IOS_FLEET_NODE at a stub.
 asc_client() {
   "$ASC_NODE" "${FLEET_DIR}/asc-api.mjs" "$@"
+}
+
+# After a successful upload, declare export compliance if the IPA omitted
+# ITSAppUsesNonExemptEncryption. Otherwise TestFlight stays
+# MISSING_EXPORT_COMPLIANCE and the phone never sees the build (ST 1.0.1/2
+# on 2026-08-12).
+ensure_tf_ready() {
+  log "verifying TestFlight ready-to-install for ${BUNDLE_ID} build ${BUILD_NUM}"
+  set +e
+  # BUILD_NUM (CFBundleVersion) is REQUIRED. Without it asc-api.mjs would have to
+  # guess "the newest build", which for the first minutes after an upload is the
+  # PREVIOUS ship -- so compliance got declared on the wrong build and readiness
+  # was reported for a build never inspected (2026-08-13). MARKETING is a second
+  # predicate, not a substitute: it identifies a train, not a build.
+  IOS_TF_NOTES_REPO="$REPO_ROOT" \
+  IOS_TF_NOTES_PREV_SHA="$PREV_SHIP_SHA" \
+  IOS_TF_NOTES_APP="$DISPLAY_NAME" \
+  IOS_TF_NOTES_IOS_PREFIX="$IOS_PATH_PREFIX" \
+  asc_client ensure-tf-ready "$BUNDLE_ID" "$BUILD_NUM" "$MARKETING" \
+    >"${LOG_DIR}/ensure-tf-ready.json" 2>"${LOG_DIR}/ensure-tf-ready.err"
+  local rc=$?
+  set -e
+  if [[ -s "${LOG_DIR}/ensure-tf-ready.err" ]]; then
+    while IFS= read -r line; do log "tf-ready: $line"; done <"${LOG_DIR}/ensure-tf-ready.err"
+  fi
+  if [[ $rc -eq 0 ]]; then
+    log "TestFlight internal testers can install this build"
+    return 0
+  fi
+  if [[ $rc -eq 5 ]]; then
+    # Apple finished processing the build, but it is assigned to no external
+    # group with testers or a public link, so nobody can install it.  This is
+    # not a failed upload (the build is in App Store Connect), so do not fail
+    # the job; make it impossible to miss instead.  A new bundle ID starts with
+    # no groups, and 14 green ships once reached nobody this way (GH #1018).
+    log "warning: build ${BUILD_NUM} is processed but ${BUNDLE_ID} has no external TestFlight group with testers or a public link; nobody can install it yet"
+    log "warning: the Sync standing TestFlight testers step assigns the external group; otherwise enable the public link under TestFlight > External Testing"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning title=TestFlight has no reachable external tester::${BUNDLE_ID} build ${BUILD_NUM} is processed but no external tester can install it.  Check the Sync standing TestFlight testers step."
+    fi
+    return 0
+  fi
+  if [[ $rc -eq 6 ]]; then
+    # Processed, but the external installability could not be read, so we
+    # cannot say anyone can install it.  Say so instead of printing the success line.
+    log "warning: build ${BUILD_NUM} is processed but the external TestFlight installability could not be read for ${BUNDLE_ID}; installability is unverified"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning title=TestFlight installability unverified::${BUNDLE_ID} build ${BUILD_NUM} is processed but the external installability could not be read.  Check TestFlight."
+    fi
+    return 0
+  fi
+  if [[ $rc -eq 3 ]]; then
+    log "warning: upload succeeded but ASC has not reached IN_BETA_TESTING yet; watch TestFlight"
+    return 0
+  fi
+  if [[ $rc -eq 4 ]]; then
+    # The upload itself succeeded; ASC simply never surfaced the build in time.
+    # Warn loudly but do NOT fail: the caller must still record_successful_ship,
+    # or the rate gate never advances and the next scheduled run re-ships the
+    # same HEAD. A red job after a successful upload also mislabels the outcome.
+    log "warning: ASC never surfaced build ${BUILD_NUM}; export compliance NOT declared on it"
+    log "warning: if the phone never gets this build, declare compliance by hand in App Store Connect"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning::ensure-tf-ready could not find uploaded build ${BUILD_NUM} for ${BUNDLE_ID}; export compliance not declared"
+    fi
+    return 0
+  fi
+  # rc=2 is a usage error or an ASC API error. Compliance was NOT declared, so
+  # this deserves the same CI annotation rc=4 gets -- otherwise the only trace
+  # is one log line inside a green job, which is how ST 1.0.1/2 stayed
+  # VALID-but-uninstallable without anyone noticing.
+  log "warning: ensure-tf-ready failed (rc=$rc); build may be stuck on export compliance"
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    echo "::warning::ensure-tf-ready failed (rc=${rc}) for ${BUNDLE_ID} build ${BUILD_NUM}; export compliance not declared"
+  fi
+  return 0
 }
 
 # Map ship APP_KEY to Sentry project slug in org simple-with-us.
@@ -1021,6 +1100,7 @@ while [[ $# -gt 0 ]]; do
     --allow-unverified-seq) ALLOW_UNVERIFIED_SEQ=1; shift ;;
     --sync-project-version) SYNC_PROJECT_VERSION=1; shift ;;
     --plan-build-only) PLAN_BUILD_ONLY=1; shift ;;
+    --verify-tf-ready-only) VERIFY_TF_READY_ONLY=1; shift ;;
     -h|--help) usage ;;
     -*) die "unknown option: $1 (try --help)" ;;
     *)
@@ -1147,8 +1227,8 @@ fi
 # plans a number, it ships nothing.  Stdout is exactly the build; every other
 # line, log() included, goes to stderr.
 if [[ "$PLAN_BUILD_ONLY" -eq 1 ]]; then
-  if [[ -n "$FORCE_BUILD" || -n "$FORCE_VERSION" || -n "$UPLOAD_ONLY_IPA" || "$EXPORT_ONLY" -eq 1 || "$DRY_RUN" -eq 1 || "$SYNC_PROJECT_VERSION" -eq 1 ]]; then
-    die "--plan-build-only plans the fixed-mode build and takes no ship options (no --build, --version, --upload-only, --export-only, --dry-run or --sync-project-version)"
+  if [[ -n "$FORCE_BUILD" || -n "$FORCE_VERSION" || -n "$UPLOAD_ONLY_IPA" || "$EXPORT_ONLY" -eq 1 || "$DRY_RUN" -eq 1 || "$SYNC_PROJECT_VERSION" -eq 1 || "$VERIFY_TF_READY_ONLY" -eq 1 ]]; then
+    die "--plan-build-only plans the fixed-mode build and takes no ship options (no --build, --version, --upload-only, --export-only, --dry-run, --sync-project-version or --verify-tf-ready-only)"
   fi
   [[ -n "$FIXED_MARKETING" ]] || die "--plan-build-only needs an app with fixedMarketingVersion in apps.json (got ${APP_KEY}); nothing planned"
   [[ "$FIXED_MARKETING" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -1157,6 +1237,26 @@ if [[ "$PLAN_BUILD_ONLY" -eq 1 ]]; then
   [[ "${AUTH_MODE:-none}" == "api_key" ]] || die "--plan-build-only: no App Store Connect credential (ASC_* in env or Infisical /asc); nothing planned"
   _planned="$(asc_next_shared_build)" || die "--plan-build-only: cannot plan the release build: incomplete inventory or unreadable merge stamp; nothing planned"
   printf '%s\n' "$_planned"
+  exit 0
+fi
+
+# The hosted workflow re-runs readiness after standing-tester sync (see
+# ios-testflight.yml).  Exits before the ship gate and never touches Xcode.
+if [[ "$VERIFY_TF_READY_ONLY" -eq 1 ]]; then
+  if [[ -n "$FORCE_VERSION" || -n "$UPLOAD_ONLY_IPA" || "$EXPORT_ONLY" -eq 1 || "$DRY_RUN" -eq 1 || "$SYNC_PROJECT_VERSION" -eq 1 || "$FORCE_SHIP" -eq 1 ]]; then
+    die "--verify-tf-ready-only only takes --build and --repo-root (no ship options)"
+  fi
+  [[ -n "$FORCE_BUILD" ]] || die "--verify-tf-ready-only needs --build"
+  [[ -n "$FIXED_MARKETING" ]] || die "--verify-tf-ready-only needs fixedMarketingVersion in apps.json for ${APP_KEY}"
+  load_secrets
+  [[ "${AUTH_MODE:-none}" == "api_key" ]] || die "--verify-tf-ready-only: no App Store Connect credential (ASC_* in env or Infisical /asc)"
+  MARKETING="$FIXED_MARKETING"
+  BUILD_NUM="$FORCE_BUILD"
+  LOG_DIR="${IOS_TF_VERIFY_LOG_DIR:-${RUNNER_TEMP:-/tmp}/ios-fleet-verify-tf-ready}"
+  mkdir -p "$LOG_DIR"
+  PREV_SHIP_SHA=""
+  IOS_PATH_PREFIX="$(dirname "$PROJECT_REL")"
+  ensure_tf_ready
   exit 0
 fi
 
@@ -1612,60 +1712,6 @@ acquire_archive_lock() {
 }
 release_archive_lock() {
   rmdir "$ARCHIVE_LOCK_DIR" 2>/dev/null || true
-}
-
-# After a successful upload, declare export compliance if the IPA omitted
-# ITSAppUsesNonExemptEncryption. Otherwise TestFlight stays
-# MISSING_EXPORT_COMPLIANCE and the phone never sees the build (ST 1.0.1/2
-# on 2026-08-12).
-ensure_tf_ready() {
-  log "verifying TestFlight ready-to-install for ${BUNDLE_ID} build ${BUILD_NUM}"
-  set +e
-  # BUILD_NUM (CFBundleVersion) is REQUIRED. Without it asc-api.mjs would have to
-  # guess "the newest build", which for the first minutes after an upload is the
-  # PREVIOUS ship -- so compliance got declared on the wrong build and readiness
-  # was reported for a build never inspected (2026-08-13). MARKETING is a second
-  # predicate, not a substitute: it identifies a train, not a build.
-  IOS_TF_NOTES_REPO="$REPO_ROOT" \
-  IOS_TF_NOTES_PREV_SHA="$PREV_SHIP_SHA" \
-  IOS_TF_NOTES_APP="$DISPLAY_NAME" \
-  IOS_TF_NOTES_IOS_PREFIX="$IOS_PATH_PREFIX" \
-  asc_client ensure-tf-ready "$BUNDLE_ID" "$BUILD_NUM" "$MARKETING" \
-    >"${LOG_DIR}/ensure-tf-ready.json" 2>"${LOG_DIR}/ensure-tf-ready.err"
-  local rc=$?
-  set -e
-  if [[ -s "${LOG_DIR}/ensure-tf-ready.err" ]]; then
-    while IFS= read -r line; do log "tf-ready: $line"; done <"${LOG_DIR}/ensure-tf-ready.err"
-  fi
-  if [[ $rc -eq 0 ]]; then
-    log "TestFlight internal testers can install this build"
-    return 0
-  fi
-  if [[ $rc -eq 3 ]]; then
-    log "warning: upload succeeded but ASC has not reached IN_BETA_TESTING yet; watch TestFlight"
-    return 0
-  fi
-  if [[ $rc -eq 4 ]]; then
-    # The upload itself succeeded; ASC simply never surfaced the build in time.
-    # Warn loudly but do NOT fail: the caller must still record_successful_ship,
-    # or the rate gate never advances and the next scheduled run re-ships the
-    # same HEAD. A red job after a successful upload also mislabels the outcome.
-    log "warning: ASC never surfaced build ${BUILD_NUM}; export compliance NOT declared on it"
-    log "warning: if the phone never gets this build, declare compliance by hand in App Store Connect"
-    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-      echo "::warning::ensure-tf-ready could not find uploaded build ${BUILD_NUM} for ${BUNDLE_ID}; export compliance not declared"
-    fi
-    return 0
-  fi
-  # rc=2 is a usage error or an ASC API error. Compliance was NOT declared, so
-  # this deserves the same CI annotation rc=4 gets -- otherwise the only trace
-  # is one log line inside a green job, which is how ST 1.0.1/2 stayed
-  # VALID-but-uninstallable without anyone noticing.
-  log "warning: ensure-tf-ready failed (rc=$rc); build may be stuck on export compliance"
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::warning::ensure-tf-ready failed (rc=${rc}) for ${BUNDLE_ID} build ${BUILD_NUM}; export compliance not declared"
-  fi
-  return 0
 }
 
 acquire_archive_lock

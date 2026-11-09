@@ -296,6 +296,47 @@ jobs:
             echo "::warning title=TestFlight standing testers::tester sync exited ${rc}; see the standing-testers lines above.  The TestFlight upload itself succeeded."
           fi
 
+      # Re-run readiness after standing-tester sync so the verdict matches the
+      # groups the sync step created or updated (BF-2552 / OPS-1052).
+      - name: Re-verify TestFlight readiness (after standing-tester sync)
+        id: tf_ready_post
+        if: success() && steps.gate.outputs.should_ship == '1' && inputs.export_only != true
+        continue-on-error: true
+        env:
+          RELEASE_BUILD: ${{ steps.build.outputs.build }}
+          IOS_TF_VERIFY_LOG_DIR: ${{ runner.temp }}/tf-ready-post
+        run: |
+          set +e
+          bash scripts/ios-fleet/ship-testflight.sh contactlogo \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --verify-tf-ready-only \
+            --build "$RELEASE_BUILD" 2>&1 | tee "$IOS_TF_VERIFY_LOG_DIR/post-sync.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+
+      - name: Ship summary
+        if: always() && steps.gate.outputs.should_ship == '1'
+        env:
+          RELEASE_BUILD: ${{ steps.build.outputs.build }}
+          TF_READY_POST_RC: ${{ steps.tf_ready_post.outputs.rc }}
+        run: |
+          {
+            echo "### ContactLogo iOS TestFlight"
+            echo
+            echo "- Build: \`${RELEASE_BUILD:-unknown}\`"
+            if [[ -f "${RUNNER_TEMP}/tf-ready-post/post-sync.log" ]]; then
+              echo
+              echo "#### TestFlight readiness (after standing-tester sync)"
+              echo '```'
+              grep -E '^\[ios-ship\]|^::' "${RUNNER_TEMP}/tf-ready-post/post-sync.log" | head -40
+              echo '```'
+              if [[ -n "${TF_READY_POST_RC:-}" ]]; then
+                echo "- Post-sync ensure-tf-ready exit: \`${TF_READY_POST_RC}\`"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Drop ship locks before saving state
         if: ${{ always() && steps.gate.outputs.should_ship == '1' }}
         run: find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
