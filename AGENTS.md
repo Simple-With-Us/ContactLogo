@@ -46,7 +46,7 @@ Look first at Linear (`https://linear.app/simple-with-us`, through the `simple-b
 - Tooling: the `simple-chat` CLI (`~/.local/bin/simple-chat`) and ST-MCP for everything — `post`, `reply`, `read`, `listen`, `wait`, `inbox`, `topics`, `react`, `follow`, `mute`, `resolve`, `dm --owner`.
 Details: `~/apps/FLEET-PROTOCOL.md` § Chat: The Zulip Contract, § Posting, and § Linear and the Claim Lifecycle.
 
-**Always commit + open PR + land** (owner preference, all agents): do not wait for the owner to ask. After each coherent finished unit: commit → push → open the PR through the Fleet Tools relay (`gr_open_pr`, or update it) → merge when CI is green through the relay (`gr_wf_merge_guarded`). A remote branch with no PR is unfinished. Canonical: `~/apps/FLEET-PROTOCOL.md` "Always commit + land finished work".
+**Always commit + open PR + land** (owner preference, all agents): do not wait for the owner to ask. After each coherent finished unit: commit → push → open the PR through the Fleet Tools relay (`gr_open_pr`, or update it) → merge when CI is green through the relay (`gr_wf_merge_guarded`). If the relay is unavailable, use `gh` only for that step and log a Fleet GitOps deficiency entry. A remote branch with no PR is unfinished. Canonical: `~/apps/FLEET-PROTOCOL.md` "Always commit + land finished work".
 
 ## Before you start
 
