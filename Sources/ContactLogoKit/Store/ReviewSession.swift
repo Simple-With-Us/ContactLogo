@@ -213,8 +213,14 @@ public final class ReviewSession: ObservableObject {
             // clobber a known-good value with 0: at cold launch the
             // Contacts authorization prompt may still be outstanding, and
             // enumeration would return nothing.
-            let visible = await provider.visibleContactCount()
-            let visibleExact = await provider.visibleContactCountIsExact()
+            // CL-205 — ONE enumeration for both numbers.  This used to call
+            // `visibleContactCount()` and then `visibleContactCountIsExact()`,
+            // each of which is its own full pass over the address book, and
+            // `limitedAccessDiagnosis()` above can run another.  All of them
+            // executed inline on this MainActor, which is the launch hang.
+            let snap = await provider.visibleContactCountSnapshot()
+            let visible = snap.count
+            let visibleExact = snap.isExact
             await MainActor.run {
                 self.limitedAccessState = state
                 switch state {
@@ -457,9 +463,10 @@ public final class ReviewSession: ObservableObject {
             // Enumerating identifiers is cheap and this is the number that
             // tells "access is limited" apart from "the contacts are not on
             // this device", which have different fixes.
-            let visible = await provider.visibleContactCount()
-            visibleContactCount = visible
-            visibleContactCountIsExact = await provider.visibleContactCountIsExact()
+            // CL-205 — one pass for both numbers; see the cold-launch site.
+            let snap = await provider.visibleContactCountSnapshot()
+            visibleContactCount = snap.count
+            visibleContactCountIsExact = snap.isExact
             let contacts = try await provider.fetchCandidates()
             totalScannedCount = contacts.count
             names = Dictionary(contacts.map { ($0.id, $0.displayName) }, uniquingKeysWith: { first, _ in first })
