@@ -169,22 +169,31 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     ///
     /// `CNContactStore` is documented as safe for concurrent use, and this
     /// type is `@unchecked Sendable`, so capturing `self` is sound.
+    ///
+    /// A detached task does not inherit the caller's cancellation, so the
+    /// hop forwards it:  cancelling the caller cancels the detached task, and
+    /// the enumeration blocks below check `Task.isCancelled` and set `stop`,
+    /// so abandoned work ends early instead of walking the whole address book.
     private func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
-        await withCheckedContinuation { continuation in
-            Task.detached(priority: .userInitiated) {
-                continuation.resume(returning: work())
-            }
+        let task = Task.detached(priority: .userInitiated) { work() }
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
         }
     }
 
     private func offMainThrowing<T: Sendable>(
         _ work: @escaping @Sendable () throws -> T
     ) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            Task.detached(priority: .userInitiated) {
-                do { continuation.resume(returning: try work()) }
-                catch { continuation.resume(throwing: error) }
-            }
+        let task = Task.detached(priority: .userInitiated) { () throws -> T in
+            try Task.checkCancellation()
+            return try work()
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
         }
     }
 
@@ -299,6 +308,13 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
             var isExact = true
             do {
                 try store.enumerateContacts(with: request) { _, stop in
+                    // The caller gave up:  stop now.  The partial count is
+                    // reported as inexact.
+                    if Task.isCancelled {
+                        stop.pointee = true
+                        isExact = false
+                        return
+                    }
                     count += 1
                     // `stop.pointee = true` halts the entire enumeration, not just the
                     // current callback.  Without this the bound was a
@@ -378,11 +394,19 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         // has no `await`, so it ran inline on the caller's executor, which for
         // `ReviewSession.scanAndMatch()` is the MainActor.
         try await offMainThrowing { [self] in
-            try Self.fetchCandidates { request, yield in
-                try store.enumerateContacts(with: request) { contact, _ in
+            let candidates = try Self.fetchCandidates { request, yield in
+                try store.enumerateContacts(with: request) { contact, stop in
+                    if Task.isCancelled {
+                        stop.pointee = true
+                        return
+                    }
                     yield(contact)
                 }
             }
+            // A cancelled scan throws instead of returning a partial list
+            // that a caller could mistake for the whole address book.
+            try Task.checkCancellation()
+            return candidates
         }
     }
 
