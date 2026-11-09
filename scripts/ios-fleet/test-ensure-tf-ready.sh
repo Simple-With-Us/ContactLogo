@@ -66,14 +66,18 @@ assert_distinct() {
 assert_distinct 0 "TestFlight internal testers can install this build" "export compliance"
 assert_distinct 3 "has not reached IN_BETA_TESTING" "export compliance"
 assert_distinct 4 "ASC never surfaced build" "build may be stuck on export compliance"
-assert_distinct 5 "no external TestFlight group with testers or a public link" "build may be stuck on export compliance"
-assert_distinct 6 "installability is unverified" "build may be stuck on export compliance"
-assert_distinct 2 "build may be stuck on export compliance" "no external TestFlight group"
+assert_distinct 5 "no internal TestFlight testers with access to all builds" "build may be stuck on export compliance"
+logfile5="$(run_ready 5)"
+grep -q 'external TestFlight' "$logfile5" && fail "rc=5 must not mention external groups (asc-api uses internal tester count)"
+assert_distinct 6 "internal TestFlight tester count could not be read" "build may be stuck on export compliance"
+logfile6="$(run_ready 6)"
+grep -q 'external installability' "$logfile6" && fail "rc=6 must not mention external installability (asc-api uses internal tester count)"
+assert_distinct 2 "build may be stuck on export compliance" "no internal TestFlight testers with access to all builds"
 
 out5="$(run_ready 5)"
-grep -q '::warning title=TestFlight has no reachable external tester::' "$out5" || fail "rc=5 missing GitHub annotation"
+grep -q '::warning title=TestFlight has no reachable internal tester::' "$out5" || fail "rc=5 missing GitHub annotation"
 out6="$(run_ready 6)"
-grep -q '::warning title=TestFlight installability unverified::' "$out6" || fail "rc=6 missing GitHub annotation"
+grep -q '::warning title=TestFlight internal installability unverified::' "$out6" || fail "rc=6 missing GitHub annotation"
 
 # Pairwise: no two failure codes share the same primary warning line.
 for a in 2 3 4 5 6; do
