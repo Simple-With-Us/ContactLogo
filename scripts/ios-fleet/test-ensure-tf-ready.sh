@@ -90,4 +90,42 @@ for a in 2 3 4 5 6; do
   done
 done
 
+# Post-sync (--verify-tf-ready-only) must surface asc-api rc, not always 0.
+run_propagate() {
+  local mock_rc="$1"
+  local log_dir="${tmp}/logs-propagate-${mock_rc}"
+  mkdir -p "$log_dir"
+  {
+    echo 'log() { echo "[ios-ship] $*"; }'
+    echo "FLEET_DIR=\"${here}\""
+    echo "BUNDLE_ID=com.contactlogo.test"
+    echo "BUILD_NUM=202611091200"
+    echo "MARKETING=0.1.0"
+    echo "LOG_DIR=\"${log_dir}\""
+    echo "REPO_ROOT=\"${tmp}\""
+    echo "DISPLAY_NAME=ContactLogo"
+    echo "PREV_SHIP_SHA="
+    echo "IOS_PATH_PREFIX=apps/ios"
+    echo 'asc_client() { printf "{}" >"${LOG_DIR}/ensure-tf-ready.json"; return '"${mock_rc}"'; }'
+    extract_ensure
+    echo 'set +e'
+    echo 'ENSURE_TF_READY_PROPAGATE_RC=1'
+    echo 'ensure_tf_ready'
+    echo 'tf_rc=$?'
+    echo 'echo propagate_exit=$tf_rc'
+    echo 'exit 0'
+  } > "${tmp}/harness-propagate-${mock_rc}.sh"
+  bash "${tmp}/harness-propagate-${mock_rc}.sh" 2>&1 || true
+}
+
+for rc in 0 5 6 2; do
+  out="$(run_propagate "$rc")"
+  line="$(printf '%s\n' "$out" | grep '^propagate_exit=' | tail -1 || true)"
+  [[ "$line" == "propagate_exit=${rc}" ]] || fail "propagate rc=${rc}: expected propagate_exit=${rc}, got: ${line:-<missing>} (log tail: $(printf '%s' "$out" | tail -1))"
+done
+
+grep -q 'IOS_TF_READY_RECHECK=1' "$script" || fail "verify-only path must set IOS_TF_READY_RECHECK"
+grep -q 'ENSURE_TF_READY_PROPAGATE_RC=1' "$script" || fail "verify-only path must set ENSURE_TF_READY_PROPAGATE_RC"
+grep -q 'exit $?' "$script" || fail "verify-only path must exit with ensure_tf_ready rc"
+
 echo "OK: ensure-tf-ready return codes map to distinct messages"

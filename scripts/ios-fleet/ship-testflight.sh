@@ -106,7 +106,11 @@
 # first minutes after an upload is the PREVIOUS ship -- so compliance was
 # declared on the wrong build and the "testers can install this" line described
 # a build it had never looked at.
-#   IOS_TF_READY_TIMEOUT_SEC   discovery + readiness budget (default 900s)
+#   IOS_TF_READY_TIMEOUT_SEC   discovery + readiness budget (default 900s; 90s
+#                              when IOS_TF_READY_RECHECK=1 unless overridden)
+#   IOS_TF_READY_RECHECK=1     post-sync recheck: short poll, skip compliance
+#                              patch and What to Test (set by --verify-tf-ready-only)
+#   IOS_TF_READY_POST_SYNC_TIMEOUT_SEC  optional override for post-sync budget
 #   exit 4 from asc-api.mjs    uploaded build never surfaced; warn, do NOT fail
 #                              (record_successful_ship must still run or the rate
 #                              gate never advances)
@@ -426,9 +430,7 @@ ensure_tf_ready() {
   fi
   if [[ $rc -eq 0 ]]; then
     log "TestFlight internal testers can install this build"
-    return 0
-  fi
-  if [[ $rc -eq 5 ]]; then
+  elif [[ $rc -eq 5 ]]; then
     # asc-api.mjs: the build reached IN_BETA_TESTING / READY_FOR_BETA_TESTING and
     # countInternalTesters read zero testers in internal all-builds groups.
     # Not a failed upload; warn instead of the rc=0 success line (GH #1018).
@@ -437,22 +439,16 @@ ensure_tf_ready() {
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
       echo "::warning title=TestFlight has no reachable internal tester::${BUNDLE_ID} build ${BUILD_NUM} is processed but no internal tester with access to all builds can install it.  Check the Sync standing TestFlight testers step."
     fi
-    return 0
-  fi
-  if [[ $rc -eq 6 ]]; then
+  elif [[ $rc -eq 6 ]]; then
     # asc-api.mjs: processed, but countInternalTesters returned ok:false, so we
     # cannot say anyone can install it.  Say so instead of the success line.
     log "warning: build ${BUILD_NUM} is processed but the internal TestFlight tester count could not be read for ${BUNDLE_ID}; installability is unverified"
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
       echo "::warning title=TestFlight internal installability unverified::${BUNDLE_ID} build ${BUILD_NUM} is processed but the internal tester count could not be read.  Check TestFlight."
     fi
-    return 0
-  fi
-  if [[ $rc -eq 3 ]]; then
+  elif [[ $rc -eq 3 ]]; then
     log "warning: upload succeeded but ASC has not reached IN_BETA_TESTING yet; watch TestFlight"
-    return 0
-  fi
-  if [[ $rc -eq 4 ]]; then
+  elif [[ $rc -eq 4 ]]; then
     # The upload itself succeeded; ASC simply never surfaced the build in time.
     # Warn loudly but do NOT fail: the caller must still record_successful_ship,
     # or the rate gate never advances and the next scheduled run re-ships the
@@ -462,8 +458,7 @@ ensure_tf_ready() {
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
       echo "::warning::ensure-tf-ready could not find uploaded build ${BUILD_NUM} for ${BUNDLE_ID}; export compliance not declared"
     fi
-    return 0
-  fi
+  else
   # rc=2 is a usage error or an ASC API error. Compliance was NOT declared, so
   # this deserves the same CI annotation rc=4 gets -- otherwise the only trace
   # is one log line inside a green job, which is how ST 1.0.1/2 stayed
@@ -471,6 +466,13 @@ ensure_tf_ready() {
   log "warning: ensure-tf-ready failed (rc=$rc); build may be stuck on export compliance"
   if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
     echo "::warning::ensure-tf-ready failed (rc=${rc}) for ${BUNDLE_ID} build ${BUILD_NUM}; export compliance not declared"
+  fi
+  fi
+  # Restore errexit before returning a non-zero rc to callers (post-sync
+  # propagate mode); set -e inside this function would otherwise abort them.
+  set +e
+  if [[ "${ENSURE_TF_READY_PROPAGATE_RC:-0}" -eq 1 ]]; then
+    return "$rc"
   fi
   return 0
 }
@@ -1254,8 +1256,11 @@ if [[ "$VERIFY_TF_READY_ONLY" -eq 1 ]]; then
   mkdir -p "$LOG_DIR"
   PREV_SHIP_SHA=""
   IOS_PATH_PREFIX="$(dirname "$PROJECT_REL")"
+  export IOS_TF_READY_RECHECK=1
+  export IOS_TF_READY_TIMEOUT_SEC="${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}"
+  ENSURE_TF_READY_PROPAGATE_RC=1
   ensure_tf_ready
-  exit 0
+  exit $?
 fi
 
 need_cmd xcodebuild

@@ -157,6 +157,7 @@ jobs:
           for f in scripts/ios-fleet/ship-testflight.sh scripts/ios-fleet/scheduled-ship-gate.sh \
                    scripts/ios-fleet/test-fixed-version.sh scripts/ios-fleet/test-plan-build-only.sh \
                    scripts/ios-fleet/test-ensure-tf-ready.sh \
+                   scripts/ios-fleet/test-ios-testflight-post-sync-contract.sh \
                    scripts/ios-collect-ship-logs.sh scripts/ios-stage-asc-key.sh \
                    scripts/mac-appstore-gm-prepare.sh scripts/mac-export-appstore-pkg.sh \
                    scripts/mac-install-appstore-profiles.sh scripts/ios-fleet-pin.sh; do
@@ -190,6 +191,8 @@ jobs:
           bash scripts/ios-fleet/test-fixed-version.sh
           bash scripts/ios-fleet/test-plan-build-only.sh
           bash scripts/ios-fleet/test-ensure-tf-ready.sh
+          bash scripts/ios-fleet/test-ios-testflight-post-sync-contract.sh
+          node --test scripts/ios-fleet/test-ensure-tf-ready-recheck.mjs
 
       - name: Mac TestFlight contract
         run: python3 scripts/check-mac-testflight-contract.py
