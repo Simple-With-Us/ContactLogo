@@ -25,7 +25,7 @@ The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.y
 | `scripts/mac-release-build.sh` | xcodegen + xcodebuild a universal Release, embed and assert `Sparkle.framework`, write the Sparkle Info.plist keys, sign inside-out, run `codesign --verify --deep --strict`, notarize with an App Store Connect API key when `NOTARY_KEY_*` are set, and run `spctl --assess` on the stapled app and DMG. |
 | `scripts/make_appcast.sh` | Runs Sparkle's `generate_appcast` over one archive and checks the result: one item, EdDSA-signed, pointing at the right URL. |
 | `.github/workflows/mac-release.yml` | The release job.  Also builds and verifies (never publishes) on PRs that touch the bundle. |
-| `.github/actions/infisical-secrets`, `scripts/infisical-fetch.mjs` | Reads the signing certificate and the Sparkle private key from Infisical (universal-auth), with same-named repository secrets as the fallback. |
+| `.github/actions/infisical-secrets`, `scripts/infisical-fetch.mjs` | Reads the signing certificate and the Sparkle private key from Infisical with scoped read-only service tokens, with same-named repository secrets as the fallback. |
 
 ## Info.plist Keys
 
@@ -45,10 +45,10 @@ The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.y
 
 Names only; no value is ever printed:
 
-- `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD` — the Developer ID Application certificate for team `CC8UTF7ATG`.  Read at runtime from Fleet Secrets (Fleet-OPS Infisical project, `prod`, `/mac-certs`) by the dedicated `mac-release.yml` step, via the org secrets `INFISICAL_FLEET_OPS_PROJECT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`; same-named GitHub repository secrets are only the `GH_FALLBACK_` path.
-- `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` — the App Store Connect API key; `notarytool` signs in with it, and `ios-testflight.yml` uses it for the TestFlight upload.  Canonical home is Fleet Secrets (Fleet-OPS, `prod`, `/asc`); same-named repository secrets as the copies.
-- `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD` — the Apple Distribution certificate for the iOS archive.  Canonical home is Fleet Secrets (Fleet-OPS, `prod`, `/mac-certs`); same-named repository secrets as the copies.
-- `SPARKLE_ED_PRIVATE_KEY` — the EdDSA private key (base64 of the 32-byte seed) that signs each update archive; repository secret, synced from the fleet key store.  Generated 2026-10-15 for ContactLogo; the matching public key is committed above.
+- `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD` — the Developer ID Application certificate for team `CC8UTF7ATG`.  Read at runtime from Fleet Secrets (Fleet-OPS Infisical project, `prod`, `/mac-certs`) by the dedicated `mac-release.yml` step, with the scoped read-only token `INFISICAL_MAC_CERTS_READ_TOKEN` and `INFISICAL_FLEET_OPS_PROJECT_ID`.  Same-named GitHub repository secrets are only the `GH_FALLBACK_` path.
+- `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` — the App Store Connect API key.  `mac-release.yml` loads Fleet-OPS `prod` `/asc` with `INFISICAL_ASC_READ_TOKEN` in asc-mode, which stages `ASC_KEY_PATH` and does not put the raw PEM in `GITHUB_ENV`.  The TestFlight workflows load that same folder with the same token in plain mode, because `ship-testflight.sh` reads `ASC_KEY_P8` from the environment and does not treat `ASC_KEY_PATH` as a credential.  Those lanes keep same-named repository secrets as `GH_FALLBACK_`.
+- `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD` — the Apple Distribution certificate for the iOS archive.  Canonical home is Fleet Secrets (Fleet-OPS, `prod`, `/mac-certs`), read with `INFISICAL_MAC_CERTS_READ_TOKEN`.  Same-named repository secrets are the `GH_FALLBACK_` path.
+- `SPARKLE_ED_PRIVATE_KEY` — the EdDSA private key (base64 of the 32-byte seed) that signs each update archive.  Read from the ContactLogo project (`prod`, `/`) with `INFISICAL_CONTACTLOGO_READ_TOKEN`, with the same-named repository secret as the fallback.  Generated 2026-10-15 for ContactLogo; the matching public key is committed above.
 
 With any of them missing the Mac job still builds the bundle and verifies its signature, then skips publishing with a notice that names what is missing.
 

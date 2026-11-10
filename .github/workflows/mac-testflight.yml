@@ -51,18 +51,24 @@ name: Mac TestFlight
 # and builds the signed package and asks App Store Connect to validate it
 # (altool --validate-app) without uploading anything.
 #
-# Secrets (names only; no value is ever printed), all read at runtime from Fleet
-# Secrets through the Simple-With-Us org machine identity (a release call
-# passes them through secrets: inherit):
+# Secrets (names only; no value is ever printed), loaded with scoped
+# read-only service tokens (a release call passes them through secrets: inherit):
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8            Fleet-OPS prod /asc
+#                                                    INFISICAL_ASC_READ_TOKEN
+#                                                    (plain mode: ship-testflight.sh
+#                                                    reads ASC_KEY_P8, not ASC_KEY_PATH)
 #   IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD       Fleet-OPS prod /mac-certs
+#                                                    INFISICAL_MAC_CERTS_READ_TOKEN
 #                                                    (Apple Distribution)
 #   MAC_APPSTORE_INSTALLER_P12_BASE64, MAC_APPSTORE_INSTALLER_P12_PASSWORD
 #                                                    Fleet-OPS prod /mac-certs
-#                                                    (3rd Party Mac Developer Installer;
-#                                                    MAC_INSTALLER_P12_* there is the
-#                                                    Developer ID Installer and is not used)
-#   SENTRY_DSN_MACOS, SENTRY_AUTH_TOKEN              ContactLogo project, best effort
+#                                                    (same token; 3rd Party Mac Developer
+#                                                    Installer.  MAC_INSTALLER_P12_* there
+#                                                    is the Developer ID Installer and is
+#                                                    not used)
+#   SENTRY_DSN_MACOS, SENTRY_AUTH_TOKEN              ContactLogo project prod /
+#                                                    INFISICAL_CONTACTLOGO_READ_TOKEN,
+#                                                    best effort
 
 on:
   workflow_call:
@@ -246,8 +252,7 @@ jobs:
           required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /asc
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+          service-token: ${{ secrets.INFISICAL_ASC_READ_TOKEN }}
         env:
           GH_FALLBACK_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           GH_FALLBACK_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -260,8 +265,7 @@ jobs:
           required: IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /mac-certs
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+          service-token: ${{ secrets.INFISICAL_MAC_CERTS_READ_TOKEN }}
         env:
           GH_FALLBACK_IOS_DIST_P12_BASE64: ${{ secrets.IOS_DIST_P12_BASE64 }}
           GH_FALLBACK_IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
@@ -273,16 +277,14 @@ jobs:
           required: MAC_APPSTORE_INSTALLER_P12_BASE64 MAC_APPSTORE_INSTALLER_P12_PASSWORD
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /mac-certs
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+          service-token: ${{ secrets.INFISICAL_MAC_CERTS_READ_TOKEN }}
 
       - name: Load Sentry secrets (best effort, Infisical then repository secrets)
         uses: ./.github/actions/infisical-secrets
         with:
           names: SENTRY_DSN_MACOS SENTRY_AUTH_TOKEN
           project-id: ${{ secrets.INFISICAL_PROJECT_ID }}
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+          service-token: ${{ secrets.INFISICAL_CONTACTLOGO_READ_TOKEN }}
         env:
           GH_FALLBACK_SENTRY_DSN_MACOS: ${{ secrets.SENTRY_DSN_MACOS }}
           GH_FALLBACK_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}

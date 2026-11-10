@@ -11,7 +11,7 @@
     "typecheck": "npm run typecheck --prefix apps/web",
     "test": "python3 scripts/check-platform-layout.py && node --test scripts/vercel-ignore-hourly.node-test.mjs && npm test --prefix apps/web && npm run test:infisical-fetch",
     "test:web": "npm test --prefix apps/web",
-    "test:infisical-fetch": "node --test scripts/infisical-fetch.node-test.mjs scripts/infisical-fetch-expand.node-test.mjs",
+    "test:infisical-fetch": "node --test scripts/infisical-fetch.node-test.mjs scripts/infisical-fetch-expand.node-test.mjs scripts/infisical-workflows.node-test.mjs",
     "test:swift": "swift test"
   }
 }
