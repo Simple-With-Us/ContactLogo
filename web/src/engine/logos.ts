@@ -277,7 +277,8 @@ export function isUserPinnedLogoSource(source: LogoSourceName): boolean {
 }
 
 export function isLowResRaster(width: number, height: number, isVector: boolean): boolean {
-  return !isVector && width > 0 && height > 0 && (width < LOW_RES_MIN_PX || height < LOW_RES_MIN_PX);
+  // Zero-height rasters (a 200x0 decode) count as low-res, matching the floor getImageDimensions applies; width > 0 stays so a 0x0 error fallback is not flagged.
+  return !isVector && width > 0 && (width < LOW_RES_MIN_PX || height < LOW_RES_MIN_PX);
 }
 
 export function candidatesForName(name: string): LogoHit[] {

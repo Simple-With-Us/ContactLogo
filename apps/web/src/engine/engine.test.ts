@@ -287,6 +287,7 @@ test("low-res raster detection and user-pinned sources", async () => {
   assert.equal(isLowResRaster(16, 16, false), true);
   assert.equal(isLowResRaster(48, 48, false), false);
   assert.equal(isLowResRaster(0, 0, false), false);
+  assert.equal(isLowResRaster(200, 0, false), true);
   assert.equal(isLowResRaster(16, 16, true), false);
   assert.equal(isUserPinnedLogoSource("upload"), true);
   assert.equal(isUserPinnedLogoSource("crop"), true);

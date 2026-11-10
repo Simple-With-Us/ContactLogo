@@ -757,11 +757,15 @@ function tryAnother(item: ReviewItem) {
 }
 
 /** A candidate image failed to load, or loaded too small to be a real mark.
- *  A user-pinned source (upload, crop, pasted URL) is never auto-discarded:
- *  the user chose it, so a small mark stays until they replace it. */
-function candidateFailed(item: ReviewItem, src: string) {
+ *  A broken load always removes the candidate, even a user-pinned one: an
+ *  undecodable upload or dead pasted URL renders nothing, so keeping it would
+ *  strand the selection on an image that can never display.  A user-pinned
+ *  source (upload, crop, pasted URL) that loads fine but reads too small is
+ *  never auto-discarded: the user chose it, so a small mark stays until they
+ *  replace it.  Callers pass keepPinned only from the size-check path. */
+function candidateFailed(item: ReviewItem, src: string, opts?: { keepPinned?: boolean }) {
   const cand = item.candidates.find((c) => c.src === src);
-  if (cand && isUserPinnedLogoSource(cand.source)) return;
+  if (opts?.keepPinned && cand && isUserPinnedLogoSource(cand.source)) return;
   if (removeCandidate(item, src)) render();
 }
 
@@ -1133,7 +1137,7 @@ function buildCard(item: ReviewItem): CardView {
   });
   thumb.addEventListener("load", () => {
     const src = thumb.getAttribute("src");
-    if (src && isTooSmall(thumb, src)) candidateFailed(item, src);
+    if (src && isTooSmall(thumb, src)) candidateFailed(item, src, { keepPinned: true });
   });
 
   const noimg = el("div", { class: "noimg", "aria-hidden": "true" });
@@ -1159,7 +1163,7 @@ function buildCard(item: ReviewItem): CardView {
     const image = el("img", { src: cand.src, alt: "" }) as HTMLImageElement;
     image.addEventListener("error", () => candidateFailed(item, cand.src));
     image.addEventListener("load", () => {
-      if (isTooSmall(image, cand.src)) candidateFailed(item, cand.src);
+      if (isTooSmall(image, cand.src)) candidateFailed(item, cand.src, { keepPinned: true });
     });
     button.append(image);
     button.addEventListener("click", () => {
