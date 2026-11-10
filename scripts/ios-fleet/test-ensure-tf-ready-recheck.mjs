@@ -19,3 +19,8 @@ test("post-sync recheck skips compliance patch and What to Test", () => {
   assert.match(branch, /if \(!recheck && enc !== false\)/);
   assert.match(branch, /if \(!recheck\) \{[\s\S]*setWhatToTest/);
 });
+
+test("asc-api honors explicit IOS_TF_READY_TIMEOUT_SEC over recheck default", () => {
+  assert.match(branch, /const raw = process\.env\.IOS_TF_READY_TIMEOUT_SEC/);
+  assert.match(branch, /if \(Number\.isFinite\(n\) && n > 0\) return n/);
+});

@@ -410,6 +410,10 @@ asc_client() {
 # MISSING_EXPORT_COMPLIANCE and the phone never sees the build (ST 1.0.1/2
 # on 2026-08-12).
 ensure_tf_ready() {
+  local _tf_errexit=0
+  case $- in
+    *e*) _tf_errexit=1 ;;
+  esac
   log "verifying TestFlight ready-to-install for ${BUNDLE_ID} build ${BUILD_NUM}"
   set +e
   # BUILD_NUM (CFBundleVersion) is REQUIRED. Without it asc-api.mjs would have to
@@ -424,7 +428,6 @@ ensure_tf_ready() {
   asc_client ensure-tf-ready "$BUNDLE_ID" "$BUILD_NUM" "$MARKETING" \
     >"${LOG_DIR}/ensure-tf-ready.json" 2>"${LOG_DIR}/ensure-tf-ready.err"
   local rc=$?
-  set -e
   if [[ -s "${LOG_DIR}/ensure-tf-ready.err" ]]; then
     while IFS= read -r line; do log "tf-ready: $line"; done <"${LOG_DIR}/ensure-tf-ready.err"
   fi
@@ -468,9 +471,11 @@ ensure_tf_ready() {
     echo "::warning::ensure-tf-ready failed (rc=${rc}) for ${BUNDLE_ID} build ${BUILD_NUM}; export compliance not declared"
   fi
   fi
-  # Restore errexit before returning a non-zero rc to callers (post-sync
-  # propagate mode); set -e inside this function would otherwise abort them.
-  set +e
+  if [[ $_tf_errexit -eq 1 ]]; then
+    set -e
+  else
+    set +e
+  fi
   if [[ "${ENSURE_TF_READY_PROPAGATE_RC:-0}" -eq 1 ]]; then
     return "$rc"
   fi
@@ -1257,7 +1262,8 @@ if [[ "$VERIFY_TF_READY_ONLY" -eq 1 ]]; then
   PREV_SHIP_SHA=""
   IOS_PATH_PREFIX="$(dirname "$PROJECT_REL")"
   export IOS_TF_READY_RECHECK=1
-  export IOS_TF_READY_TIMEOUT_SEC="${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}"
+  : "${IOS_TF_READY_TIMEOUT_SEC:=${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}}"
+  export IOS_TF_READY_TIMEOUT_SEC
   ENSURE_TF_READY_PROPAGATE_RC=1
   ensure_tf_ready
   exit $?

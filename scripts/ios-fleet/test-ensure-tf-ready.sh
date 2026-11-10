@@ -127,5 +127,82 @@ done
 grep -q 'IOS_TF_READY_RECHECK=1' "$script" || fail "verify-only path must set IOS_TF_READY_RECHECK"
 grep -q 'ENSURE_TF_READY_PROPAGATE_RC=1' "$script" || fail "verify-only path must set ENSURE_TF_READY_PROPAGATE_RC"
 grep -q 'exit $?' "$script" || fail "verify-only path must exit with ensure_tf_ready rc"
+grep -q ': "${IOS_TF_READY_TIMEOUT_SEC:=${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}}"' "$script" \
+  || fail "verify-only must default timeout only when unset (POST_SYNC then 90)"
+grep -q 'export IOS_TF_READY_TIMEOUT_SEC="${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}"' "$script" \
+  && fail "verify-only must not overwrite IOS_TF_READY_TIMEOUT_SEC unconditionally"
+
+# Errexit is restored after ensure_tf_ready (ship path and propagate path).
+errexit_after() {
+  local mock_rc="$1"
+  local log_dir="${tmp}/logs-er-${mock_rc}"
+  mkdir -p "$log_dir"
+  {
+    echo 'log() { :; }'
+    echo "FLEET_DIR=\"${here}\""
+    echo "BUNDLE_ID=com.contactlogo.test"
+    echo "BUILD_NUM=202611091200"
+    echo "MARKETING=0.1.0"
+    echo "LOG_DIR=\"${log_dir}\""
+    echo "REPO_ROOT=\"${tmp}\""
+    echo "DISPLAY_NAME=ContactLogo"
+    echo "PREV_SHIP_SHA="
+    echo "IOS_PATH_PREFIX=apps/ios"
+    echo 'asc_client() { return '"${mock_rc}"'; }'
+    extract_ensure
+    echo 'set -e'
+    echo 'ENSURE_TF_READY_PROPAGATE_RC='"$2"
+    echo 'ensure_tf_ready'
+    echo 'touch "$LOG_DIR/errexit_still_on"'
+  } > "${tmp}/harness-er-${mock_rc}-${2}.sh"
+  bash "${tmp}/harness-er-${mock_rc}-${2}.sh" 2>/dev/null && return 0 || return 1
+}
+
+errexit_after 0 0 || fail "ship-path ensure_tf_ready must restore errexit (rc=0)"
+[[ -f "${tmp}/logs-er-0/errexit_still_on" ]] || fail "expected errexit_still_on after rc=0"
+rm -f "${tmp}/logs-er-0/errexit_still_on"
+
+errexit_after 5 0 || fail "ship-path ensure_tf_ready must restore errexit (rc=5 warning path)"
+[[ -f "${tmp}/logs-er-5/errexit_still_on" ]] || fail "expected errexit_still_on after ship-path rc=5"
+
+prop_out="$(
+  {
+    extract_ensure
+    cat <<EOS
+log() { :; }
+FLEET_DIR="${here}"
+BUNDLE_ID=x BUILD_NUM=1 MARKETING=0.1.0
+LOG_DIR="${tmp}/logs-er-prop"
+mkdir -p "\$LOG_DIR"
+REPO_ROOT="${tmp}" DISPLAY_NAME=CL PREV_SHIP_SHA= IOS_PATH_PREFIX=apps/ios
+asc_client() { return 5; }
+set +e
+ENSURE_TF_READY_PROPAGATE_RC=1
+ensure_tf_ready
+echo propagate_rc=\$?
+EOS
+  } > "${tmp}/harness-er-propagate-full.sh"
+  bash "${tmp}/harness-er-propagate-full.sh" 2>&1
+)"
+grep -q 'propagate_rc=5' <<<"$prop_out" || fail "propagate path must return asc rc"
+
+grep -q '_tf_errexit=0' "$script" || fail "ensure_tf_ready must save errexit state"
+grep -q 'if \[\[ $_tf_errexit -eq 1 \]\]; then' "$script" || fail "ensure_tf_ready must restore errexit state"
+
+# Explicit post-sync timeout must not be clobbered by verify-only defaults.
+IOS_TF_READY_TIMEOUT_SEC=300 IOS_TF_READY_POST_SYNC_TIMEOUT_SEC=90 bash -c '
+  : "${IOS_TF_READY_TIMEOUT_SEC:=${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}}"
+  [[ "$IOS_TF_READY_TIMEOUT_SEC" == "300" ]]
+' || fail "explicit IOS_TF_READY_TIMEOUT_SEC must survive verify-only defaulting"
+IOS_TF_READY_POST_SYNC_TIMEOUT_SEC=120 bash -c '
+  unset IOS_TF_READY_TIMEOUT_SEC
+  : "${IOS_TF_READY_TIMEOUT_SEC:=${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}}"
+  [[ "$IOS_TF_READY_TIMEOUT_SEC" == "120" ]]
+' || fail "POST_SYNC_TIMEOUT must apply when TIMEOUT unset"
+bash -c '
+  unset IOS_TF_READY_TIMEOUT_SEC IOS_TF_READY_POST_SYNC_TIMEOUT_SEC
+  : "${IOS_TF_READY_TIMEOUT_SEC:=${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}}"
+  [[ "$IOS_TF_READY_TIMEOUT_SEC" == "90" ]]
+' || fail "default post-sync timeout must be 90 when unset"
 
 echo "OK: ensure-tf-ready return codes map to distinct messages"
