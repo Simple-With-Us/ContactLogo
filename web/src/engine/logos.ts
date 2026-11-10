@@ -268,6 +268,18 @@ export function nextCandidateIndex(current: number, count: number): number | und
   return next < count ? next : undefined;
 }
 
+export const LOW_RES_MIN_PX = 48;
+
+const USER_PINNED_SOURCES: ReadonlySet<LogoSourceName> = new Set(["upload", "crop", "url"]);
+
+export function isUserPinnedLogoSource(source: LogoSourceName): boolean {
+  return USER_PINNED_SOURCES.has(source);
+}
+
+export function isLowResRaster(width: number, height: number, isVector: boolean): boolean {
+  return !isVector && width > 0 && height > 0 && (width < LOW_RES_MIN_PX || height < LOW_RES_MIN_PX);
+}
+
 export function candidatesForName(name: string): LogoHit[] {
   const domain = lookupCompanyDomain(name);
   return domain ? candidateUrls(domain) : [];
