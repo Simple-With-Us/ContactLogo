@@ -20,6 +20,8 @@ import {
   composeFromFile,
   composeFromUrl,
   embedSrc,
+  isLowResRaster,
+  isUserPinnedLogoSource,
   isVectorSource,
   padAndSquareImage,
   sourceLabel,
@@ -754,14 +756,17 @@ function tryAnother(item: ReviewItem) {
   render();
 }
 
-/** A candidate image failed to load, or loaded too small to be a real mark. */
+/** A candidate image failed to load, or loaded too small to be a real mark.
+ *  A user-pinned source (upload, crop, pasted URL) is never auto-discarded:
+ *  the user chose it, so a small mark stays until they replace it. */
 function candidateFailed(item: ReviewItem, src: string) {
+  const cand = item.candidates.find((c) => c.src === src);
+  if (cand && isUserPinnedLogoSource(cand.source)) return;
   if (removeCandidate(item, src)) render();
 }
 
 function isTooSmall(img: HTMLImageElement, src: string): boolean {
-  if (isVectorSource(src)) return false;
-  return img.naturalWidth > 0 && (img.naturalWidth < 48 || img.naturalHeight < 48);
+  return isLowResRaster(img.naturalWidth, img.naturalHeight, isVectorSource(src));
 }
 
 /* ------------------------------------------------------------------ *
