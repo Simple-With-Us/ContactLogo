@@ -255,6 +255,7 @@ jobs:
           echo "build=${build}" >> "$GITHUB_OUTPUT"
 
       - name: Ship ContactLogo to TestFlight
+        id: ship_testflight
         if: steps.gate.outputs.should_ship == '1'
         env:
           # Owner binding 2026-09-08:  What to Test is published on every upload.
@@ -262,12 +263,21 @@ jobs:
           EXPORT_ONLY_INPUT: ${{ inputs.export_only }}
           RELEASE_BUILD: ${{ steps.build.outputs.build }}
         run: |
+          set +e
           args=(--build "$RELEASE_BUILD")
+          uploaded=false
           if [ "${EXPORT_ONLY_INPUT:-false}" = "true" ]; then
             echo "[ios-ship] export_only=true: archive + export the IPA, no upload"
             args+=(--export-only)
           fi
           bash scripts/ios-ship-testflight.sh ${args[@]+"${args[@]}"}
+          ship_rc=$?
+          set -e
+          if [ "$ship_rc" -eq 0 ] && [ "${EXPORT_ONLY_INPUT:-false}" != "true" ]; then
+            uploaded=true
+          fi
+          echo "uploaded=${uploaded}" >> "$GITHUB_OUTPUT"
+          exit "$ship_rc"
 
       # Sync the standing testers and attach/submit the new build to the public
       # external group.  A failure here is a warning, never a red ship.
@@ -295,6 +305,56 @@ jobs:
           if [ "$rc" -ne 0 ]; then
             echo "::warning title=TestFlight standing testers::tester sync exited ${rc}; see the standing-testers lines above.  The TestFlight upload itself succeeded."
           fi
+
+      # Re-run readiness after standing-tester sync so the verdict matches the
+      # groups the sync step created or updated (BF-2552 / OPS-1052).
+      - name: Re-verify TestFlight readiness (after standing-tester sync)
+        id: tf_ready_post
+        if: >-
+          success() && steps.gate.outputs.should_ship == '1' && inputs.export_only != true
+          && steps.ship_testflight.outputs.uploaded == 'true'
+        continue-on-error: true
+        env:
+          RELEASE_BUILD: ${{ steps.build.outputs.build }}
+          IOS_TF_VERIFY_LOG_DIR: ${{ runner.temp }}/tf-ready-post
+          IOS_TF_READY_POST_SYNC_TIMEOUT_SEC: "90"
+        run: |
+          set +e
+          mkdir -p "$IOS_TF_VERIFY_LOG_DIR"
+          bash scripts/ios-fleet/ship-testflight.sh contactlogo \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --verify-tf-ready-only \
+            --build "$RELEASE_BUILD" 2>&1 | tee "$IOS_TF_VERIFY_LOG_DIR/post-sync.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+
+      - name: Ship summary
+        if: always() && steps.gate.outputs.should_ship == '1'
+        env:
+          RELEASE_BUILD: ${{ steps.build.outputs.build }}
+          TF_READY_POST_RC: ${{ steps.tf_ready_post.outputs.rc }}
+        run: |
+          {
+            echo "### ContactLogo iOS TestFlight"
+            echo
+            echo "- Build: \`${RELEASE_BUILD:-unknown}\`"
+            post_log="${RUNNER_TEMP}/tf-ready-post/post-sync.log"
+            if [[ -f "$post_log" ]]; then
+              echo
+              echo "#### TestFlight readiness (after standing-tester sync)"
+              echo '```'
+              grep -E '^\[ios-ship\]|^::|^error:' "$post_log" 2>/dev/null | head -40 || true
+              echo '```'
+              if [[ -n "${TF_READY_POST_RC:-}" ]]; then
+                echo "- Post-sync ensure-tf-ready exit: \`${TF_READY_POST_RC}\`"
+              fi
+            else
+              echo
+              echo "_Post-sync readiness log not found (recheck step skipped or log not written)._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Drop ship locks before saving state
         if: ${{ always() && steps.gate.outputs.should_ship == '1' }}

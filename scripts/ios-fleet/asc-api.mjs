@@ -1875,13 +1875,20 @@ async function main() {
       process.exit(2);
     }
 
+    const recheck = String(process.env.IOS_TF_READY_RECHECK || "").trim() === "1";
     const totalTimeoutSec = (() => {
       const raw = process.env.IOS_TF_READY_TIMEOUT_SEC;
       const n = raw ? parseInt(raw, 10) : NaN;
-      return Number.isFinite(n) && n > 0 ? n : 900;
+      if (Number.isFinite(n) && n > 0) return n;
+      return recheck ? 90 : 900;
     })();
     const deadline = Date.now() + totalTimeoutSec * 1000;
-    const POLL_MS = 15000;
+    const POLL_MS = recheck ? 5000 : 15000;
+    if (recheck) {
+      console.error(
+        `ensure-tf-ready: recheck mode (short budget ${totalTimeoutSec}s, ${POLL_MS}ms poll; no compliance patch or release notes)`
+      );
+    }
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "ensure-tf-ready");
@@ -1957,8 +1964,8 @@ async function main() {
     const beta = (build.__included || []).find((x) => x.type === "buildBetaDetails")?.attributes || {};
     console.error(`ensure-tf-ready: build=${version} id=${buildId} enc=${enc} internal=${beta.internalBuildState || "unknown"}`);
 
-    // ---- Phase B: export compliance, on the DISCOVERED build.
-    if (enc !== false) {
+    // ---- Phase B: export compliance, on the DISCOVERED build (ship only).
+    if (!recheck && enc !== false) {
       const patch = await api("PATCH", `/v1/builds/${buildId}`, JSON.stringify({
         data: { type: "builds", id: buildId, attributes: { usesNonExemptEncryption: false } }
       }));
@@ -1970,11 +1977,14 @@ async function main() {
     }
 
     // ---- Phase B2: TestFlight "What to Test". Before the readiness wait, so a
-    // Phase C timeout cannot lose the notes. Never fails the caller.
-    try {
-      await setWhatToTest({ api, buildId, appId, marketing: wantMarketing });
-    } catch (err) {
-      console.error(`ensure-tf-ready: release-notes step failed (non-fatal): ${err && err.message ? err.message : err}`);
+    // Phase C timeout cannot lose the notes. Never fails the caller.  Skipped on
+    // post-sync recheck: the ship step already published notes.
+    if (!recheck) {
+      try {
+        await setWhatToTest({ api, buildId, appId, marketing: wantMarketing });
+      } catch (err) {
+        console.error(`ensure-tf-ready: release-notes step failed (non-fatal): ${err && err.message ? err.message : err}`);
+      }
     }
 
     // ---- Phase C: readiness, drawing from the same overall deadline. Always
