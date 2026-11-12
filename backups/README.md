@@ -1,6 +1,6 @@
 # Frozen backups of BadgeBook and Crest
 
-ContactLogo (this repository, GitHub `jaywedgeworth22/ContactLogo`; formerly
+ContactLogo (this repository, GitHub `Simple-With-Us/ContactLogo`; formerly
 `jaywedgeworth22/BadgeBook`) is the surviving product.  These directories are
 complete source snapshots of the two apps that were combined into it.  They
 are here so either original app can be restored without depending on a live
