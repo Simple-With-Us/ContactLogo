@@ -11,10 +11,24 @@ const ACTIVE = new Set(['QUEUED', 'INITIALIZING', 'BUILDING']);
 const STATES = new Set([...ACTIVE, 'READY', 'ERROR', 'CANCELED']);
 function must(ok, message) { if (!ok) throw new Error(message); }
 function object(x) { return x !== null && typeof x === 'object' && !Array.isArray(x); }
+export function deploymentDirty(d) {
+  const dirty = d?.meta?.gitDirty;
+  return Boolean(dirty && dirty !== '0' && dirty !== 'false' && dirty !== false);
+}
+export function claimedSha(d) {
+  const values = [d?.gitSource?.sha, d?.meta?.githubCommitSha, d?.meta?.fleetCommitSha, d?.meta?.gitCommitSha, d?.meta?.commitSha].filter(Boolean);
+  if (values.length === 0) return null;
+  return values.every(x => SHA.test(x) && x === values[0]) ? values[0] : null;
+}
 export function deploymentSha(d) {
-  const values = [d.gitSource?.sha, d.meta?.githubCommitSha, d.meta?.fleetCommitSha].filter(Boolean);
-  must(values.length > 0 && values.every(x => SHA.test(x) && x === values[0]), 'Deployment commit missing or conflicting');
-  return values[0];
+  must(!deploymentDirty(d), 'CLI deployment was dirty; its SHA is not a verified baseline');
+  const sha = claimedSha(d);
+  must(sha, 'Deployment commit missing or conflicting');
+  return sha;
+}
+export function assertCleanCheckout(status) {
+  const dirty = typeof status === 'string' ? status.trim() : '';
+  must(dirty === '', `Checkout is not clean; refusing to publish: ${dirty.split('\n').slice(0, 5).join(' | ')}`);
 }
 export function assertProject(p, config) {
   must(object(p) && p.id === config.projectId, 'Wrong Vercel project');
@@ -41,9 +55,22 @@ export function classify({ deployments, baseline, target, now, changed, projectI
   }
   must(object(baseline) && baseline.target === 'production' && (baseline.readyState ?? baseline.state) === 'READY', 'No verified current production baseline');
   if (active) return { deploy: false, reason: 'production build in flight' };
-  const deployed = deploymentSha(baseline);
+  // A deployment the CLI marked dirty cannot prove which content it published,
+  // so its SHA is not a baseline.  Refusing alone cannot repair that: the next
+  // run would read the same unverifiable baseline and refuse again.  Republish
+  // main from a clean checkout instead, so the baseline becomes verifiable.
+  const verifiable = !deploymentDirty(baseline);
+  const deployed = verifiable ? deploymentSha(baseline) : null;
   if (deployed === target) return { deploy: false, reason: 'current main is already deployed' };
   if (now - newest < COOLDOWN_MS) return { deploy: false, reason: '3h production cooldown', eligibleAt: new Date(newest + COOLDOWN_MS).toISOString() };
+  if (!verifiable) {
+    const claimed = claimedSha(baseline);
+    must(claimed, 'Production baseline is not verifiable and names no usable commit; investigate before deploying');
+    // Keep the ancestor rule before any republish: production has to be behind
+    // main, so a republish only ever moves production forward.
+    changed(claimed, target);
+    return { deploy: true, reason: 'production baseline is not verifiable; republishing main to restore a verifiable baseline' };
+  }
   if (!changed(deployed, target)) return { deploy: false, reason: 'no site changes since deployed SHA' };
   return { deploy: true, reason: 'eligible main differs from production', target };
 }
@@ -53,6 +80,19 @@ export function assertCi(runs, names, sha) {
     const candidates = runs.filter(r => r.name === name && r.head_sha === sha && r.head_branch === 'main' && ['push', 'workflow_dispatch'].includes(r.event)).sort((a, b) => b.id - a.id);
     must(candidates.length > 0 && candidates[0].status === 'completed' && candidates[0].conclusion === 'success', `Exact-main CI not successful: ${name}`);
   }
+}
+// A catch-up started by one workflow (say "E2E smoke") can run while another
+// exact-main workflow ("CI") on the same SHA is still queued or running.  That
+// is not a failure: the running workflow's own completion re-triggers this
+// catch-up, so the run skips instead of going red.  A finished run that did
+// not succeed still refuses through assertCi.
+const RUNNING = new Set(['queued', 'in_progress', 'waiting', 'pending', 'requested']);
+export function ciPending(runs, names, sha) {
+  if (!Array.isArray(runs) || !Array.isArray(names)) return false;
+  return names.some(name => {
+    const newest = runs.filter(r => r.name === name && r.head_sha === sha && r.head_branch === 'main' && ['push', 'workflow_dispatch'].includes(r.event)).sort((a, b) => b.id - a.id)[0];
+    return Boolean(newest) && RUNNING.has(newest.status);
+  });
 }
 export function assertReceipt(d, config, sha) {
   must(object(d) && d.projectId === config.projectId && d.target === 'production' && d.readyState === 'READY', 'Deployment is not READY production for this project');
@@ -107,13 +147,22 @@ async function main() {
     must(git(['merge-base', from, to]) === from, 'Deployed SHA is not an ancestor of main; investigate before deploying');
     return git(['diff', '--name-only', from, to, '--', ...config.watch]).length > 0;
   } });
+  let result = decision;
   if (decision.deploy) {
     const ci = await gh(`/actions/runs?head_sha=${target}&per_page=100`);
     must(!ci.total_count || ci.total_count <= 100, 'CI run history truncated');
-    assertCi(ci.workflow_runs, config.ciWorkflows, target);
+    if (ciPending(ci.workflow_runs, config.ciWorkflows, target)) {
+      result = { deploy: false, reason: 'exact-main CI still running; its completion re-runs this catch-up' };
+    } else {
+      assertCi(ci.workflow_runs, config.ciWorkflows, target);
+    }
   }
-  console.log(JSON.stringify(decision));
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deploy=${decision.deploy}\n`);
+  // The Vercel CLI marks a deployment dirty when the tree it uploaded from was
+  // not clean, and the receipt check refuses a dirty deployment, so a dirty
+  // checkout is refused here instead of failing the receipt after the upload.
+  if (result.deploy) assertCleanCheckout(git(['status', '--porcelain']));
+  console.log(JSON.stringify(result));
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deploy=${result.deploy}\n`);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => { console.error(`Vercel catch-up refused: ${error.message}`); process.exitCode = 1; });

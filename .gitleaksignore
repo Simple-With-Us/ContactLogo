@@ -1,0 +1,19 @@
+# gitleaks accepted false positives (fingerprint = commit:file:rule:line).
+#
+# AFC-359 (commit 598e86ad, PR #228) introduced a FAKE App Store Connect private key into
+# scripts/ios-fleet/test-asc-credentials.sh: the test drives a stub fleet-secrets binary
+# that printed synthetic values ("SYNTHETIC" / "OTHERKEYMATERIAL"), and the file says so
+# in its own header -- "No network, no real secrets". It is not a credential.
+#
+# AFC-459 (PR #247, commit 5de8db0) rewrote that fixture so the literal is built into a
+# temp file instead of being written inline, so the fixture itself no longer matches the
+# scanner. That is the durable fix. gitleaks scans history, though, so it still flags the
+# original introduction; only this fingerprint can silence that.
+#
+# Socratic-Trade carries the same entries for its own vendored copy of this file
+# (5d3cad958d38669a47e421db87211e1718fb4533 and d5374aa25268b18ee49f363f4209ff534ca48506).
+#
+# Never add a fingerprint here without confirming the flagged value is fake; real leaks get
+# rotated, not ignored. Never add a path allowlist for scripts/ or tests/ - a path-scoped
+# allowlist silences the scanner everywhere it applies, including real leaks.
+598e86ad749d6612af23e11c56209613508ebd7a:scripts/ios-fleet/test-asc-credentials.sh:private-key:27

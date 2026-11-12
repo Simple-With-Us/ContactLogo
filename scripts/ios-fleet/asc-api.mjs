@@ -5,27 +5,52 @@
  *
  * Auth: resolves credentials from the first source that is present
  * (never prints values):
- *   1. ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH in the environment
- *   2. APPLE_API_KEY_ID / APPLE_API_ISSUER_ID / APPLE_API_KEY_P8_BASE64
+ *   1. APPLE_API_KEY_ID / APPLE_API_ISSUER_ID / APPLE_API_KEY_P8_BASE64
  *      (hosted ios-ship / Infisical; p8 is base64, decoded to a 0600 temp
  *      file and removed on exit)
+ *   2. ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 in the environment
+ *   3. Fleet-OPS prod /asc through fleet-secrets
+ *
+ * A path on disk is NOT a credential source (AFC-459):  the private key is a
+ * secret, and the approved sources are the process environment, a captured
+ * `fleet-secrets get NAME` and bootstrap-only Keychain credentials.  So
+ * ASC_KEY_PATH is ignored wherever it appears:  the shell layer that owns the
+ * credential hands the key over in the environment, and this client never
+ * reads a key file.  The only file that may exist is a short-lived,
+ * owner-only materialization for the Apple tools that can only read a key
+ * from disk.
  *
  * Usage:
  *   node asc-api.mjs GET /v1/apps
  *   node asc-api.mjs GET "/v1/apps?filter[bundleId]=trade.socratic.app"
  *   node asc-api.mjs PATCH /v1/betaAppReviewDetails/<id> '{"data":{...}}'
  *   node asc-api.mjs latest-build-seq <bundleId> <prefix> [platform] [appleId]
+ *   node asc-api.mjs latest-marketing-patch <bundleId> <prefix> [platform] [appleId]
+ *   node asc-api.mjs build-floor <bundleId> <version> [platform] [appleId]
+ *   node asc-api.mjs next-shared-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>
+ *   node asc-api.mjs plan-release-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>
+ *   node asc-api.mjs max-build <bundleId> [platform]
+ *
+ * The version-numbering rules live in ./version-plan.mjs (pure, no I/O); this
+ * client only fetches the App Store Connect state they need.
  *
  * Prints the raw JSON response to stdout. Caller is responsible for not
  * echoing anything secret-shaped from the response (ASC responses don't
  * carry credentials, only app metadata, so this is safe to print as-is).
  */
-import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync, chmodSync, realpathSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, chmodSync, realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createHash, createSign } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { normalizePrivateKey } from "./asc-key.mjs";
+import { nextSharedBuild } from "./shared-build.mjs";
+import {
+  buildFloor,
+  isDriftTrain,
+  nextMarketingPatch
+} from "./version-plan.mjs";
 
 function base64url(input) {
   return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -47,6 +72,15 @@ function base64url(input) {
 // APPLE_API_KEY_P8_BASE64 is base64, so it is decoded into a 0600 file inside a
 // 0700 temp directory and unlinked on exit.  Values are never printed; only the
 // source and the key-id LENGTH are logged.
+//
+// WHY THERE IS NO FILE BRANCH AT ALL (AFC-459):  the private key is a secret,
+// and the approved secret sources are the process environment, a captured
+// `fleet-secrets get NAME` and bootstrap-only Keychain credentials.  A path on
+// disk is not one of them, so ASC_KEY_PATH is ignored wherever it appears:
+// not as a fallback, not as a lower priority, not at all.  The shell layer
+// that owns the credential resolves it and hands the key over in the
+// environment; the only file that may exist is a short-lived, owner-only
+// materialization for the Apple tools that can only read a key from disk.
 const TEMP_KEY_DIRS = [];
 
 function cleanupTempKeys() {
@@ -98,42 +132,46 @@ function fleetSecretsGet(name, folder) {
   }
 }
 
-function fromFile(keyId, issuerId, keyPath, source) {
-  try {
-    return { keyId: keyId.trim(), issuerId: issuerId.trim(), privateKeyPem: readFileSync(keyPath, "utf8"), source };
-  } catch {
-    return null;
-  }
-}
-
 // Returns { keyId, issuerId, privateKeyPem, source } or { error } or { error: null }.
+//
+// The order is the rule:  the environment beats the network, and a file is not
+// a source at all.  A path on disk is not an approved secret source, so
+// ASC_KEY_PATH is never read here (AFC-459):  the shell layer that owns the
+// credential resolves it and hands the key over in the environment.
 function resolveCredential() {
-  // 1) Already-exported ASC_* (DealDex's workflow does this).
   const envKeyId = String(process.env.ASC_KEY_ID || "").trim();
   const envIssuer = String(process.env.ASC_ISSUER_ID || "").trim();
-  const envKeyPath = String(process.env.ASC_KEY_PATH || "").replace(/^~(?=\/)/, homedir()).trim();
-  if (envKeyId && envIssuer && envKeyPath && existsSync(envKeyPath)) {
-    const got = fromFile(envKeyId, envIssuer, envKeyPath, "ASC_KEY_* environment");
-    if (got) return got;
-  }
+  const envKeyPem = String(process.env.ASC_KEY_P8 || "").trim();
 
-  // No file is read here (AFC-359).  Local-Mac operators set ASC_KEY_ID /
-  // ASC_ISSUER_ID / ASC_KEY_PATH (or the APPLE_API_* names) in their shell, or
-  // let ship-testflight.sh stage the Infisical key and export ASC_* before
-  // it invokes this module (step 3 below also reads Infisical directly).  The hosted ios-ship runner only has the APPLE_API_*
-  // form in $GITHUB_ENV.
-
-  // 2) The APPLE_API_* trio the ship workflow exports from Infisical.
+  // 1) The APPLE_API_* trio the ship workflow exports from Infisical.  The
+  //    key itself is in the environment, so it wins over every other source.
   const keyId = String(process.env.APPLE_API_KEY_ID || "").trim();
   const issuerId = String(process.env.APPLE_API_ISSUER_ID || "").trim();
   if (keyId && issuerId && process.env.APPLE_API_KEY_P8_BASE64) {
-    const pem = decodeP8(process.env.APPLE_API_KEY_P8_BASE64);
+    const pem = normalizePrivateKey(decodeP8(process.env.APPLE_API_KEY_P8_BASE64));
     if (!pem) return { error: "APPLE_API_KEY_P8_BASE64 is set but did not decode to a PEM private key" };
     materializeP8(pem);
     return { keyId, issuerId, privateKeyPem: pem, source: "APPLE_API_* environment (base64 p8)" };
   }
 
-  // 3) Infisical Fleet-OPS /asc: key id and issuer (unless the environment already
+  // 2) The same secret as a plain environment variable.  This is the form
+  //    fleet-secrets hands out, and the form the shell layer uses when it
+  //    hands the credential to this client.  The PEM is parsed before it is
+  //    accepted, so a truncated key is a credential error and not a signer
+  //    stack trace.
+  if (envKeyId && envIssuer && envKeyPem) {
+    const pem = normalizePrivateKey(envKeyPem);
+    if (!pem) return { error: "ASC_KEY_P8 is set but is not a PEM private key" };
+    return { keyId: envKeyId, issuerId: envIssuer, privateKeyPem: pem, source: "ASC_KEY_P8 environment" };
+  }
+
+  // 3) No file is read here (AFC-359, and AFC-459).  A path on disk is not an
+  //    approved secret source, so ASC_KEY_PATH is not a credential source
+  //    here:  the shell layer that owns the credential resolves it and
+  //    exports it as ASC_KEY_P8.  Step 4 reads Infisical directly, so a local
+  //    operator needs nothing exported at all.
+
+  // 4) Infisical Fleet-OPS /asc: key id and issuer (unless the environment already
   //    has them) and the PEM as ASC_KEY_P8 when the key id is the /asc one;  another
   //    key id falls back to AUTHKEY_<KEY_ID> in /authkey-<key id lower case>-p8.
   //    Kept in memory, never written to disk.
@@ -176,8 +214,9 @@ function signJwt({ keyId, issuerId, privateKeyPem }) {
 // Every build of every fleet app shipped with this EMPTY (24 builds checked
 // 2026-08-13; `GET /v1/builds/<id>/betaBuildLocalizations` returns `data: []`,
 // i.e. the en-US row is ABSENT, not blank -- so this must CREATE, not only
-// PATCH). /Users/jay/apps/AGENT-SYNC.md "App Versioning & TestFlight Build
-// Policy" defines a mandatory template that nothing implemented.
+// PATCH). The Fleet-OPS handbook's "App Version and Build Numbers"
+// (handbook/ops/app-versioning.md) defines a mandatory template that
+// nothing implemented.
 //
 // PUBLISHING SAFETY. This is the only step in the ship pipeline that writes
 // owner-facing copy every TestFlight tester reads, generated from commit
@@ -191,7 +230,7 @@ function signJwt({ keyId, issuerId, privateKeyPem }) {
 //
 // A hard deny-list assertion runs on the FULLY RENDERED body: if any internal
 // agent name survives, the upload is skipped entirely rather than publishing a
-// violation (AGENT-SYNC forbids agent names in release notes). Offending
+// violation (the fleet policy forbids agent names in release notes). Offending
 // bullets are dropped whole -- never word-deleted in place, which yields
 // mangled copy like "Fix:  lane".
 const AGENT_NAMES = "grok|claude|monet|codex|antigravity|cursor|kimi|fable|gemini|deepseek|opus|sonnet|haiku";
@@ -203,7 +242,7 @@ const AGENT_NAMES = "grok|claude|monet|codex|antigravity|cursor|kimi|fable|gemin
 // stripped only /^\[[A-Za-z]+\]/ and left "AG" out of the deny-list below on
 // the stated assumption that the strip covered it. It did not: every one of
 // those 48 subjects would have published "[AG]" straight to TestFlight, which
-// AGENT-SYNC's STRICT no-agent-names rule names explicitly.
+// policy's STRICT no-agent-names rule names explicitly.
 const AGENT_MARKER = new RegExp(`\\[\\s*(?:ag|${AGENT_NAMES})\\s*\\]`, "gi");
 // Bare "AG" stays OUT of the word-boundary deny-list -- as a naked token it
 // fires on ordinary English and on tickers. The bracketed form is unambiguous,
@@ -211,7 +250,7 @@ const AGENT_MARKER = new RegExp(`\\[\\s*(?:ag|${AGENT_NAMES})\\s*\\]`, "gi");
 const AGENT_NAME_DENY = new RegExp(`(?:\\b(?:${AGENT_NAMES})\\b|\\[\\s*ag\\s*\\])`, "i");
 
 function centralTimestamp(now = new Date()) {
-  // AGENT-SYNC template: "Wed, Aug 12, 2026 at 1:15am" -- the owner's clock
+  // Handbook template: "Wed, Aug 12, 2026 at 1:15am" -- the owner's clock
   // (America/Chicago, so DST is automatic), 12-hour, lower-case am or pm, and
   // NO timezone abbreviation.  Intl yields "1:15 PM" with a space or a narrow
   // no-break space (U+202F) before the meridiem, so fold both into "1:15pm".
@@ -685,8 +724,11 @@ async function main() {
   if (!cred.privateKeyPem) {
     console.error(
       "asc-auth: no App Store Connect credential found. Tried, in order:\n" +
-      "  1) ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH in the environment\n" +
-      "  2) APPLE_API_KEY_ID / APPLE_API_ISSUER_ID / APPLE_API_KEY_P8_BASE64 in the environment"
+      "  1) APPLE_API_KEY_ID / APPLE_API_ISSUER_ID / APPLE_API_KEY_P8_BASE64 in the environment\n" +
+      "  2) ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 in the environment\n" +
+      "  3) Fleet-OPS prod /asc through fleet-secrets\n" +
+      "  A path in ASC_KEY_PATH is not a credential source:  the shell layer that owns the\n" +
+      "  credential hands the key over in ASC_KEY_P8"
     );
     process.exit(1);
   }
@@ -700,6 +742,11 @@ async function main() {
     console.error("       node asc-api.mjs ensure-appstore-profiles <path-to-appstore-profiles.json>");
     console.error("       node asc-api.mjs ensure-standing-testers <appleId> [buildVersion]   (emails from ASC_STANDING_TESTERS)");
     console.error("       node asc-api.mjs latest-build-seq <bundleId> <prefix> [platform] [appleId]");
+    console.error("       node asc-api.mjs latest-marketing-patch <bundleId> <prefix> [platform] [appleId]");
+    console.error("       node asc-api.mjs build-floor <bundleId> <version> [platform] [appleId]");
+    console.error("       node asc-api.mjs next-shared-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>");
+    console.error("       node asc-api.mjs plan-release-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>");
+    console.error("       node asc-api.mjs max-build <bundleId> [platform]");
     process.exit(1);
   }
 
@@ -727,7 +774,17 @@ async function main() {
     const hint = String(appleIdHint || process.env.ASC_APPLE_ID || "").trim();
     let appId = null;
 
-    const apps = await api("GET", `/v1/apps?filter[bundleId]=${encodeURIComponent(bundleId)}&limit=50`);
+    const apps = await ascGet(`/v1/apps?filter[bundleId]=${encodeURIComponent(bundleId)}&limit=50`);
+
+    // A rejected key is not "app not found":  exit 4 so the ship refuses it.
+
+    if (apps.status === 401 || apps.status === 403) {
+
+      console.error(`${logPrefix || method}: App Store Connect rejected the API key (HTTP ${apps.status})`);
+
+      process.exit(4);
+
+    }
     if (apps.ok) {
       const exact = (apps.parsed.data || []).find(
         (a) => a?.attributes?.bundleId === bundleId
@@ -746,7 +803,7 @@ async function main() {
     }
 
     if (!appId && hint) {
-      const byId = await api("GET", `/v1/apps/${encodeURIComponent(hint)}`);
+      const byId = await ascGet(`/v1/apps/${encodeURIComponent(hint)}`);
       if (byId.ok && byId.parsed.data?.id) {
         appId = byId.parsed.data.id;
         const resolvedBundle = byId.parsed.data.attributes?.bundleId || "(unknown)";
@@ -1003,6 +1060,454 @@ async function main() {
     console.error(
       `latest-build-in-train: ${seenBuilds} build(s) inspected, ${matchedTrain} in train ${exactVersion}; highest CFBundleVersion is ${best ?? "none"}`
     );
+    console.log(out);
+    process.exit(0);
+  }
+
+  // -------------------------------------------------------------------------
+  // VERSION NUMBERING (owner directive 2026-10-24, AFC-517)
+  // -------------------------------------------------------------------------
+  // These two commands feed scripts/ios-fleet/ship-testflight.sh.  The RULES
+  // live in ./version-plan.mjs (pure, no I/O); this client only reads the App
+  // Store Connect state they need.
+  //
+  //   latest-marketing-patch  one less than the next FREE patch on a train (P, so P + 1 is free);
+  //                          drift trains (a <prefix>.N train holding build
+  //                          "N") ignored
+  //   build-floor             the build number the next ship has to exceed
+  //
+  // Both take the same optional platform and appleId hint latest-build-seq
+  // takes:  the bundle in apps.json is the ASC record, and the hint is the
+  // fallback for a bundle the filter does not resolve.
+
+  // The App Store Connect platform key.  "MACOS" and "MAC_OS" are the same
+  // platform; anything else is a caller bug, not an empty train, so it must
+  // never be guessed into a filter that answers "nothing there".
+  function ascPlatform(arg) {
+    const key = String(arg || "").toUpperCase();
+    if (!key) return "IOS";
+    if (key === "MACOS" || key === "MAC_OS") return "MAC_OS";
+    if (key === "IOS") return "IOS";
+    return null;
+  }
+
+  // The trains of an app: the TestFlight version strings and the builds each
+  // one holds.  `include=builds` puts the build records in `included`.
+
+  // Every App Store Connect read below goes through ascGet:  a throttled (429),
+  // 5xx or network-failed answer is retried with backoff, because these
+  // queries gate every ship and one rate-limit blip must not fail it.
+  async function ascGet(url) {
+    // A dropped connection or DNS failure makes fetch throw rather than
+    // return a status, so a throw counts as a retryable failure too; the last
+    // one is re-thrown.
+    const once = async (last) => {
+      try {
+        return await api("GET", url);
+      } catch (err) {
+        if (last) throw err;
+        return { ok: false, status: 0, networkError: true, parsed: {} };
+      }
+    };
+    let res = await once(false);
+    for (let attempt = 1; attempt <= 3 && !res.ok && (!res.status || res.status === 429 || res.status >= 500); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+      res = await once(attempt === 3);
+    }
+    return res;
+  }
+
+  // A rejected credential (401/403) exits 4, not 2, so the ship script can
+  // refuse it even under --allow-unverified-seq.
+  const failExit = (status) => process.exit(status === 401 || status === 403 ? 4 : 2);
+
+  // App Store Connect data is checked before it is used:  a version string
+  // that is not dotted integers would misclassify drift trains, so a
+  // malformed record fails the query instead of being guessed at.
+  const ASC_VERSION_RE = /^\d+(\.\d+)*$/;
+  // v === String(v) admits only a primitive string (a number or null fails).
+  const validVersion = (v) => v === String(v) && ASC_VERSION_RE.test(v);
+
+  // Every build of one train, page by page.  Used when the train's inline
+  // build list is truncated, so a drift train is never mistaken for an
+  // empty one.
+  async function trainBuildVersions(trainId) {
+    const out = [];
+    let url = `/v1/preReleaseVersions/${encodeURIComponent(trainId)}/builds?limit=200`;
+    for (let page = 0; page < 50 && url; page++) {
+      const res = await ascGet(url);
+      if (!res.ok) return { ok: false, status: res.status, builds: out };
+      for (const b of res.parsed.data || []) {
+        const bv = b?.attributes?.version;
+        if (!validVersion(bv)) return { ok: false, status: `malformed build ${b?.id || "?"}`, builds: out };
+        out.push(bv);
+      }
+      url = res.parsed.links?.next || "";
+    }
+    if (url) return { ok: false, status: "build list longer than 50 pages", builds: out };
+    return { ok: true, status: 200, builds: out };
+  }
+  async function fetchTrains(appId, platform) {
+    const trains = [];
+    const buildVersionById = new Map();
+    let url =
+      `/v1/preReleaseVersions?filter[app]=${appId}` +
+      `&filter[platform]=${encodeURIComponent(platform)}` +
+      `&include=builds&limit=200&limit[builds]=50`;
+    for (let page = 0; page < 10 && url; page++) {
+      const res = await ascGet(url);
+      if (!res.ok) return { ok: false, status: res.status, trains };
+      for (const inc of res.parsed.included || []) {
+        if (inc && inc.type === "builds") {
+          if (!validVersion(inc.attributes?.version)) {
+            return { ok: false, status: `malformed build ${inc.id || "?"}`, trains };
+          }
+          buildVersionById.set(inc.id, inc.attributes.version);
+        }
+      }
+      for (const v of res.parsed.data || []) {
+        if (!validVersion(v?.attributes?.version)) {
+          return { ok: false, status: `malformed preReleaseVersion ${v?.id || "?"}`, trains };
+        }
+        const rel = v.relationships?.builds;
+        const ids = (rel?.data || []).map((b) => b && b.id).filter(Boolean);
+        let builds = ids.map((id) => buildVersionById.get(id)).filter((x) => x !== undefined);
+        // The inline list stops at limit[builds]; when it is cut short (or a
+        // build record is missing from `included`), read the whole train.
+        const total = rel?.meta?.paging?.total;
+        if (builds.length < ids.length || (Number.isInteger(total) && total > ids.length)) {
+          const full = await trainBuildVersions(v.id);
+          if (!full.ok) return { ok: false, status: full.status, trains };
+          builds = full.builds;
+        }
+        trains.push({ version: v.attributes.version, builds });
+      }
+      url = res.parsed.links?.next || "";
+    }
+    if (url) return { ok: false, status: "more than 10 pages of trains", trains };
+    return { ok: true, status: 200, trains };
+  }
+
+  // Highest patch already used on the <prefix> train, drift trains ignored.
+  if (method === "latest-marketing-patch") {
+    const bundleId = path;
+    const prefix = body;
+    const platform = ascPlatform(arg4);
+    if (!bundleId || !prefix) {
+      console.error("Usage: node asc-api.mjs latest-marketing-patch <bundleId> <prefix> [platform=IOS] [appleId]");
+      process.exit(2);
+    }
+    if (!platform) {
+      console.error(`latest-marketing-patch: unknown platform "${arg4}" (want IOS or MACOS)`);
+      process.exit(2);
+    }
+
+    const appleIdHint = String(arg5 || process.env.ASC_APPLE_ID || "").trim();
+    const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "latest-marketing-patch");
+    if (!appId) {
+      console.error(`latest-marketing-patch: app not found for bundle${appsStatus ? ` (HTTP ${appsStatus})` : ""}`);
+      process.exit(2);
+    }
+
+    // 1) The App Store versions.  They are never ignored:  a version that is
+    //    on sale counts even when no TestFlight train carries it.
+    const storeRes = await ascGet(`/v1/apps/${appId}/appStoreVersions?filter[platform]=${encodeURIComponent(platform)}&limit=200`
+    );
+    if (!storeRes.ok) {
+      console.error(`latest-marketing-patch: appStoreVersions query failed (HTTP ${storeRes.status})`);
+      failExit(storeRes.status);
+    }
+    const appStoreVersions = (storeRes.parsed.data || [])
+      .map((v) => v?.attributes?.versionString);
+    const badStore = appStoreVersions.findIndex((v) => !validVersion(v));
+    if (badStore !== -1) {
+      console.error(`latest-marketing-patch: malformed App Store version ${JSON.stringify(appStoreVersions[badStore] ?? null)}`);
+      process.exit(2);
+    }
+
+    // 2) The TestFlight trains and their builds.
+    const trainRes = await fetchTrains(appId, platform);
+    if (!trainRes.ok) {
+      console.error(`latest-marketing-patch: preReleaseVersions query failed (HTTP ${trainRes.status})`);
+      failExit(trainRes.status);
+    }
+    const trains = trainRes.trains;
+
+    // Print one less than the next FREE patch, so the caller's P + 1 never
+    // lands on a patch a drift train already holds (see nextMarketingPatch).
+    const patch = nextMarketingPatch({ prefix, appStoreVersions, trains }) - 1;
+    const drift = trains.filter((t) => isDriftTrain(t.version, t.builds, prefix)).map((t) => t.version);
+
+    console.error(
+      `latest-marketing-patch: ${appStoreVersions.length} App Store version(s) + ${trains.length} train(s) ` +
+      `inspected on ${platform}; next free ${prefix}.N is N=${patch + 1} (printed as ${patch}, so the caller's P + 1 lands on it)`
+    );
+    if (drift.length) {
+      const shown = drift.slice(0, 5).join(", ");
+      console.error(
+        `latest-marketing-patch: ignored ${drift.length} drift train(s) (a ${prefix}.N train holding build "N"): ${shown}` +
+        (drift.length > 5 ? ", ..." : "")
+      );
+    }
+    console.log(String(patch));
+    process.exit(0);
+  }
+
+  // The build number the next ship has to exceed:  every build already in the
+  // target train, plus the app's plain-integer builds below 1000000000 (every
+  // build on macOS, where build numbers grow across all trains).
+  if (method === "build-floor") {
+    const bundleId = path;
+    const version = body;
+    const platform = ascPlatform(arg4);
+    if (!bundleId || !version) {
+      console.error("Usage: node asc-api.mjs build-floor <bundleId> <version> [platform=IOS] [appleId]");
+      process.exit(2);
+    }
+    if (!platform) {
+      console.error(`build-floor: unknown platform "${arg4}" (want IOS or MACOS)`);
+      process.exit(2);
+    }
+
+    const appleIdHint = String(arg5 || process.env.ASC_APPLE_ID || "").trim();
+    const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "build-floor");
+    if (!appId) {
+      console.error(`build-floor: app not found for bundle${appsStatus ? ` (HTTP ${appsStatus})` : ""}`);
+      process.exit(2);
+    }
+
+    const trainBuilds = [];
+    let url =
+      `/v1/builds?filter[app]=${appId}` +
+      `&filter[preReleaseVersion.version]=${encodeURIComponent(version)}` +
+      `&filter[preReleaseVersion.platform]=${encodeURIComponent(platform)}&limit=200`;
+    for (let page = 0; page < 10 && url; page++) {
+      const res = await ascGet(url);
+      if (!res.ok) {
+        console.error(`build-floor: train builds query failed (HTTP ${res.status})`);
+        failExit(res.status);
+      }
+      for (const b of res.parsed.data || []) {
+        if (!validVersion(b?.attributes?.version)) {
+          console.error(`build-floor: malformed build ${b?.id || "?"}`);
+          process.exit(2);
+        }
+        trainBuilds.push(b.attributes.version);
+      }
+      url = res.parsed.links?.next || "";
+    }
+
+    const appBuilds = [];
+    url =
+      `/v1/builds?filter[app]=${appId}` +
+      `&filter[preReleaseVersion.platform]=${encodeURIComponent(platform)}` +
+      `&sort=-uploadedDate&limit=200`;
+    for (let page = 0; page < 10 && url; page++) {
+      const res = await ascGet(url);
+      if (!res.ok) {
+        console.error(`build-floor: app builds query failed (HTTP ${res.status})`);
+        failExit(res.status);
+      }
+      for (const b of res.parsed.data || []) {
+        if (!validVersion(b?.attributes?.version)) {
+          console.error(`build-floor: malformed build ${b?.id || "?"}`);
+          process.exit(2);
+        }
+        appBuilds.push(b.attributes.version);
+      }
+      url = res.parsed.links?.next || "";
+    }
+
+    const floor = buildFloor({ trainBuilds, appBuilds, platform });
+    const trainFloor = buildFloor({ trainBuilds, appBuilds: [], platform });
+    const appFloor = buildFloor({ trainBuilds: [], appBuilds, platform });
+    // The note is machine-readable:  the shell layer splits it into the two
+    // floors it prints in the version-plan log line.
+    console.error(`build-floor: train=${trainFloor} app=${appFloor} -> floor=${floor}`);
+    console.log(String(floor));
+    process.exit(0);
+  }
+
+  // Every build of one app on one platform, fully paged (expired builds are
+  // still builds:  the endpoint returns them and they join the inventory).
+  // Shared by the release planner below and by max-build.  Never returns a
+  // partial list as if it were whole:  a failed page, a malformed pager, or
+  // more than 100 pages fails the query, never truncates the inventory into
+  // a low build.
+  async function allBuilds(forAppId, platform, command) {
+    const out = [];
+    let url = `/v1/builds?filter[app]=${forAppId}&filter[preReleaseVersion.platform]=${platform}&limit=200`;
+    for (let page = 0; page < 100 && url; page++) {
+      const res = await ascGet(url);
+      if (!res.ok || !Array.isArray(res.parsed?.data)) {
+        console.error(`${command}: inventory unavailable`);
+        failExit(res.status);
+      }
+      for (const b of res.parsed.data) out.push(b?.attributes?.version);
+      // The pager shape is checked before links.next is read:  a malformed
+      // page must fail the query, never truncate the inventory into a low
+      // build.
+      const parsed = res.parsed;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        console.error(`${command}: malformed pagination`);
+        process.exit(2);
+      }
+      let next = "";
+      if (parsed.links !== undefined) {
+        if (!parsed.links || typeof parsed.links !== "object" || Array.isArray(parsed.links)) {
+          console.error(`${command}: malformed pagination`);
+          process.exit(2);
+        }
+        const rawNext = parsed.links.next;
+        if (rawNext !== undefined && rawNext !== null && typeof rawNext !== "string") {
+          console.error(`${command}: malformed pagination`);
+          process.exit(2);
+        }
+        next = rawNext || "";
+      }
+      url = next;
+    }
+    if (url) {
+      console.error(`${command}: incomplete pagination`);
+      process.exit(2);
+    }
+    return out;
+  }
+
+  // Read-only, fully paged shared merge-timestamp build (owner, Oct 29 2026):
+  // build = max(S, M + 1), where S is the --merge-stamp (the HEAD committer
+  // date in America/Chicago as YYYYMMDDHHMM) and M is the highest first
+  // numeric component among EVERY build of the app on iOS and of its paired
+  // macOS app (all trains, expired included, old timestamp-style builds
+  // included) plus every extra floor.  The rule lives in ./shared-build.mjs;
+  // this client only reads the App Store Connect state it needs.
+  //
+  // plan-release-build is the release planner:  the release workflow runs it
+  // ONCE per release (the plan-build job) and hands the one value to every
+  // platform ship job.  next-shared-build is the same command under its
+  // original name.
+  if (method === "next-shared-build" || method === "plan-release-build") {
+    const rawArgs = process.argv.slice(3);
+    let mergeStamp = "";
+    const positional = [];
+    for (let i = 0; i < rawArgs.length; i++) {
+      if (rawArgs[i] === "--merge-stamp") {
+        mergeStamp = rawArgs[i + 1] || "";
+        i++;
+      } else {
+        positional.push(rawArgs[i]);
+      }
+    }
+    const bundleId = positional[0] || "";
+    const rest = positional.slice(1);
+    if (!bundleId) {
+      console.error(`Usage: node asc-api.mjs ${method} <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>`);
+      process.exit(2);
+    }
+    if (!/^[1-9][0-9]{11}$/.test(mergeStamp)) {
+      console.error(`${method}: --merge-stamp <S> is required (12 digits ^[1-9][0-9]{11}$: the HEAD committer date in America/Chicago as %Y%m%d%H%M)`);
+      process.exit(2);
+    }
+    // A pure-integer second arg is a floor, not a bundle id (bundle ids are
+    // never bare integers), so a caller with no paired app passes only floors.
+    let macBundleId = "";
+    let floorArgs = [];
+    if (rest.length > 0) {
+      if (/^[0-9]+$/.test(rest[0])) floorArgs = rest;
+      else { macBundleId = rest[0] || ""; floorArgs = rest.slice(1); }
+    }
+    const extraFloors = [];
+    for (const f of floorArgs) {
+      if (!/^[0-9]+$/.test(f) || !Number.isSafeInteger(Number(f))) {
+        console.error(`${method}: floor ${JSON.stringify(f)} is not a non-negative safe integer`);
+        process.exit(2);
+      }
+      extraFloors.push(Number(f));
+    }
+    const resolved = await resolveAscAppId(bundleId, "", method);
+    if (!resolved.appId) {
+      console.error(`${method}: app not found`);
+      process.exit(2);
+    }
+    let macAppId = "";
+    if (macBundleId && macBundleId !== bundleId) {
+      const macResolved = await resolveAscAppId(macBundleId, "", method);
+      if (!macResolved.appId) {
+        console.error(`${method}: paired app not found`);
+        process.exit(2);
+      }
+      macAppId = macResolved.appId;
+    }
+    // One build per app across iOS and macOS:  when the paired bundle id
+    // resolves to a different app, both platforms of both apps join it
+    // (iosBuilds = IOS(app)+IOS(paired), macBuilds = MAC_OS(app)+
+    // MAC_OS(paired)).  The inventories are independent, so they are fetched
+    // concurrently; each keeps the 100-page cap and fails closed past it
+    // (see allBuilds), never truncates.
+    let iosBuilds;
+    let macBuilds;
+    if (macAppId) {
+      const [appIos, appMac, pairedIos, pairedMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS", method),
+        allBuilds(resolved.appId, "MAC_OS", method),
+        allBuilds(macAppId, "IOS", method),
+        allBuilds(macAppId, "MAC_OS", method)
+      ]);
+      iosBuilds = appIos.concat(pairedIos);
+      macBuilds = appMac.concat(pairedMac);
+    } else {
+      const [appIos, appMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS", method),
+        allBuilds(resolved.appId, "MAC_OS", method)
+      ]);
+      iosBuilds = appIos;
+      macBuilds = appMac;
+    }
+    try {
+      const planned = nextSharedBuild({ iosBuilds, macBuilds, extraFloors, complete: true, mergeStamp });
+      console.error(`${method}: ${iosBuilds.length} iOS build(s) + ${macBuilds.length} macOS build(s) inspected; merge stamp ${mergeStamp}; next is ${planned.build}`);
+      console.log(planned.build);
+    } catch (error) {
+      console.error(`${method}: ${error.message}`);
+      process.exit(3);
+    }
+    process.exit(0);
+  }
+
+  // The highest first numeric component among the builds of ONE app record on
+  // ONE platform (all trains, expired included).  Fixed-mode --build
+  // validation:  the planned value may equal the paired platform's build, but
+  // it must exceed this platform's max.  Prints the max, or 0 when the app
+  // has no build on the platform yet.  stdout is the answer; exit 0 is
+  // authoritative, anything else is "unverified", never zero.
+  if (method === "max-build") {
+    const bundleId = path;
+    const platform = ascPlatform(body);
+    if (!bundleId) {
+      console.error("Usage: node asc-api.mjs max-build <bundleId> [platform=IOS]");
+      process.exit(2);
+    }
+    if (!platform) {
+      console.error(`max-build: unknown platform "${body}" (want IOS or MACOS)`);
+      process.exit(2);
+    }
+    const resolved = await resolveAscAppId(bundleId, "", "max-build");
+    if (!resolved.appId) {
+      console.error("max-build: app not found");
+      process.exit(2);
+    }
+    const builds = await allBuilds(resolved.appId, platform, "max-build");
+    let max = -1n;
+    for (const value of builds) {
+      if (!validVersion(value)) {
+        console.error(`max-build: malformed build ${JSON.stringify(value ?? null)}; cannot verify the max`);
+        process.exit(2);
+      }
+      const first = BigInt(String(value).split(".")[0]);
+      if (first > max) max = first;
+    }
+    const out = max < 0n ? "0" : String(max);
+    console.error(`max-build: ${builds.length} ${platform} build(s) inspected; max is ${out}`);
     console.log(out);
     process.exit(0);
   }
@@ -1370,13 +1875,20 @@ async function main() {
       process.exit(2);
     }
 
+    const recheck = String(process.env.IOS_TF_READY_RECHECK || "").trim() === "1";
     const totalTimeoutSec = (() => {
       const raw = process.env.IOS_TF_READY_TIMEOUT_SEC;
       const n = raw ? parseInt(raw, 10) : NaN;
-      return Number.isFinite(n) && n > 0 ? n : 900;
+      if (Number.isFinite(n) && n > 0) return n;
+      return recheck ? 90 : 900;
     })();
     const deadline = Date.now() + totalTimeoutSec * 1000;
-    const POLL_MS = 15000;
+    const POLL_MS = recheck ? 5000 : 15000;
+    if (recheck) {
+      console.error(
+        `ensure-tf-ready: recheck mode (short budget ${totalTimeoutSec}s, ${POLL_MS}ms poll; no compliance patch or release notes)`
+      );
+    }
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "ensure-tf-ready");
@@ -1452,8 +1964,8 @@ async function main() {
     const beta = (build.__included || []).find((x) => x.type === "buildBetaDetails")?.attributes || {};
     console.error(`ensure-tf-ready: build=${version} id=${buildId} enc=${enc} internal=${beta.internalBuildState || "unknown"}`);
 
-    // ---- Phase B: export compliance, on the DISCOVERED build.
-    if (enc !== false) {
+    // ---- Phase B: export compliance, on the DISCOVERED build (ship only).
+    if (!recheck && enc !== false) {
       const patch = await api("PATCH", `/v1/builds/${buildId}`, JSON.stringify({
         data: { type: "builds", id: buildId, attributes: { usesNonExemptEncryption: false } }
       }));
@@ -1465,11 +1977,14 @@ async function main() {
     }
 
     // ---- Phase B2: TestFlight "What to Test". Before the readiness wait, so a
-    // Phase C timeout cannot lose the notes. Never fails the caller.
-    try {
-      await setWhatToTest({ api, buildId, appId, marketing: wantMarketing });
-    } catch (err) {
-      console.error(`ensure-tf-ready: release-notes step failed (non-fatal): ${err && err.message ? err.message : err}`);
+    // Phase C timeout cannot lose the notes. Never fails the caller.  Skipped on
+    // post-sync recheck: the ship step already published notes.
+    if (!recheck) {
+      try {
+        await setWhatToTest({ api, buildId, appId, marketing: wantMarketing });
+      } catch (err) {
+        console.error(`ensure-tf-ready: release-notes step failed (non-fatal): ${err && err.message ? err.message : err}`);
+      }
     }
 
     // ---- Phase C: readiness, drawing from the same overall deadline. Always

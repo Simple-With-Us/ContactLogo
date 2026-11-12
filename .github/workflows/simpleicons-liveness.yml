@@ -2,7 +2,7 @@ name: Simple Icons liveness
 
 # Weekly CDN probe of every mapped Simple Icons slug. Not a per-PR gate:
 # the check is network-bound and would flake independent of the diff.
-# Cross-checks web/Swift/Kotlin maps for drift (issue #37 / PR #65).
+# Cross-checks apps/web/Swift/Kotlin maps for drift (issue #37 / PR #65).
 on:
   schedule:
     - cron: "17 14 * * 1"
@@ -29,9 +29,9 @@ jobs:
           from pathlib import Path
 
           files = [
-              Path("web/src/engine/logos.ts"),
+              Path("apps/web/src/engine/logos.ts"),
               Path("Sources/ContactLogoKit/Sources/SimpleIconsSource.swift"),
-              Path("Apps/ContactLogoAndroid/app/src/main/java/com/contactlogo/engine/SimpleIcons.kt"),
+              Path("apps/android/app/src/main/java/com/contactlogo/engine/SimpleIcons.kt"),
           ]
 
           pair_re = re.compile(

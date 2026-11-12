@@ -27,20 +27,20 @@ else
   echo "==> Node: $(node --version)  npm: $(npm --version)"
 fi
 
-# --- 2. web/ deps (primary app surface) ------------------------------------
-if [[ -f "web/package-lock.json" ]]; then
-  echo "==> npm ci --prefix web (production + dev deps for tests / typecheck)"
+# --- 2. apps/web/ deps (primary app surface) ------------------------------------
+if [[ -f "apps/web/package-lock.json" ]]; then
+  echo "==> npm ci --prefix apps/web (production + dev deps for tests / typecheck)"
   # --include=dev is the default for `npm ci` outside of production envs;
   # pass it explicitly to be safe in non-TTY sandboxes.
-  npm ci --include=dev --prefix web
+  npm ci --include=dev --prefix apps/web
 else
-  echo "==> web/package-lock.json missing; falling back to npm install --prefix web"
-  npm install --include=dev --prefix web
+  echo "==> apps/web/package-lock.json missing; falling back to npm install --prefix apps/web"
+  npm install --include=dev --prefix apps/web
 fi
 
 # --- 3. Root deps (root package.json has no deps today, but keep parity) ---
 if [[ -f "package.json" && ! -f "package-lock.json" ]]; then
-  echo "==> No root package-lock.json; skipping root install (web/ is canonical)."
+  echo "==> No root package-lock.json; skipping root install (apps/web/ is canonical)."
 fi
 
 # --- 4. Infisical CLI (best-effort) ----------------------------------------
@@ -57,7 +57,7 @@ if ! command -v infisical >/dev/null 2>&1; then
   if command -v infisical >/dev/null 2>&1; then
     echo "==> Infisical CLI installed: $(infisical --version 2>/dev/null || echo 'unknown version')"
   else
-    echo "==> Infisical CLI unavailable; start script will use web/scripts/sync-infisical-env.ts via the Infisical REST API."
+    echo "==> Infisical CLI unavailable; start script will use apps/web/scripts/sync-infisical-env.ts via the Infisical REST API."
   fi
 else
   echo "==> Infisical CLI already present: $(infisical --version 2>/dev/null || echo 'unknown version')"

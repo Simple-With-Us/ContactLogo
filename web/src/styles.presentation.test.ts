@@ -1,7 +1,7 @@
 // Presentation-lane tests for docs/UI-CONTRACT.md compliance.
 //
-// These check the static contents of web/src/styles.css, web/index.html and
-// web/public/manifest.webmanifest — the three files this lane owns — against
+// These check the static contents of apps/web/src/styles.css, apps/web/index.html and
+// apps/web/public/manifest.webmanifest — the three files this lane owns — against
 // the token set, selector rules and contrast minimums the contract lays out.
 // Run directly (not part of the shared `npm test` glob, which this lane does
 // not own):
@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { runInNewContext } from "node:vm";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const css = readFileSync(here + "styles.css", "utf8");
@@ -306,4 +307,25 @@ test("public SEO and PWA files exist", () => {
   }
   const robots = readFileSync(pub + "robots.txt", "utf8");
   assert.match(robots, /Sitemap: https:\/\/contactlogo.com\/sitemap.xml/);
+});
+
+
+test("saved appearance is applied by a blocking self-hosted script before CSS", () => {
+  const tag = '<script src="/theme-init.js"></script>';
+  assert.ok(html.indexOf(tag) >= 0 && html.indexOf(tag) < html.indexOf('rel="stylesheet"'));
+  const script = readFileSync(here + "../public/theme-init.js", "utf8");
+  for (const stored of ["light", "dark", "system", "invalid", null]) {
+    const writes: unknown[] = [];
+    runInNewContext(script, {localStorage: {getItem: () => stored}, document: {
+      documentElement: {setAttribute: (name: string, value: string) => writes.push([name, value])},
+    }});
+    assert.deepEqual(writes, stored === "light" || stored === "dark" ? [["data-theme", stored]] : []);
+  }
+  assert.doesNotThrow(() => runInNewContext(script, {localStorage: {getItem() {throw new Error("denied");}}}));
+});
+
+test("phone cards give action controls a full-width content row", () => {
+  const mobile = extractBlock(css, "@media (max-width: 720px)");
+  assert.match(mobile, /--review-card-height:\s*400px/);
+  assert.match(mobile, /\.card-content\s*\{\s*grid-column:\s*1 \/ -1/);
 });

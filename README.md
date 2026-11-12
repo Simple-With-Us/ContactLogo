@@ -20,7 +20,7 @@ ContactLogo is the only product.  **BadgeBook** and **Crest** were working
 names and are retired.  `jaywedgeworth22/BadgeBook` redirects here.
 `jaywedgeworth22/crest` is a legacy archive.  Catalog, phone, and iconic-mark
 matching from Crest, plus BadgeBook's native kit and review-first contract,
-live in `ContactLogoKit` and `web/`.  Frozen originals are in `backups/`.
+live in `ContactLogoKit` and `apps/web/`.  Frozen originals are in `backups/`.
 Product history is in [docs/CONTACTLOGO.md](docs/CONTACTLOGO.md).
 
 ## Why it exists
@@ -42,7 +42,7 @@ book — see [docs/MATCHING-ENGINE.md](docs/MATCHING-ENGINE.md).
 Web (primary runnable app):
 
 ```bash
-cd web
+cd apps/web
 npm install
 npm test
 npm run dev
@@ -58,7 +58,7 @@ swift test
 swift run contactlogo scan
 ```
 
-macOS / iOS SwiftUI apps live in `Apps/`.  Open those sources in Xcode with
+macOS / iOS SwiftUI apps live under `apps/`.  Open those sources in Xcode with
 Contacts permission.  The CLI is the dogfood driver for AddressBook writes.
 
 ## Repository layout
@@ -66,14 +66,18 @@ Contacts permission.  The CLI is the dogfood driver for AddressBook writes.
 ```
 Sources/ContactLogoKit/   Shared matching engine (Swift, macOS + iOS)
 Sources/contactlogo/      CLI dogfood driver
-Apps/ContactLogoMac/      macOS SwiftUI app
-Apps/ContactLogoiOS/      iOS SwiftUI app
-web/                      Web app (import → review → download)
+apps/android/             Android app
+apps/ios/                 iOS SwiftUI app
+apps/macos/               macOS direct-distribution app
+apps/macos-app-store/     Existing macOS App Store distribution variant
+apps/web/                 Web app (import → review → download)
 vendor/crest/             git subtree of Crest (not a second product)
 backups/badgebook/        Frozen BadgeBook snapshot (pre-combine)
 backups/crest/            Frozen Crest snapshot (public-release commit)
 docs/                     Vision, architecture, matching rules, product history
 ```
+
+See [the platform directory normalization](docs/rollouts/2026-11-03-platform-directory-normalization.md) for the path migration.  The external Vercel project root remains a separate cutover.
 
 CLI scan dumps (`.contactlogo/`, `.badgebook/`, `scan.json`, `match-results.json`,
 `review.html`) are gitignored.  They can contain AddressBook identifiers and

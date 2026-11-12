@@ -60,7 +60,7 @@ echo "[cursor-cloud-start] Loading Infisical secrets for project ${INFISICAL_PRO
 # --- 2. Pull secrets --------------------------------------------------------
 # Prefer the web app's existing Node helper (scripts/sync-infisical-env.ts)
 # which already handles auth, env selection, and quoting.  It writes
-# .env.local under web/ — we use a temp .env.local and reformat it into the
+# .env.local under apps/web/ — we use a temp .env.local and reformat it into the
 # canonical 0600 env file under ~/.cursor-cloud-env.  The temp file is
 # removed at the end.
 TMP_LOCAL="$(mktemp -t contactlogo-env-XXXXXX.local)"
@@ -72,7 +72,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The web helper writes to web/.env.local by default; redirect to our temp
+# The web helper writes to apps/web/.env.local by default; redirect to our temp
 # dir by passing an env override.  We re-implement minimal fetch in a
 # portable shell+curl+python3 fallback so the start script does not depend
 # on the web helper being able to import TypeScript at agent boot time.
