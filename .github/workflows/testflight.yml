@@ -145,7 +145,11 @@ jobs:
           path: ~/.cache/ios-fleet
           key: ios-fleet-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ios-fleet-contactlogo-${{ github.run_id }}-
             ios-fleet-contactlogo-
+
+      - name: Drop stale ship locks from restored state
+        run: find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
 
       # Always the path-diff (--event schedule), on push and dispatch exactly
       # as on cron.  The full on.push.paths list above, entry for entry:  the
@@ -201,7 +205,11 @@ jobs:
           path: ~/.cache/ios-fleet
           key: ios-fleet-mac-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ios-fleet-mac-contactlogo-${{ github.run_id }}-
             ios-fleet-mac-contactlogo-
+
+      - name: Drop stale ship locks from restored state
+        run: find "$HOME/.cache/ios-fleet" -maxdepth 1 -type d -name '*.lockdir' -exec rmdir {} + 2>/dev/null || true
 
       # Always the path-diff (--event schedule):  see gate-ios above.  The
       # same full on.push.paths list, entry for entry.

@@ -34,7 +34,7 @@ struct SettingsView: View {
                     .onChange(of: settings.logoDevToken) { settings.save() }
                 Link("Get a Logo.dev API Key ↗", destination: URL(string: "https://logo.dev")!)
                     .font(.caption)
-                Text("Optional.  High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, Clearbit, Apple Touch Icons, and favicons.")
+                Text("Optional.\u{00A0} Sharper Brandfetch and Logo.dev logos need a key.\u{00A0} Without one, ContactLogo uses built-in icons and website icons.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if settings.credentialStorageFailed {
@@ -43,21 +43,21 @@ struct SettingsView: View {
                         .foregroundStyle(.red)
                 }
             }
-            Section("Pre-scan Discovery") {
-                Toggle("Rescue split-name business contacts", isOn: $settings.rescueSplitNameBusinesses)
+            Section("What to Include") {
+                Toggle("Find businesses saved as a person's name", isOn: $settings.rescueSplitNameBusinesses)
                     .onChange(of: settings.rescueSplitNameBusinesses) { settings.save() }
                 Toggle("Include single-name contacts", isOn: $settings.includeSingleNameContacts)
                     .onChange(of: settings.includeSingleNameContacts) { settings.save() }
                 Toggle("Skip contacts that already have a photo", isOn: $settings.skipContactsWithExistingPhoto)
                     .onChange(of: settings.skipContactsWithExistingPhoto) { settings.save() }
-                Text("Off by default. A business card that already has a photo stays in Needs review, flagged \"replace existing\", and is never applied automatically.")
+                Text("Off by default.\u{00A0} A business that already has a photo stays in Needs Review until you approve a replacement.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Section("Personal Contacts (Optional)") {
-                Toggle("Find personal avatars (via Unavatar)", isOn: $settings.fetchPersonalAvatars)
+            Section("People") {
+                Toggle("Look up profile photos for people", isOn: $settings.fetchPersonalAvatars)
                     .onChange(of: settings.fetchPersonalAvatars) { settings.save() }
-                Text("When enabled, searches public profile avatars for personal contacts via email. Never replaces personal photos automatically.")
+                Text("When this is on, ContactLogo can search public profile photos from an email address.\u{00A0} It never replaces a personal photo on its own.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

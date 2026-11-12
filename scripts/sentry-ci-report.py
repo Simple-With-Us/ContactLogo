@@ -84,6 +84,14 @@ CRON_SCHEDULES = {
 #      (a real issue in fleet-infra), not just to the job log.
 _CRON_SCHEDULES_FOLDED = {name.casefold(): expr for name, expr in CRON_SCHEDULES.items()}
 
+# Per-workflow Crons monitor_config overrides (case-folded workflow display name).
+# Vercel catch-up deploy may run up to 45 minutes (workflow job timeout); default
+# max_runtime 60 is fine but 45 matches the real ceiling.  checkin_margin 75
+# covers GitHub schedule delay while still alerting before the next hourly slot.
+_CRON_MONITOR_OVERRIDES: dict[str, dict[str, int]] = {
+    "vercel production catch-up": {"checkin_margin": 75, "max_runtime": 45},
+}
+
 # Where the observed workflows live, resolved from this file rather than the
 # process CWD so the guard works regardless of how the script is invoked.
 WORKFLOWS_DIR = Path(__file__).resolve().parent.parent / ".github" / "workflows"
@@ -300,14 +308,15 @@ def main() -> int:
         else:
             checkin_status = "ok" if conclusion == "success" else "error"
             monitor_slug = f"ci-{APP}-{slugify(workflow_name)}"
+            monitor_override = _CRON_MONITOR_OVERRIDES.get(workflow_name.casefold(), {})
             checkin_payload = {
                 "check_in_id": uuid.uuid4().hex,
                 "monitor_slug": monitor_slug,
                 "status": checkin_status,
                 "monitor_config": {
                     "schedule": {"type": "crontab", "value": cron_expr},
-                    "checkin_margin": 75 if workflow_name.casefold() == "vercel production catch-up" else 15,
-                    "max_runtime": 60,
+                    "checkin_margin": monitor_override.get("checkin_margin", 15),
+                    "max_runtime": monitor_override.get("max_runtime", 60),
                     "timezone": "UTC",
                 },
             }
