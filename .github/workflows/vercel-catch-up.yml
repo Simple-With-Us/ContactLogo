@@ -17,12 +17,20 @@ permissions:
   contents: read
   actions: read
 
-# Production runs (schedule, workflow_run, dispatch) share one group so main
-# publishing stays serialized.  PR validation runs get a per-PR group: GitHub
-# keeps only one pending run per group, so a shared group would let a PR run
-# replace a queued production catch-up.
+# workflow_run and workflow_dispatch share one group so main publishing stays
+# serialized.  PR validation runs get a per-PR group: GitHub keeps only one
+# pending run per group, so a shared group would let a PR run replace a queued
+# production catch-up.
+#
+# Scheduled runs use their own group.  When they shared the production group,
+# CI/E2E-driven workflow_run completions queued ahead of the hourly cron and
+# GitHub dropped most schedule ticks (~4/day vs 24).  sentry-ci-report only
+# sends Crons check-ins for schedule-triggered completions, so Sentry raised
+# hourly missed-check-in alerts (FLEET-INFRA-F6).  Deploy still serializes via
+# vercel-catch-up.mjs cooldown/in-flight gates if schedule and workflow_run
+# overlap.
 concurrency:
-  group: vercel-production-catch-up${{ github.event_name == 'pull_request' && format('-pr-{0}', github.event.pull_request.number) || '' }}
+  group: vercel-production-catch-up${{ github.event_name == 'pull_request' && format('-pr-{0}', github.event.pull_request.number) || (github.event_name == 'schedule' && '-schedule' || '') }}
   cancel-in-progress: false
 
 jobs:
