@@ -19,7 +19,10 @@ import XCTest
 ///    its own full pass — and `limitedAccessDiagnosis()` can add another.
 ///    An earlier private snapshot helper was meant to prevent this, but every
 ///    public method called it independently, so the double pass survived and
-///    the comment claiming otherwise was simply wrong.
+///    the comment claiming otherwise was simply wrong.  Diagnosis and the
+///    launch snapshot are still two calls on one provider.  The provider
+///    caches the first cacheable pass so the second call does not walk
+///    the book again.  A cancelled walk or a store error is not stored.
 ///
 /// These tests pin the *shape* of the code, because the failure is structural:
 /// a correct-looking `async` method that executes on the caller's actor.
@@ -118,6 +121,128 @@ final class LaunchEnumerationExecutorTests: XCTestCase {
         XCTAssertFalse(snap.isExact, "the default snapshot must honour visibleContactCountIsExact()")
     }
 
+    /// The snapshot pass is remembered on the provider.  Removing the cache
+    /// makes cold launch enumerate twice again: diagnosis, then this snapshot.
+    func testSnapshotCachesThePassSoASecondCallerDoesNotEnumerate() throws {
+        let text = try source("Sources/ContactLogoKit/Contacts/ContactsProvider.swift")
+        let body = try XCTUnwrap(Self.funcBody("public func visibleContactCountSnapshot() async -> VisibleContactCount", in: text))
+
+        XCTAssertTrue(
+            body.contains("visibleCountCache"),
+            "visibleContactCountSnapshot() must go through visibleCountCache so limitedAccessDiagnosis() and the launch snapshot share one enumeration"
+        )
+        XCTAssertTrue(
+            body.contains("cacheable: false"),
+            "a cancelled walk or a store error must not be cached; the next caller has to enumerate again"
+        )
+    }
+
+    /// Count and exactness are one cached pass.  A second public method must
+    /// not grow its own `enumerateContacts`.
+    func testCountAndExactnessBothReadTheCachedSnapshot() throws {
+        let text = try source("Sources/ContactLogoKit/Contacts/ContactsProvider.swift")
+        for signature in [
+            "public func visibleContactCount() async -> Int",
+            "public func visibleContactCountIsExact() async -> Bool",
+        ] {
+            let body = try XCTUnwrap(Self.funcBody(signature, in: text), signature)
+            XCTAssertFalse(
+                body.contains("enumerateContacts"),
+                "\(signature) must not enumerate; it has to read visibleContactCountSnapshot()"
+            )
+            XCTAssertTrue(
+                body.contains("visibleContactCountSnapshot()"),
+                "\(signature) must read the cached snapshot"
+            )
+        }
+    }
+
+    /// The second sequential caller returns the first cacheable pass and does
+    /// not run the enumeration again.  This is the cold-launch shape:
+    /// diagnosis, then the snapshot.
+    func testCacheReusesTheFirstCacheablePass() async {
+        let cache = VisibleContactCountCache()
+        let counter = PassCounter()
+        let firstPass = VisibleContactCount(count: 22, isExact: true)
+
+        let first = await cache.value {
+            counter.bump()
+            return VisibleContactCountPass(snapshot: firstPass, cacheable: true)
+        }
+        let second = await cache.value {
+            counter.bump()
+            return VisibleContactCountPass(
+                snapshot: VisibleContactCount(count: 0, isExact: false),
+                cacheable: true
+            )
+        }
+
+        XCTAssertEqual(first, firstPass)
+        XCTAssertEqual(second, firstPass, "the second call must return the cached pass, including the exact flag")
+        XCTAssertEqual(counter.value, 1, "cold launch must not enumerate twice")
+    }
+
+    /// An inexact ceiling result is a finished pass.  The next caller must
+    /// reuse it rather than walk the book up to the bound again.
+    func testCacheKeepsAnInexactCeilingResult() async {
+        let cache = VisibleContactCountCache()
+        let counter = PassCounter()
+        let ceiling = VisibleContactCount(count: 25_000, isExact: false)
+
+        let first = await cache.value {
+            counter.bump()
+            return VisibleContactCountPass(snapshot: ceiling, cacheable: true)
+        }
+        let second = await cache.value {
+            counter.bump()
+            return VisibleContactCountPass(
+                snapshot: VisibleContactCount(count: 1, isExact: true),
+                cacheable: true
+            )
+        }
+
+        XCTAssertEqual(first, ceiling)
+        XCTAssertEqual(second, ceiling)
+        XCTAssertFalse(second.isExact)
+        XCTAssertEqual(counter.value, 1)
+    }
+
+    /// A cancelled walk and a store error both come back uncached.  The next
+    /// caller enumerates again and can then be remembered.
+    func testCacheDoesNotStoreACancelledOrFailedPass() async {
+        let cache = VisibleContactCountCache()
+        let counter = PassCounter()
+
+        let failed = await cache.value {
+            counter.bump()
+            return VisibleContactCountPass(
+                snapshot: VisibleContactCount(count: 0, isExact: true),
+                cacheable: false
+            )
+        }
+        XCTAssertEqual(failed, VisibleContactCount(count: 0, isExact: true))
+
+        let recovered = await cache.value {
+            counter.bump()
+            return VisibleContactCountPass(
+                snapshot: VisibleContactCount(count: 40, isExact: true),
+                cacheable: true
+            )
+        }
+        let again = await cache.value {
+            counter.bump()
+            return VisibleContactCountPass(
+                snapshot: VisibleContactCount(count: 1, isExact: false),
+                cacheable: true
+            )
+        }
+
+        XCTAssertEqual(recovered.count, 40)
+        XCTAssertTrue(recovered.isExact)
+        XCTAssertEqual(again, recovered)
+        XCTAssertEqual(counter.value, 2, "the failed pass must not satisfy the next caller")
+    }
+
     /// `visibleContactCountIsExact()` still reports the same thing it always
     /// did, and it is false exactly when the enumeration ceiling fired.
     func testExactnessIsFalseOnlyWhenTheCeilingFired() {
@@ -149,5 +274,23 @@ final class LaunchEnumerationExecutorTests: XCTestCase {
             index = rest.index(after: index)
         }
         return nil
+    }
+}
+
+/// Counts how many times the cache's compute closure runs.
+private final class PassCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+
+    func bump() {
+        lock.lock()
+        n += 1
+        lock.unlock()
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return n
     }
 }

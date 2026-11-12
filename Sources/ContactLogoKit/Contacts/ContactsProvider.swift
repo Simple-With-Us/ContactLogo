@@ -151,6 +151,10 @@ import Contacts
 /// Contacts.framework-backed provider (macOS / iOS).
 public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     private let store = CNContactStore()
+    /// One identifier-only pass, reused by `visibleContactCount()`,
+    /// `visibleContactCountIsExact()`, and `visibleContactCountSnapshot()`
+    /// on this instance.  Cold launch calls the snapshot twice.
+    private let visibleCountCache = VisibleContactCountCache()
 
     public init() {}
 
@@ -296,38 +300,54 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     /// method still called it independently, so a caller wanting both numbers
     /// ran the whole enumeration twice.  It is now a protocol requirement so
     /// the launch path and the Diagnostic screen take both from ONE pass.
+    /// The pass is cached on this provider.  `limitedAccessDiagnosis()` and
+    /// the launch snapshot share that cache, so the second call does not
+    /// enumerate again.  A cancelled walk or a store error is not stored.
     public func visibleContactCountSnapshot() async -> VisibleContactCount {
         #if canImport(Contacts)
         // Built inside the detached task, not captured: `CNContactFetchRequest`
         // is not `Sendable`, and this package builds in Swift 6 language mode.
         let bound = Self.visibilityBound
-        return await offMain { [self] in
-            let keys: [CNKeyDescriptor] = [CNContactIdentifierKey as CNKeyDescriptor]
-            let request = CNContactFetchRequest(keysToFetch: keys)
-            var count = 0
-            var isExact = true
-            do {
-                try store.enumerateContacts(with: request) { _, stop in
-                    // The caller gave up:  stop now.  The partial count is
-                    // reported as inexact.
-                    if Task.isCancelled {
-                        stop.pointee = true
-                        isExact = false
-                        return
+        return await visibleCountCache.value { [self] in
+            await offMain { [self] in
+                let keys: [CNKeyDescriptor] = [CNContactIdentifierKey as CNKeyDescriptor]
+                let request = CNContactFetchRequest(keysToFetch: keys)
+                var count = 0
+                var isExact = true
+                var cacheable = true
+                do {
+                    try store.enumerateContacts(with: request) { _, stop in
+                        // The caller gave up:  stop now.  The partial count is
+                        // reported as inexact and is not cached.
+                        if Task.isCancelled {
+                            stop.pointee = true
+                            isExact = false
+                            cacheable = false
+                            return
+                        }
+                        count += 1
+                        // `stop.pointee = true` halts the entire enumeration, not just the
+                        // current callback.  Without this the bound was a
+                        // no-op — every contact still ran.
+                        if count > bound {
+                            stop.pointee = true
+                            isExact = false
+                        }
                     }
-                    count += 1
-                    // `stop.pointee = true` halts the entire enumeration, not just the
-                    // current callback.  Without this the bound was a
-                    // no-op — every contact still ran.
-                    if count > bound {
-                        stop.pointee = true
-                        isExact = false
-                    }
+                } catch {
+                    return VisibleContactCountPass(
+                        snapshot: VisibleContactCount(count: 0, isExact: true),
+                        cacheable: false
+                    )
                 }
-            } catch {
-                return VisibleContactCount(count: 0, isExact: true)
+                if Task.isCancelled {
+                    cacheable = false
+                }
+                return VisibleContactCountPass(
+                    snapshot: VisibleContactCount(count: count, isExact: isExact),
+                    cacheable: cacheable
+                )
             }
-            return VisibleContactCount(count: count, isExact: isExact)
         }
         #else
         return VisibleContactCount(count: 0, isExact: true)

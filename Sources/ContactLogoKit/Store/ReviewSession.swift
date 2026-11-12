@@ -218,6 +218,9 @@ public final class ReviewSession: ObservableObject {
             // each of which is its own full pass over the address book, and
             // `limitedAccessDiagnosis()` above can run another.  All of them
             // executed inline on this MainActor, which is the launch hang.
+            // Diagnosis and this snapshot share one provider, which caches
+            // the pass, so the book is walked once.  Publishing stays on
+            // the main actor below.
             let snap = await provider.visibleContactCountSnapshot()
             let visible = snap.count
             let visibleExact = snap.isExact
@@ -463,7 +466,8 @@ public final class ReviewSession: ObservableObject {
             // Enumerating identifiers is cheap and this is the number that
             // tells "access is limited" apart from "the contacts are not on
             // this device", which have different fixes.
-            // CL-205 — one pass for both numbers; see the cold-launch site.
+            // CL-205 — one pass for both numbers.  Diagnosis above already
+            // filled this provider's cache when it needed the count.
             let snap = await provider.visibleContactCountSnapshot()
             visibleContactCount = snap.count
             visibleContactCountIsExact = snap.isExact
