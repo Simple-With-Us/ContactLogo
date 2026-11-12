@@ -1,8 +1,39 @@
+import os
 import SwiftUI
 import ContactLogoKit
 #if canImport(UIKit)
 import UIKit
 #endif
+
+private let scanFailureLog = Logger(subsystem: "com.contactlogo.ios", category: "scan")
+
+/// Plain phrases for the flags a reviewer can act on. Internal pipeline
+/// markers stay out of the row and the detail screen.
+func plainReviewFlags(_ flags: [String]) -> [String] {
+    var seen = Set<String>()
+    var out: [String] = []
+    for flag in flags {
+        let phrase: String?
+        switch flag {
+        case "homonym-risk": phrase = "Name is also a common word"
+        case "brand-tail": phrase = "Matched a partial name"
+        case "replace-existing": phrase = "Replaces an existing photo"
+        case "email-domain-unrelated": phrase = "Email domain may not be this brand"
+        case "guessed-domain": phrase = "Website was guessed"
+        case "affiliated": phrase = "Works at this business"
+        case "employee": phrase = "Looks like an employee"
+        case "fallback-tile": phrase = "This is a letter tile, not a logo"
+        case "favicon-fallback": phrase = "Only a website icon was found"
+        case "non-brand": phrase = "Not a business"
+        case "person": phrase = "Looks like a person"
+        default: phrase = nil
+        }
+        if let phrase, seen.insert(phrase).inserted {
+            out.append(phrase)
+        }
+    }
+    return out
+}
 
 /// Three-bucket review queue (same contract as macOS and the web app).
 struct ContentView: View {
@@ -48,6 +79,10 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
+        .onChange(of: model.lastError) { _, newValue in
+            guard case .scanFailed(let underlying) = newValue else { return }
+            scanFailureLog.error("The last scan did not finish: \(underlying, privacy: .public)")
+        }
     }
 
     private var idle: some View {
@@ -57,15 +92,15 @@ struct ContentView: View {
             if AddressBookVisibilityNotice.applies(to: model) {
                 AddressBookVisibilityNotice()
             }
-            if case .scanFailed(let underlying) = model.lastError {
-                Label("The last scan failed (\(underlying)). Tap Scan contacts to try again.",
+            if case .scanFailed = model.lastError {
+                Label("The last scan did not finish.\u{00A0} Tap Scan Contacts to try again.",
                       systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
                     .font(.footnote)
             }
-            Label("Ready to apply (\(model.autoAccepted.count))", systemImage: "checkmark.circle.fill")
-            Label("Needs review (\(model.needsReview.count))", systemImage: "questionmark.circle")
-            Label("Not found (\(model.notFound.count))", systemImage: "minus.circle")
+            Label("Ready to Apply (\(model.autoAccepted.count))", systemImage: "checkmark.circle.fill")
+            Label("Needs Review (\(model.needsReview.count))", systemImage: "questionmark.circle")
+            Label("Not Found (\(model.notFound.count))", systemImage: "minus.circle")
             if model.totalScannedCount > 0 {
                 ScanBreakdownRow(
                     scanned: model.totalScannedCount,
@@ -75,7 +110,7 @@ struct ContentView: View {
                     scannedAt: model.lastScanDate
                 )
             }
-            Button("Scan contacts") { Task { await model.scanAndMatch() } }
+            Button("Scan Contacts") { Task { await model.scanAndMatch() } }
                 .buttonStyle(.borderedProminent)
             Spacer()
         }
@@ -242,7 +277,7 @@ struct ScanBreakdownRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let scannedAt {
-                Text("Scanned \(Self.stamp.string(from: scannedAt)) — if this looks stale, the scan did not finish.  Tap Scan contacts to run it again.")
+                Text("Scanned \(Self.stamp.string(from: scannedAt)).\u{00A0} If this looks old, tap Scan Contacts to run it again.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -312,12 +347,12 @@ struct ReviewQueueView: View {
             Picker("Bucket", selection: $bucket) {
                 Text("Ready (\(model.autoAccepted.count))").tag(ReviewSession.Bucket.auto)
                 Text("Review (\(model.needsReview.count))").tag(ReviewSession.Bucket.review)
-                Text("Not found (\(model.notFound.count))").tag(ReviewSession.Bucket.notFound)
+                Text("Not Found (\(model.notFound.count))").tag(ReviewSession.Bucket.notFound)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
             HStack {
-                Button("Select high") { model.selectHigh(true) }
+                Button("Select High Confidence") { model.selectHigh(true) }
                 Button("Clear") { model.selectHigh(false) }
                 Spacer()
                 Button("Apply") { Task { await model.applySelected() } }
@@ -406,7 +441,7 @@ struct ReviewQueueView: View {
     private var undoHistoryRow: some View {
         if let mostRecent = model.undoHistory.first {
             HStack {
-                Button("Undo last batch") {
+                Button("Undo Last Change") {
                     Task { await model.undo(batchID: mostRecent.id) }
                 }
                 if model.undoHistory.count > 1 {
@@ -437,8 +472,8 @@ struct ReviewQueueView: View {
             return "Couldn't undo batch \(batchID.prefix(8)) (\(underlying)). You can try again."
         case .noBatchToUndo:
             return "There's no batch to undo."
-        case .scanFailed(let underlying):
-            return "The scan failed (\(underlying)). Tap Scan to try again."
+        case .scanFailed:
+            return "The last scan did not finish.\u{00A0} Tap Scan Contacts to try again."
         case .scanIncomplete(let matched, let total):
             return "The scan stopped early: matched \(matched) of \(total). Showing what finished. Tap Scan to run it again."
         }
@@ -542,7 +577,7 @@ struct ReviewRow: View {
                         }
                         Button("Details") { onPreview?() }
                             .font(.caption)
-                        Button("Choose own…") { onManualOverride?() }
+                        Button("Choose Your Own") { onManualOverride?() }
                             .font(.caption)
                     }
                     .padding(.top, 2)
@@ -560,7 +595,7 @@ struct ReviewRow: View {
     private var candidateStrip: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Candidates (\(result.candidates.count)):")
+                Text("Logos (\(result.candidates.count))")
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -617,17 +652,18 @@ struct ReviewRow: View {
     }
 
     private var detail: String {
-        let source = model.chosenCandidate(for: result)?.source.displayName ?? "none"
-        let flags = result.flags.isEmpty ? "" : " · " + result.flags.joined(separator: ", ")
-        return "\(label(result.confidence)) · \(source)\(flags)"
+        let source = model.chosenCandidate(for: result)?.source.displayName ?? "No logo yet"
+        let phrases = plainReviewFlags(result.flags)
+        let flags = phrases.isEmpty ? "" : " · " + phrases.joined(separator: " · ")
+        return "\(confidenceLabel(result.confidence)) · \(source)\(flags)"
     }
 
-    private func label(_ c: Confidence) -> String {
+    private func confidenceLabel(_ c: Confidence) -> String {
         switch c {
-        case .high: "high"
-        case .medium: "medium"
-        case .low: "low"
-        case .skip: "skip"
+        case .high: "High confidence"
+        case .medium: "Needs a look"
+        case .low: "Low confidence"
+        case .skip: "Skipped"
         }
     }
 }
@@ -750,7 +786,7 @@ struct ContactDetailSheet: View {
                 Label("Candidate Logos (\(result.candidates.count))", systemImage: "photo.stack")
                     .font(.headline)
                 Spacer()
-                Button("Custom image…") {
+                Button("Custom Image") {
                     showingManualOverride = true
                 }
                 .font(.caption.bold())
@@ -937,17 +973,18 @@ struct ContactDetailSheet: View {
 
     private var matchingRationaleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Match Rationale", systemImage: "sparkles")
+            Label("Why This Logo", systemImage: "sparkles")
                 .font(.headline)
 
-            if !result.flags.isEmpty {
-                Text("Engine flags: \(result.flags.joined(separator: ", "))")
+            let phrases = plainReviewFlags(result.flags)
+            if !phrases.isEmpty {
+                Text(phrases.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             if let chosen = chosenCandidate {
-                Text("Selected source: \(chosen.source.displayName) (\(chosen.source.rawValue))")
+                Text("Logo from \(chosen.source.displayName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let page = chosen.pageURL {
@@ -971,13 +1008,13 @@ struct ContactDetailSheet: View {
 
     private var liveSimulationSection: some View {
         VStack(spacing: 16) {
-            Text("Live iOS Simulation")
+            Text("How It Looks")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Incoming Call Banner Simulation
             VStack(spacing: 12) {
-                Text("INCOMING CALL").font(.caption2.bold()).foregroundStyle(.secondary)
+                Text("Incoming Call").font(.caption2.bold()).foregroundStyle(.secondary)
                 LogoThumb(url: chosenCandidate?.imageURL)
                     .frame(width: 88, height: 88)
                     .clipShape(Circle())
@@ -1002,7 +1039,7 @@ struct ContactDetailSheet: View {
 
             // iMessage Header Simulation
             VStack(alignment: .leading, spacing: 8) {
-                Text("iMESSAGE HEADER").font(.caption2.bold()).foregroundStyle(.secondary)
+                Text("Messages").font(.caption2.bold()).foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     LogoThumb(url: chosenCandidate?.imageURL)
                         .frame(width: 42, height: 42)
@@ -1025,7 +1062,7 @@ struct ContactDetailSheet: View {
 
             // Lock Screen Notification Simulation
             VStack(alignment: .leading, spacing: 8) {
-                Text("LOCK SCREEN NOTIFICATION").font(.caption2.bold()).foregroundStyle(.secondary)
+                Text("Lock Screen").font(.caption2.bold()).foregroundStyle(.secondary)
                 HStack(alignment: .top, spacing: 12) {
                     LogoThumb(url: chosenCandidate?.imageURL)
                         .frame(width: 36, height: 36)
@@ -1225,11 +1262,11 @@ struct DiagnosticView: View {
                 Section("Last scan") {
                     LabeledContent("Scanned", value: "\(model.totalScannedCount)")
                     LabeledContent("Business cards", value: "\(model.businessTargetsCount)")
-                    LabeledContent("Affiliated", value: "\(model.affiliatedTargetsCount)")
+                    LabeledContent("At a Company", value: "\(model.affiliatedTargetsCount)")
                     LabeledContent("Personal protected", value: "\(model.protectedPersonCount)")
                 }
                 if !model.sampleDroppedContacts.isEmpty {
-                    Section("Sample of dropped contacts (max 20)") {
+                    Section("Contacts Left Out (up to 20)") {
                         ForEach(model.sampleDroppedContacts) { sample in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(sample.displayName.isEmpty ? "(unnamed contact)" : sample.displayName)
@@ -1238,7 +1275,7 @@ struct DiagnosticView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 if let org = sample.organization, !org.isEmpty {
-                                    Text("Org: \(org)")
+                                    Text("Company: \(org)")
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
                                 }
@@ -1248,7 +1285,7 @@ struct DiagnosticView: View {
                     }
                 }
                 Section("How matching works") {
-                    Text("ContactLogo is review-first, so a contact is only marked as a logo target when a brand can be inferred confidently. The engine treats as a business card: a given-only brand name, a contact whose name OR organization field matches the CompanyCatalog, or a contact with brand-tail decoration (e.g. 'Maya Chen - Texas Instruments'). Personal contacts with no organization, no work email, and no brand-tail are protected — adding a brand to someone's headshot is the wrong-logo outcome the product exists to prevent.")
+                    Text("ContactLogo only suggests a logo when a contact looks like a business.\u{00A0} That includes a company name on its own, a name that matches a known brand, or a person listed with a company, such as Maya Chen - Texas Instruments.\u{00A0} Personal contacts with no company, no work email, and no company in the name are left alone, because putting a brand on someone's photo is the mistake this app is meant to prevent.")
                         .font(.caption)
                 }
             }

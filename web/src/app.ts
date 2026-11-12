@@ -46,6 +46,67 @@ import { countLogoMatch, openSentryFeedback } from "./observability/sentry.ts";
 
 export type FilterStatus = "all" | "ready" | "review" | "notfound" | "missingphoto";
 
+export type ThemeChoice = "system" | "light" | "dark";
+
+export function nextThemeChoice(current: ThemeChoice): ThemeChoice {
+  switch (current) {
+    case "system":
+      return "light";
+    case "light":
+      return "dark";
+    case "dark":
+      return "system";
+    default: {
+      const neverChoice: never = current;
+      return neverChoice;
+    }
+  }
+}
+
+export function themeButtonLabel(choice: ThemeChoice): string {
+  switch (choice) {
+    case "system":
+      return "Match Device";
+    case "light":
+      return "Light";
+    case "dark":
+      return "Dark";
+    default: {
+      const neverChoice: never = choice;
+      return neverChoice;
+    }
+  }
+}
+
+const THEME_STORAGE_KEY = "contactlogo.theme";
+
+function readThemeChoice(): ThemeChoice {
+  try {
+    const stored = globalThis.localStorage?.getItem(THEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark" || stored === "system") return stored;
+  } catch {
+    // Private mode and the DOM test stub have no usable storage.
+  }
+  return "system";
+}
+
+function persistThemeChoice(choice: ThemeChoice): void {
+  try {
+    globalThis.localStorage?.setItem(THEME_STORAGE_KEY, choice);
+  } catch {
+    // The choice still applies for this visit.
+  }
+}
+
+function applyThemeChoice(choice: ThemeChoice): void {
+  const root = document.documentElement;
+  if (!root || typeof root.setAttribute !== "function" || typeof root.removeAttribute !== "function") return;
+  if (choice === "system") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", choice);
+}
+
+let themeChoice = readThemeChoice();
+
 type State = {
   contacts: BookContact[];
   items: ReviewItem[];
@@ -155,7 +216,7 @@ const KNOWN_VIA: ReadonlySet<string> = new Set(["website", "email", "catalog", "
 export const GUESSED_DOMAIN_NOTE = "Domain guessed — check before applying";
 
 export const HD_KEYS_EMPTY_COPY =
-  "High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.";
+  "High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses built-in icons and website icons.";
 
 export const CREDENTIAL_STORAGE_FAILED_COPY =
   "This browser could not save the key.  It will be used until you close the tab.";
@@ -429,7 +490,7 @@ async function importFromGoogle() {
     const message = err instanceof Error ? err.message : "Google import failed";
     state.notice =
       message === "GOOGLE_CONTACTS_NOT_CONFIGURED"
-        ? "Set a Google OAuth client id in Settings, then try again."
+        ? "Add a Google client ID in Settings, then try again."
         : message;
     if (message === "GOOGLE_CONTACTS_NOT_CONFIGURED") state.showSettings = true;
     render();
@@ -892,6 +953,11 @@ function buildCropModal(item: ReviewItem): ModalView {
   const canvas = el("canvas", { class: "crop-canvas", width: "280", height: "280" }) as HTMLCanvasElement;
   const ctx = canvas.getContext("2d");
 
+  function pointerScale(): number {
+    const displayed = canvas.getBoundingClientRect().width;
+    return 512 / (displayed > 0 ? displayed : canvas.width || 280);
+  }
+
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.src = cropState.imgSrc;
@@ -966,8 +1032,8 @@ function buildCropModal(item: ReviewItem): ModalView {
     if (!isDragging) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    cropState.panX = initialPanX + dx * (512 / 280);
-    cropState.panY = initialPanY + dy * (512 / 280);
+    cropState.panX = initialPanX + dx * pointerScale();
+    cropState.panY = initialPanY + dy * pointerScale();
     drawPreview();
   };
   const onMouseUp = () => {
@@ -1000,8 +1066,8 @@ function buildCropModal(item: ReviewItem): ModalView {
     e.preventDefault();
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-    cropState.panX = initialPanX + dx * (512 / 280);
-    cropState.panY = initialPanY + dy * (512 / 280);
+    cropState.panX = initialPanX + dx * pointerScale();
+    cropState.panY = initialPanY + dy * pointerScale();
     drawPreview();
   }, { passive: false });
 
@@ -1452,7 +1518,7 @@ function measureRowHeight(grid: HTMLElement): boolean {
   const gap = parseFloat(getComputedStyle(grid).rowGap) || 16;
   const height = Math.min(720, Math.round(first.getBoundingClientRect().height + gap));
   if (height <= gap) return false;
-  if (height <= measuredRowHeight + 2) return false;
+  if (Math.abs(height - measuredRowHeight) <= 2) return false;
   measuredRowHeight = height;
   return true;
 }
@@ -1540,6 +1606,8 @@ function buildSection(title: string, key: SectionKey): SectionView {
 type Shell = {
   root: HTMLElement;
   settings: HTMLElement;
+  themeBtn: HTMLButtonElement;
+  emptyFilter: HTMLElement;
   settingsInput: HTMLInputElement;
   brandfetchInput: HTMLInputElement;
   logodevInput: HTMLInputElement;
@@ -1580,10 +1648,10 @@ function buildSettingsPanel(): {
   const input = el("input", {
     type: "text",
     class: "settings-input",
-    placeholder: "Google OAuth client id",
+    placeholder: "Google client ID",
     value: getGoogleClientId(),
     autocomplete: "off",
-    "aria-label": "Google OAuth client id",
+    "aria-label": "Google client ID",
   }) as HTMLInputElement;
   const brandfetchInput = el("input", {
     type: "text",
@@ -1601,7 +1669,7 @@ function buildSettingsPanel(): {
     autocomplete: "off",
     "aria-label": "Logo.dev token",
   }) as HTMLInputElement;
-  const hdEmpty = el("p", { class: "meta settings-empty" }, HD_KEYS_EMPTY_COPY);
+  const hdEmpty = el("p", { class: "meta settings-empty" }, visibleSentenceGaps(HD_KEYS_EMPTY_COPY));
   const storageWarn = el("p", { class: "meta settings-warn hidden" }, CREDENTIAL_STORAGE_FAILED_COPY);
   const save = el("button", { class: "btn secondary", type: "button" }, "Save");
   save.addEventListener("click", () => {
@@ -1610,7 +1678,7 @@ function buildSettingsPanel(): {
     setLogoDevToken(logodevInput.value);
     state.notice = didCredentialStorageFail()
       ? CREDENTIAL_STORAGE_FAILED_COPY
-      : "Saved keys in this browser.  Contacts are still not stored.  Re-import to use high-resolution marks.";
+      : "Saved in this browser.  Contacts are still not stored.  Import again to use sharper logos.";
     state.showSettings = false;
     render();
   });
@@ -1621,15 +1689,14 @@ function buildSettingsPanel(): {
     el(
       "p",
       { class: "meta" },
-      "Optional Google People API client id for Import and Direct Sync to Google Contacts.  Stored only in this browser.",
+      visibleSentenceGaps("Optional Google client ID for importing contacts and sending approved photos back to Google.  Stored only in this browser."),
     ),
+    input,
     el(
       "p",
       { class: "meta" },
-      "High-resolution Brandfetch and Logo.dev marks need a key at build time.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.",
+      visibleSentenceGaps("Paste a Brandfetch client ID or a Logo.dev token for sharper logos.  Leave them blank to use built-in icons."),
     ),
-    input,
-    el("p", { class: "meta" }, "Optional Brandfetch client id and Logo.dev token for high-resolution marks."),
     brandfetchInput,
     logodevInput,
     hdEmpty,
@@ -1719,6 +1786,20 @@ function mountShell(root: HTMLElement): Shell {
     state.showSettings = !state.showSettings;
     render();
   });
+  const themeBtn = el(
+    "button",
+    {
+      class: "btn ghost",
+      type: "button",
+      "aria-label": `Appearance, ${themeButtonLabel(themeChoice)}`,
+    },
+    themeButtonLabel(themeChoice),
+  );
+  themeBtn.addEventListener("click", () => {
+    themeChoice = nextThemeChoice(themeChoice);
+    persistThemeChoice(themeChoice);
+    render();
+  });
   app.append(
     el(
       "header",
@@ -1738,7 +1819,7 @@ function mountShell(root: HTMLElement): Shell {
           }),
           el("h1", {}, "ContactLogo"),
         ),
-        settingsBtn,
+        el("div", { class: "hero-actions" }, themeBtn, settingsBtn),
       ),
       el(
         "p",
@@ -1801,7 +1882,7 @@ function mountShell(root: HTMLElement): Shell {
   const searchInput = el("input", {
     type: "search",
     class: "search-input",
-    placeholder: "Search contacts by brand, domain, phone…",
+    placeholder: "Search by name, company, or phone",
     "aria-label": "Search contacts",
   }) as HTMLInputElement;
   searchInput.addEventListener("input", () => {
@@ -1815,7 +1896,7 @@ function mountShell(root: HTMLElement): Shell {
     state.showCircleMask = maskCheckbox.checked;
     render();
   });
-  const maskToggle = el("label", { class: "mask-toggle" }, maskCheckbox, el("span", {}, "Circle Mask Preview"));
+  const maskToggle = el("label", { class: "mask-toggle" }, maskCheckbox, el("span", {}, "Round Photo Preview"));
   review.append(el("div", { class: "search-bar" }, searchInput, maskToggle));
 
   const chips = new Map<FilterStatus, HTMLButtonElement>();
@@ -1882,13 +1963,13 @@ function mountShell(root: HTMLElement): Shell {
   );
   backup.addEventListener("click", downloadBackup);
 
-  const googleSyncBtn = el("button", { class: "btn secondary google-sync-btn hidden", type: "button" }, "⚡ Apply to Google Contacts");
+  const googleSyncBtn = el("button", { class: "btn secondary google-sync-btn hidden", type: "button" }, "Apply to Google Contacts");
   googleSyncBtn.addEventListener("click", () => void syncToGoogleContacts());
 
   const googleUndoBtn = el(
     "button",
     { class: "btn ghost google-undo-btn hidden", type: "button", title: "Restore Google Contacts photos from the last sync" },
-    "↩ Undo Google Sync",
+    "Undo Google Sync",
   );
   googleUndoBtn.addEventListener("click", () => void undoGoogleContactsSync());
 
@@ -1904,6 +1985,8 @@ function mountShell(root: HTMLElement): Shell {
   for (const key of ["ready", "review", "nonbrand", "notfound"] as SectionKey[]) {
     review.append(sections[key].node);
   }
+  const emptyFilter = el("p", { class: "empty-filter hidden" }, "No contacts match this search.");
+  review.append(emptyFilter);
   app.append(review);
 
   const reportBtn = el("a", { href: "#report-problem" }, "Report a Problem");
@@ -1916,7 +1999,7 @@ function mountShell(root: HTMLElement): Shell {
     el(
       "p",
       { class: "footer" },
-      "Review-first: high-confidence candidates may be pre-checked; guessed domains, favicons, and cards with existing photos wait for your review.  ",
+      visibleSentenceGaps("Review-first: strong matches may already be selected.  Guessed websites, website icons, and contacts that already have a photo wait for your review.  "),
       el("a", { href: "/privacy" }, "Privacy"),
       " · ",
       el("a", { href: "/terms" }, "Terms"),
@@ -1932,16 +2015,20 @@ function mountShell(root: HTMLElement): Shell {
         "a",
         { href: "https://simplewithus.com/", "aria-label": "From Simple With Us" },
         "From ",
-        el(
-          "picture",
-          {},
-          el("source", {
-            media: "(prefers-color-scheme: dark)",
-            srcset: "/swu-wordmark-dark.webp",
-            type: "image/webp",
-          }),
-          el("img", { src: "/swu-wordmark-light.webp", alt: "Simple With Us by Jay Wedgeworth", width: "288", height: "30" }),
-        ),
+        el("img", {
+          class: "brand-mark-light",
+          src: "/swu-wordmark-light.webp",
+          alt: "Simple With Us by Jay Wedgeworth",
+          width: "288",
+          height: "30",
+        }),
+        el("img", {
+          class: "brand-mark-dark",
+          src: "/swu-wordmark-dark.webp",
+          alt: "",
+          width: "288",
+          height: "30",
+        }),
       ),
       ),
   );
@@ -1951,6 +2038,8 @@ function mountShell(root: HTMLElement): Shell {
   const built: Shell = {
     root,
     settings: settings.node,
+    themeBtn,
+    emptyFilter,
     settingsInput: settings.input,
     brandfetchInput: settings.brandfetchInput,
     logodevInput: settings.logodevInput,
@@ -1972,6 +2061,7 @@ function mountShell(root: HTMLElement): Shell {
   shell = built;
 
   window.addEventListener("resize", () => {
+    measuredRowHeight = 0;
     for (const key of ["ready", "review", "nonbrand", "notfound"] as SectionKey[]) {
       built.sections[key].repaint();
     }
@@ -2038,6 +2128,10 @@ function onTriageKey(e: KeyboardEvent) {
 }
 
 function syncShell(s: Shell) {
+  applyThemeChoice(themeChoice);
+  const appearance = themeButtonLabel(themeChoice);
+  if (s.themeBtn.textContent !== appearance) s.themeBtn.textContent = appearance;
+  s.themeBtn.setAttribute("aria-label", `Appearance, ${appearance}`);
   s.settings.classList.toggle("hidden", !state.showSettings);
   if (state.showSettings && s.settingsInput.value !== getGoogleClientId() && document.activeElement !== s.settingsInput) {
     s.settingsInput.value = getGoogleClientId();
@@ -2051,7 +2145,8 @@ function syncShell(s: Shell) {
   s.hdEmpty.classList.toggle("hidden", hasHdLogoKeys());
   s.storageWarn.classList.toggle("hidden", !didCredentialStorageFail());
 
-  if (s.notice.textContent !== state.notice) s.notice.textContent = state.notice;
+  const noticeCopy = visibleSentenceGaps(state.notice);
+  if (s.notice.textContent !== noticeCopy) s.notice.textContent = noticeCopy;
   s.notice.classList.toggle("hidden", state.notice === "");
 
   const reviewing = state.stage === "review";
@@ -2084,11 +2179,14 @@ function syncShell(s: Shell) {
   s.googleUndoBtn.classList.toggle("hidden", !state.hasGoogleUndoBatch);
 
   const narrowed = state.searchQuery.trim() !== "" || state.filterStatus !== "all";
+  let matched = 0;
   for (const key of ["ready", "review", "nonbrand", "notfound"] as SectionKey[]) {
     const visible = filterItems(groups[key], state.searchQuery, state.filterStatus);
+    matched += visible.length;
     s.sections[key].node.classList.toggle("hidden", visible.length === 0 && narrowed);
     s.sections[key].setItems(visible);
   }
+  s.emptyFilter.classList.toggle("hidden", !narrowed || matched > 0);
 }
 
 export function render() {
