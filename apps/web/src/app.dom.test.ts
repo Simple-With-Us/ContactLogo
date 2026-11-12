@@ -23,6 +23,8 @@ type StubEvent = {
 };
 
 let created: StubElement[] = [];
+let cardHeight = 200;
+const windowListeners = new Map<string, (() => void)[]>();
 
 class StubElement {
   tagName: string;
@@ -120,7 +122,7 @@ class StubElement {
     this.listeners.set(type, (this.listeners.get(type) ?? []).filter((h) => h !== fn));
   }
   getBoundingClientRect() {
-    return { height: this.tagName === "ARTICLE" ? 200 : 0, width: 300, top: 0, left: 0 };
+    return { height: this.tagName === "ARTICLE" ? cardHeight : 0, width: 300, top: 0, left: 0 };
   }
   focus(): void {
     stubDocument.activeElement = this;
@@ -161,7 +163,9 @@ const stubDocument = {
 
 const stubWindow = {
   innerHeight: 900,
-  addEventListener() {},
+  addEventListener(type: string, fn: () => void) {
+    windowListeners.set(type, [...(windowListeners.get(type) ?? []), fn]);
+  },
   removeEventListener() {},
   prompt: () => null,
 };
@@ -471,4 +475,19 @@ test("J/K move the focused card and A approves it", () => {
   const focused = cards().find((c) => hasClass(c, "is-focused"))!;
   const check = focused.children.find((n) => n.getAttribute("type") === "checkbox")!;
   assert.equal(check.checked, true, "A did not approve the focused card");
+});
+
+
+test("resize remeasures shorter desktop rows after a mobile viewport", () => {
+  stubDocument.root = new StubElement("div");
+  cardHeight = 400;
+  adoptContacts(book(90), "Resize fixture");
+  const spacer = ancestorWithClass(cards()[0], "virtual-list-spacer")!;
+  const tall = parseFloat(spacer.style.height);
+  cardHeight = 248;
+  for (const fn of windowListeners.get("resize") ?? []) fn();
+  const short = parseFloat(spacer.style.height);
+  assert.equal(short / tall, 264 / 416);
+  cardHeight = 200;
+  for (const fn of windowListeners.get("resize") ?? []) fn();
 });

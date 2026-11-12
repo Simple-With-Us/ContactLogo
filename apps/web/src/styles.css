@@ -670,7 +670,8 @@ input[type="checkbox"]:focus-visible {
 }
 
 @media (max-width: 720px) {
-  :root { --review-card-height: 336px; }
+  :root { --review-card-height: 400px; }
+  .card-content { grid-column: 1 / -1; }
   .hero-row { align-items: flex-start; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(100%, 1fr)); }
   .search-input { min-width: 0; flex-basis: 100%; }

@@ -1518,7 +1518,7 @@ function measureRowHeight(grid: HTMLElement): boolean {
   const gap = parseFloat(getComputedStyle(grid).rowGap) || 16;
   const height = Math.min(720, Math.round(first.getBoundingClientRect().height + gap));
   if (height <= gap) return false;
-  if (height <= measuredRowHeight + 2) return false;
+  if (Math.abs(height - measuredRowHeight) <= 2) return false;
   measuredRowHeight = height;
   return true;
 }
@@ -2061,6 +2061,7 @@ function mountShell(root: HTMLElement): Shell {
   shell = built;
 
   window.addEventListener("resize", () => {
+    measuredRowHeight = 0;
     for (const key of ["ready", "review", "nonbrand", "notfound"] as SectionKey[]) {
       built.sections[key].repaint();
     }
