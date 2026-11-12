@@ -423,7 +423,7 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.setSearchQuery(it) },
-                    placeholder = { Text("Search by name, company, or phone") },
+                    placeholder = { Text("Search by name or company") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                     singleLine = true,
                     modifier = Modifier
@@ -474,7 +474,7 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                         onClick = { viewModel.selectAllHigh() },
                         enabled = readyCount > 0 && !busy
                     ) {
-                        Text("Select High")
+                        Text("Select High Confidence")
                     }
                 }
 

@@ -1,8 +1,11 @@
+import os
 import SwiftUI
 import ContactLogoKit
 #if canImport(UIKit)
 import UIKit
 #endif
+
+private let scanFailureLog = Logger(subsystem: "com.contactlogo.ios", category: "scan")
 
 /// Plain phrases for the flags a reviewer can act on. Internal pipeline
 /// markers stay out of the row and the detail screen.
@@ -76,6 +79,10 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
+        .onChange(of: model.lastError) { _, newValue in
+            guard case .scanFailed(let underlying) = newValue else { return }
+            scanFailureLog.error("The last scan did not finish: \(underlying, privacy: .public)")
+        }
     }
 
     private var idle: some View {
@@ -85,8 +92,8 @@ struct ContentView: View {
             if AddressBookVisibilityNotice.applies(to: model) {
                 AddressBookVisibilityNotice()
             }
-            if case .scanFailed(let underlying) = model.lastError {
-                Label("The last scan failed (\(underlying)). Tap Scan Contacts to try again.",
+            if case .scanFailed = model.lastError {
+                Label("The last scan did not finish.\u{00A0} Tap Scan Contacts to try again.",
                       systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
                     .font(.footnote)
@@ -270,7 +277,7 @@ struct ScanBreakdownRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let scannedAt {
-                Text("Scanned \(Self.stamp.string(from: scannedAt)) — if this looks stale, the scan did not finish.\u{00A0} Tap Scan Contacts to run it again.")
+                Text("Scanned \(Self.stamp.string(from: scannedAt)).\u{00A0} If this looks old, tap Scan Contacts to run it again.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -345,7 +352,7 @@ struct ReviewQueueView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             HStack {
-                Button("Select High") { model.selectHigh(true) }
+                Button("Select High Confidence") { model.selectHigh(true) }
                 Button("Clear") { model.selectHigh(false) }
                 Spacer()
                 Button("Apply") { Task { await model.applySelected() } }
@@ -465,8 +472,8 @@ struct ReviewQueueView: View {
             return "Couldn't undo batch \(batchID.prefix(8)) (\(underlying)). You can try again."
         case .noBatchToUndo:
             return "There's no batch to undo."
-        case .scanFailed(let underlying):
-            return "The scan failed (\(underlying)). Tap Scan to try again."
+        case .scanFailed:
+            return "The last scan did not finish.\u{00A0} Tap Scan Contacts to try again."
         case .scanIncomplete(let matched, let total):
             return "The scan stopped early: matched \(matched) of \(total). Showing what finished. Tap Scan to run it again."
         }
@@ -570,7 +577,7 @@ struct ReviewRow: View {
                         }
                         Button("Details") { onPreview?() }
                             .font(.caption)
-                        Button("Choose Own") { onManualOverride?() }
+                        Button("Choose Your Own") { onManualOverride?() }
                             .font(.caption)
                     }
                     .padding(.top, 2)

@@ -174,7 +174,7 @@ struct ReviewQueueView: View {
             HStack {
                 Text("Review Queue").font(.title2.bold())
                 Spacer()
-                Button("Select High") { model.selectHigh(true) }
+                Button("Select High Confidence") { model.selectHigh(true) }
                     .keyboardShortcut("a", modifiers: [.command, .shift])
                 Button("Clear High") { model.selectHigh(false) }
                 Button("Apply Selected (\(model.selected.count))") { Task { await model.applySelected() } }
@@ -365,7 +365,7 @@ struct ReviewRow: View {
                         }
                         Button("Details") { onInspect?() }
                             .font(.caption)
-                        Button("Choose Own") { onManualOverride?() }
+                        Button("Choose Your Own") { onManualOverride?() }
                             .font(.caption)
                     }
                     .padding(.top, 2)
