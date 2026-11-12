@@ -10,7 +10,7 @@
 # minimum interval between successful ships per app (DEFAULT_MIN_INTERVAL_SEC
 # near the top of scripts/ios-fleet/ship-testflight.sh), and a skip when git
 # HEAD already shipped.  Runs inside the window log "ship-gate: skip" and exit 0
-# without consuming a build number.  The scheduled catch-up in the workflow
+# without resolving or consuming a version.  The scheduled catch-up in the workflow
 # ships a merge that landed inside the window on a later tick.
 # Override ONE run with --force-ship or IOS_TF_MIN_INTERVAL_SEC=<seconds>;
 # never set either as a standing value in a workflow.

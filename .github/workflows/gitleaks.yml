@@ -57,8 +57,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PUSH_BEFORE: ${{ github.before }}
-          PUSH_AFTER: ${{ github.after }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
         run: |
           set -euo pipefail
           gitleaks version
@@ -68,7 +68,15 @@ jobs:
               range="${PR_BASE}..${PR_HEAD}"
               ;;
             push)
-              if [ -z "${PUSH_BEFORE:-}" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              # Both ends have to be real commits in this checkout.  A branch
+              # deletion sends an all-zero "after", and a force-push can send a
+              # "before" that no ref reaches any more, so git log would exit 128
+              # and the job would scan nothing.  Either case scans full history.
+              zero="0000000000000000000000000000000000000000"
+              if [ -z "${PUSH_BEFORE:-}" ] || [ -z "${PUSH_AFTER:-}" ] \
+                || [ "$PUSH_BEFORE" = "$zero" ] || [ "$PUSH_AFTER" = "$zero" ] \
+                || ! git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null \
+                || ! git cat-file -e "${PUSH_AFTER}^{commit}" 2>/dev/null; then
                 range=""
               else
                 range="${PUSH_BEFORE}..${PUSH_AFTER}"
@@ -78,6 +86,27 @@ jobs:
               range=""
               ;;
           esac
+
+          if [ -z "$range" ]; then
+            echo "::warning::gitleaks is scanning FULL HISTORY instead of the changed commit range. On a push this means the before/after SHAs were empty, all-zero or not in this checkout (a branch deletion or a force-push) - check that PUSH_BEFORE/PUSH_AFTER use github.event.before / github.event.after, not github.before / github.after (those are not github-context properties, so they expand to empty and silently blind the scanner to new leaks)."
+          fi
+
+          # The suppression list is policy, so it is read from the trusted
+          # base and never from the tree under scan.  gitleaks always loads
+          # ./.gitleaksignore from the scanned source, so on a pull request the
+          # working copy is replaced with the base branch's copy (or removed
+          # when the base has none).  A PR cannot whitelist its own finding;
+          # a new fingerprint takes effect only once it is on main.
+          if [ "$EVENT" = "pull_request" ]; then
+            if ! git diff --quiet "${PR_BASE}" "${PR_HEAD}" -- .gitleaksignore; then
+              echo "::notice::this PR changes .gitleaksignore; the scan uses the base branch's copy, so the change takes effect only after merge"
+            fi
+            if git cat-file -e "${PR_BASE}:.gitleaksignore" 2>/dev/null; then
+              git show "${PR_BASE}:.gitleaksignore" > .gitleaksignore
+            else
+              rm -f .gitleaksignore
+            fi
+          fi
 
           report="${RUNNER_TEMP:-/tmp}/gitleaks-report.json"
           rm -f "$report"

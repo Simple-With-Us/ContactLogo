@@ -35,7 +35,15 @@ PIN_FILE="${REPO_ROOT}/scripts/ios-fleet.sha256"
 
 # Exactly the files that can change what this repo ships.  The Sentry helper
 # scripts in the same directory are ordinary CI scripts and are not pinned.
-PINNED_FILES="ship-testflight.sh asc-api.mjs apps.json scheduled-ship-gate.sh publish-ios-versions.sh ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json"
+# asc-key.mjs is pinned since AFC-459:  the App Store Connect credential is
+# validated and staged by it, so an unreviewed edit to it decides which key
+# the ship runs with.
+# version-plan.mjs is pinned since AFC-517:  it holds the version-numbering
+# rules (the next patch on the train, the build floor), so an unreviewed edit
+# to it decides which version and which build number the ship carries.
+# shared-build.mjs is pinned:  it decides the uploaded build in fixed mode
+# (the shared merge-timestamp build), like version-plan.mjs.
+PINNED_FILES="ship-testflight.sh asc-api.mjs asc-key.mjs apps.json scheduled-ship-gate.sh publish-ios-versions.sh ExportOptions-appstore.plist ExportOptions-export-ipa.plist mac-appstore-profiles.json version-plan.mjs shared-build.mjs"
 
 MODE="check"
 case "${1:-}" in

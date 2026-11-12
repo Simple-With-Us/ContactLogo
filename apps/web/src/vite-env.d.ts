@@ -1,0 +1,26 @@
+interface ImportMetaEnv {
+  readonly MODE?: string;
+  readonly DD_APPLICATION_ID?: string;
+  readonly DD_CLIENT_TOKEN?: string;
+  readonly DD_SITE?: string;
+  readonly DD_SERVICE?: string;
+  readonly DD_ENV?: string;
+  readonly DD_VERSION?: string;
+  readonly DD_REQUIRE?: string;
+  readonly VITE_GOOGLE_CONTACTS_CLIENT_ID?: string;
+  readonly VITE_BRANDFETCH_CLIENT_ID?: string;
+  readonly VITE_LOGODEV_TOKEN?: string;
+  readonly VITE_SENTRY_DSN?: string;
+  readonly VITE_SENTRY_RELEASE?: string;
+  readonly VERCEL_GIT_COMMIT_SHA?: string;
+  readonly GITHUB_SHA?: string;
+  readonly VITE_SENTRY_ENV?: string;
+  readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string;
+  readonly VITE_SENTRY_REPLAY_ENABLED?: string;
+  readonly VITE_SENTRY_REPLAY_SESSION_SAMPLE_RATE?: string;
+  readonly VITE_SENTRY_REPLAY_ERROR_SAMPLE_RATE?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

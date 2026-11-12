@@ -39,6 +39,29 @@ public protocol ContactsProvider: Sendable {
     /// False when `visibleContactCount()` tripped an enumeration bound, so
     /// the returned number is a lower bound rather than the true total.
     func visibleContactCountIsExact() async -> Bool
+    /// One identifier-only enumeration returning the count AND whether it is
+    /// exact.  **A caller that needs both must use this.**
+    ///
+    /// 2026-10-18 (CL-205) — `visibleContactCount()` and
+    /// `visibleContactCountIsExact()` are two separate full passes over the
+    /// address book.  Calling both, which the cold-launch path and the
+    /// Diagnostic screen both did, enumerated the entire book twice back to
+    /// back.  An earlier private helper was meant to fix that but each public
+    /// method still called it independently, so the double pass survived and
+    /// the comment claiming otherwise was wrong.
+    func visibleContactCountSnapshot() async -> VisibleContactCount
+}
+
+/// Count of contacts in the device database, plus whether that count is exact
+/// or a lower bound produced by the enumeration ceiling.
+public struct VisibleContactCount: Sendable, Equatable {
+    public let count: Int
+    public let isExact: Bool
+
+    public init(count: Int, isExact: Bool) {
+        self.count = count
+        self.isExact = isExact
+    }
 }
 
 extension ContactsProvider {
@@ -47,6 +70,16 @@ extension ContactsProvider {
     public func limitedAccessDiagnosis() async -> LimitedAccessState { .open }
     public func visibleContactCount() async -> Int { 0 }
     public func visibleContactCountIsExact() async -> Bool { true }
+    /// Default derives from the two single-value methods so existing
+    /// conformers and test doubles that stub only `visibleContactCount()`
+    /// keep working.  `CNContactsProvider` overrides this with ONE pass —
+    /// the default costs two, which is why the real provider must override.
+    public func visibleContactCountSnapshot() async -> VisibleContactCount {
+        VisibleContactCount(
+            count: await visibleContactCount(),
+            isExact: await visibleContactCountIsExact()
+        )
+    }
 }
 
 /// 2026-09-21 follow-up audit — the result of probing `.limited` Contacts
@@ -118,8 +151,55 @@ import Contacts
 /// Contacts.framework-backed provider (macOS / iOS).
 public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     private let store = CNContactStore()
+    /// One identifier-only pass, reused by `visibleContactCount()`,
+    /// `visibleContactCountIsExact()`, and `visibleContactCountSnapshot()`
+    /// on this instance.  Cold launch calls the snapshot twice.
+    private let visibleCountCache = VisibleContactCountCache()
 
     public init() {}
+
+    // MARK: - Executor hops (CL-205)
+
+    /// Runs a synchronous Contacts-framework call on the cooperative pool
+    /// rather than on the caller's executor.
+    ///
+    /// `async` alone does **not** move work off the caller's actor: an async
+    /// function with no suspension point runs inline where it was called.
+    /// Every method below contains no `await`, and `ReviewSession` is
+    /// `@MainActor`, so `store.enumerateContacts` was executing on the main
+    /// thread — a fully-blocked hang of seconds at cold launch on a large
+    /// address book (Sentry CONTACTLOGO-4, 2.8-3.6 s, 6 s after
+    /// `app_start_time`).
+    ///
+    /// `CNContactStore` is documented as safe for concurrent use, and this
+    /// type is `@unchecked Sendable`, so capturing `self` is sound.
+    ///
+    /// A detached task does not inherit the caller's cancellation, so the
+    /// hop forwards it:  cancelling the caller cancels the detached task, and
+    /// the enumeration blocks below check `Task.isCancelled` and set `stop`,
+    /// so abandoned work ends early instead of walking the whole address book.
+    private func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        let task = Task.detached(priority: .userInitiated) { work() }
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func offMainThrowing<T: Sendable>(
+        _ work: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        let task = Task.detached(priority: .userInitiated) { () throws -> T in
+            try Task.checkCancellation()
+            return try work()
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
 
     public func requestAccess() async throws -> Bool {
         try await store.requestAccess(for: .contacts)
@@ -214,32 +294,63 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
         await visibleContactCountSnapshot().isExact
     }
 
-    /// One identifier-only pass — shared by `visibleContactCount` and
-    /// `visibleContactCountIsExact` so the Diagnostic screen never runs
-    /// two full enumerations or disagrees with itself.
-    private func visibleContactCountSnapshot() async -> (count: Int, isExact: Bool) {
+    /// One identifier-only pass returning both values.
+    ///
+    /// CL-205 — this previously existed as a private helper, but each public
+    /// method still called it independently, so a caller wanting both numbers
+    /// ran the whole enumeration twice.  It is now a protocol requirement so
+    /// the launch path and the Diagnostic screen take both from ONE pass.
+    /// The pass is cached on this provider.  `limitedAccessDiagnosis()` and
+    /// the launch snapshot share that cache, so the second call does not
+    /// enumerate again.  A cancelled walk or a store error is not stored.
+    public func visibleContactCountSnapshot() async -> VisibleContactCount {
         #if canImport(Contacts)
-        let keys: [CNKeyDescriptor] = [CNContactIdentifierKey as CNKeyDescriptor]
-        let request = CNContactFetchRequest(keysToFetch: keys)
-        var count = 0
-        var isExact = true
-        do {
-            try store.enumerateContacts(with: request) { _, stop in
-                count += 1
-                // `stop.pointee = true` halts the entire enumeration, not just the
-                // current callback.  Without this the "1,000 contact bound" was a
-                // no-op — every contact still ran, doubling scan cost.
-                if count > Self.visibilityBound {
-                    stop.pointee = true
-                    isExact = false
+        // Built inside the detached task, not captured: `CNContactFetchRequest`
+        // is not `Sendable`, and this package builds in Swift 6 language mode.
+        let bound = Self.visibilityBound
+        return await visibleCountCache.value { [self] in
+            await offMain { [self] in
+                let keys: [CNKeyDescriptor] = [CNContactIdentifierKey as CNKeyDescriptor]
+                let request = CNContactFetchRequest(keysToFetch: keys)
+                var count = 0
+                var isExact = true
+                var cacheable = true
+                do {
+                    try store.enumerateContacts(with: request) { _, stop in
+                        // The caller gave up:  stop now.  The partial count is
+                        // reported as inexact and is not cached.
+                        if Task.isCancelled {
+                            stop.pointee = true
+                            isExact = false
+                            cacheable = false
+                            return
+                        }
+                        count += 1
+                        // `stop.pointee = true` halts the entire enumeration, not just the
+                        // current callback.  Without this the bound was a
+                        // no-op — every contact still ran.
+                        if count > bound {
+                            stop.pointee = true
+                            isExact = false
+                        }
+                    }
+                } catch {
+                    return VisibleContactCountPass(
+                        snapshot: VisibleContactCount(count: 0, isExact: true),
+                        cacheable: false
+                    )
                 }
+                if Task.isCancelled {
+                    cacheable = false
+                }
+                return VisibleContactCountPass(
+                    snapshot: VisibleContactCount(count: count, isExact: isExact),
+                    cacheable: cacheable
+                )
             }
-        } catch {
-            return (0, true)
         }
-        return (count, isExact)
         #else
-        return (0, true)
+        return VisibleContactCount(count: 0, isExact: true)
         #endif
     }
 
@@ -299,10 +410,23 @@ public final class CNContactsProvider: ContactsProvider, @unchecked Sendable {
     }
 
     public func fetchCandidates() async throws -> [ContactIdentity] {
-        try Self.fetchCandidates { request, yield in
-            try store.enumerateContacts(with: request) { contact, _ in
-                yield(contact)
+        // CL-205 — same main-thread trap as the count enumeration: this body
+        // has no `await`, so it ran inline on the caller's executor, which for
+        // `ReviewSession.scanAndMatch()` is the MainActor.
+        try await offMainThrowing { [self] in
+            let candidates = try Self.fetchCandidates { request, yield in
+                try store.enumerateContacts(with: request) { contact, stop in
+                    if Task.isCancelled {
+                        stop.pointee = true
+                        return
+                    }
+                    yield(contact)
+                }
             }
+            // A cancelled scan throws instead of returning a partial list
+            // that a caller could mistake for the whole address book.
+            try Task.checkCancellation()
+            return candidates
         }
     }
 

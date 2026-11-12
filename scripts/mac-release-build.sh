@@ -44,7 +44,7 @@ APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 ZIP_FILE="$DIST_DIR/ContactLogo.zip"
 DMG_FILE="$DIST_DIR/ContactLogo.dmg"
-ENTITLEMENTS="$ROOT_DIR/Apps/ContactLogoMac/ContactLogoMac.entitlements"
+ENTITLEMENTS="$ROOT_DIR/apps/macos/ContactLogoMac.entitlements"
 
 # --- Auto-update (Sparkle 2) -------------------------------------------------
 SPARKLE_FEED_URL_DEFAULT="https://github.com/Simple-With-Us/ContactLogo/releases/latest/download/appcast.xml"

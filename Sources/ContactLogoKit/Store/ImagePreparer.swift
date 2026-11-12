@@ -6,7 +6,7 @@ import ImageIO
 
 /// Rasterizes a fetched candidate image to a padded, square PNG suitable for
 /// `CNContact.imageData` — the native equivalent of the web canvas path
-/// (`padAndSquareImage` in web/src/engine/logos.ts).
+/// (`padAndSquareImage` in apps/web/src/engine/logos.ts).
 ///
 /// MATCHING-ENGINE §5.3 is "pad, never crop": the mark keeps its aspect ratio
 /// and gains transparent margin, so a wide wordmark is letterboxed rather than

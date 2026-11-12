@@ -1,9 +1,30 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { countLogoMatch, sentryStarted, startSentry } from "./sentry.ts";
+
+function findRepositoryRoot(start: string): string {
+  let current = start;
+  while (true) {
+    if (
+      existsSync(
+        join(
+          current,
+          "apps/android/app/src/main/java/com/contactlogo/ContactLogoApp.kt",
+        ),
+      )
+    ) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) throw new Error("ContactLogo repository root not found");
+    current = parent;
+  }
+}
+
+const repositoryRoot = findRepositoryRoot(dirname(fileURLToPath(import.meta.url)));
 
 test("startSentry is inert without a DSN", () => {
   startSentry();
@@ -17,10 +38,7 @@ test("countLogoMatch never throws when Sentry is dark", () => {
 
 test("Android native Sentry inits masked Replay and profiling", () => {
   const app = readFileSync(
-    join(
-      dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoAndroid/app/src/main/java/com/contactlogo/ContactLogoApp.kt",
-    ),
+    join(repositoryRoot, "apps/android/app/src/main/java/com/contactlogo/ContactLogoApp.kt"),
     "utf8",
   );
   assert.match(app, /SentryAndroid\.init/);
@@ -30,10 +48,7 @@ test("Android native Sentry inits masked Replay and profiling", () => {
   assert.match(app, /setMaskAllText\(true\)/);
   assert.match(app, /options\.release = "\$\{BuildConfig\.VERSION_NAME\}\+\$\{BuildConfig\.VERSION_CODE\}"/);
   const gradle = readFileSync(
-    join(
-      dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoAndroid/app/build.gradle.kts",
-    ),
+    join(repositoryRoot, "apps/android/app/build.gradle.kts"),
     "utf8",
   );
   assert.match(gradle, /id\("io\.sentry\.android\.gradle"\)/);
@@ -55,28 +70,19 @@ test("sentry configures subtle feedback integration", () => {
 
 test("native Cocoa and the ship helper inject DSN and upload dSYMs", () => {
   const ios = readFileSync(
-    join(
-      dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoiOS/SentryTelemetry.swift",
-    ),
+    join(repositoryRoot, "apps/ios/SentryTelemetry.swift"),
     "utf8",
   );
   const mac = readFileSync(
-    join(
-      dirname(fileURLToPath(import.meta.url)),
-      "../../../Apps/ContactLogoMac/SentryTelemetry.swift",
-    ),
+    join(repositoryRoot, "apps/macos/SentryTelemetry.swift"),
     "utf8",
   );
   const ci = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/ci.yml"),
+    join(repositoryRoot, ".github/workflows/ci.yml"),
     "utf8",
   );
   const dsym = readFileSync(
-    join(
-      dirname(fileURLToPath(import.meta.url)),
-      "../../../scripts/ios-fleet/upload-sentry-dsyms.sh",
-    ),
+    join(repositoryRoot, "scripts/ios-fleet/upload-sentry-dsyms.sh"),
     "utf8",
   );
   assert.match(ios, /options\.releaseName/);
@@ -110,7 +116,7 @@ test("web Sentry sets a release and emits logs when a DSN is present", () => {
   assert.match(viteSrc, /project:\s*"contactlogo"/);
   assert.match(viteSrc, /\.\.\.\(release\s*\?/);
   const ciSrc = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/ci.yml"),
+    join(repositoryRoot, ".github/workflows/ci.yml"),
     "utf8",
   );
   assert.match(ciSrc, /cli\.sentry\.dev\/install/);

@@ -21,15 +21,21 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: web
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
 
+      - name: Check canonical repository layout
+        working-directory: .
+        run: |
+          python3 scripts/test-platform-layout.py
+          python3 scripts/check-platform-layout.py
+
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install
         run: npm ci --no-audit --no-fund
@@ -50,7 +56,7 @@ jobs:
     # macos-latest was starving for hours while macos-15 runners still
     # picked up the apple matrix on the same workflow; keep kit on the
     # same pool so swift test is not the only job stuck queued.
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -58,12 +64,12 @@ jobs:
       - name: Swift tests
         run: swift test
 
-  # Builds the SwiftUI app shells (Apps/) that `swift test` never touches,
+  # Builds the SwiftUI app shells (apps/) that `swift test` never touches,
   # because they live in an XcodeGen-generated Xcode project, not the SwiftPM
   # package. Regenerates the project from project.yml so it always reflects
   # the committed spec, then builds each app target without codesigning.
   apple:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -98,7 +104,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .build/DerivedData
-          key: ${{ runner.os }}-xcode-${{ matrix.target }}-${{ hashFiles('project.yml', 'Package.swift', 'Sources/**', 'Apps/**') }}
+          key: ${{ runner.os }}-xcode-${{ matrix.target }}-${{ hashFiles('project.yml', 'Package.swift', 'Sources/**', 'apps/**') }}
           restore-keys: |
             ${{ runner.os }}-xcode-${{ matrix.target }}-
 
@@ -149,6 +155,9 @@ jobs:
         run: |
           set -e
           for f in scripts/ios-fleet/ship-testflight.sh scripts/ios-fleet/scheduled-ship-gate.sh \
+                   scripts/ios-fleet/test-fixed-version.sh scripts/ios-fleet/test-plan-build-only.sh \
+                   scripts/ios-fleet/test-ensure-tf-ready.sh \
+                   scripts/ios-fleet/test-ios-testflight-post-sync-contract.sh \
                    scripts/ios-collect-ship-logs.sh scripts/ios-stage-asc-key.sh \
                    scripts/mac-appstore-gm-prepare.sh scripts/mac-export-appstore-pkg.sh \
                    scripts/mac-install-appstore-profiles.sh scripts/ios-fleet-pin.sh; do
@@ -156,12 +165,34 @@ jobs:
             echo "parses: $f"
           done
           node --check scripts/ios-fleet/asc-api.mjs
+          node --check scripts/ios-fleet/asc-key.mjs
+          node --check scripts/ios-fleet/version-plan.mjs
+          node --check scripts/ios-fleet/shared-build.mjs
 
       - name: Scheduled ship gate tests
         run: |
           bash scripts/test-ios-scheduled-ship-gate.sh
           bash scripts/ios-fleet/test-asc-credentials.sh
           node --test scripts/ios-fleet/test-asc-credentials.mjs
+          node --test scripts/ios-fleet/test-asc-key.test.mjs
+
+      # The fleet's version-numbering rules (AFC-517):  the marketing version
+      # is the next patch on the app's train and the build number is
+      # INDEPENDENT of it, so App Store Connect can no longer show "1.0.N (N)".
+      # The rules live in scripts/ios-fleet/version-plan.mjs (pure, no I/O);
+      # this is their unit test.  Fully offline:  no network, no credentials.
+      - name: Test the iOS fleet version-numbering rules
+        run: node --test scripts/ios-fleet/version-plan.node-test.mjs
+
+      - name: Fleet shared merge-timestamp build (offline)
+        run: |
+          node --test scripts/ios-fleet/shared-build.test.mjs
+          node --test scripts/ios-fleet/test-next-shared-build.test.mjs
+          bash scripts/ios-fleet/test-fixed-version.sh
+          bash scripts/ios-fleet/test-plan-build-only.sh
+          bash scripts/ios-fleet/test-ensure-tf-ready.sh
+          bash scripts/ios-fleet/test-ios-testflight-post-sync-contract.sh
+          node --test scripts/ios-fleet/test-ensure-tf-ready-recheck.mjs
 
       - name: Mac TestFlight contract
         run: python3 scripts/check-mac-testflight-contract.py
@@ -171,7 +202,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: Apps/ContactLogoAndroid
+        working-directory: apps/android
     steps:
       - uses: actions/checkout@v7
 
@@ -237,5 +268,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: android-test-report
-          path: Apps/ContactLogoAndroid/app/build/reports/tests/testDebugUnitTest
+          path: apps/android/app/build/reports/tests/testDebugUnitTest
           retention-days: 7

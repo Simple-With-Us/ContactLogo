@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { candidateUrls } from "./engine/logos.ts";
 
 /**
- * The production CSP lives in `web/vercel.json` and is applied only by Vercel,
+ * The production CSP lives in `apps/web/vercel.json` and is applied only by Vercel,
  * so nothing in `npm test` or `npm run build` exercises it — a policy that
  * breaks the app at runtime looks completely healthy in CI.  That is not
  * hypothetical: the first draft of this CSP listed the logo CDNs in `img-src`
@@ -128,7 +128,7 @@ test("the directives that keep the CSP worth having are still strict", () => {
 
 /**
  * The CSP covers every file Vercel serves, not just the app bundle — and the
- * static pages in `web/public` are hand-written HTML that nothing typechecks or
+ * static pages in `apps/web/public` are hand-written HTML that nothing typechecks or
  * bundles. `style-src 'self'` silently reduced `privacy.html` and
  * `privacy-policy.html` to unstyled Times New Roman in production: the app was
  * clean, so no other check noticed.
@@ -143,7 +143,7 @@ function publicHtml(): { name: string; body: string }[] {
     .map((name) => ({ name, body: readFileSync(join(dir, name), "utf8") }));
 }
 
-test("the CSP permits what the static pages in web/public actually do", () => {
+test("the CSP permits what the static pages in apps/web/public actually do", () => {
   const csp = directives();
   const style = csp.get("style-src") ?? [];
   const script = csp.get("script-src") ?? [];

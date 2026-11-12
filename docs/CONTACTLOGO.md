@@ -60,15 +60,15 @@ instance memory).  It is not an address book.
 
 | `vendor/crest` | ContactLogo |
 | --- | --- |
-| `src/lib/contacts.ts` catalog | `Sources/ContactLogoKit/Normalize/CompanyCatalog.swift`, `web/src/engine/catalog.ts` |
-| `src/lib/phones.ts` | `PhoneDirectory.swift`, `web/src/engine/phones.ts` |
+| `src/lib/contacts.ts` catalog | `Sources/ContactLogoKit/Normalize/CompanyCatalog.swift`, `apps/web/src/engine/catalog.ts` |
+| `src/lib/phones.ts` | `PhoneDirectory.swift`, `apps/web/src/engine/phones.ts` |
 | `src/lib/identity.ts` | `IdentityResolver.swift`, `classify.ts` |
 | `src/lib/companieslogo.ts` picker | `CompaniesLogoSource.swift` |
-| `src/routes/api/logo.ts` Simple Icons / preferred | `SimpleIconsSource.swift`, `PreferredMarksSource.swift`, `web/src/engine/logos.ts` |
+| `src/routes/api/logo.ts` Simple Icons / preferred | `SimpleIconsSource.swift`, `PreferredMarksSource.swift`, `apps/web/src/engine/logos.ts` |
 | `src/lib/image-flags.ts` | `ImageFlags.swift` |
-| `src/lib/vcard.ts`, `vcard-import.ts`, `google-csv.ts` | `web/src/engine/vcard.ts`, `csv.ts` |
+| `src/lib/vcard.ts`, `vcard-import.ts`, `google-csv.ts` | `apps/web/src/engine/vcard.ts`, `csv.ts` |
 | Review actions | macOS / iOS / web three-bucket review, try-another, upload, paste URL |
-| Google People API + Contact Picker | `web/src/engine/google-contacts.ts`, `picker.ts` |
+| Google People API + Contact Picker | `apps/web/src/engine/google-contacts.ts`, `picker.ts` |
 
 Frozen snapshots: `backups/badgebook/` (SHA `18fcf25`) and `backups/crest/`
 (SHA `8b4ca72`).  Do not restore Crest from current GitHub `main` (archive pointer).

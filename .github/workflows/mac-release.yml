@@ -7,19 +7,19 @@ name: Mac Release (Sparkle)
 #
 # Secrets (names only; no value is ever printed):
 #   MAC_CERT_P12_BASE64, MAC_CERT_PASSWORD  The Developer ID Application
-#       certificate for team CC8UTF7ATG.  Read at runtime from Fleet Secrets
-#       (Fleet-OPS Infisical project, prod, /mac-certs) via the dedicated
-#       step below, authenticated with the Simple-With-Us org secrets
-#       INFISICAL_UNIVERSAL_AUTH_CLIENT_ID / INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET
-#       and INFISICAL_FLEET_OPS_PROJECT_ID; same-named repository secrets are
-#       only the GH_FALLBACK path.
-#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8  The App Store Connect API key;
-#       notarytool signs in with it.  Canonical home is Fleet Secrets
-#       (Fleet-OPS, prod, /asc), loaded at runtime by the dedicated step
-#       below; same-named repository secrets are only the GH_FALLBACK path.
+#       certificate for team CC8UTF7ATG.  Read from Fleet-OPS prod /mac-certs
+#       with the scoped read-only token INFISICAL_MAC_CERTS_READ_TOKEN.
+#       Same-named repository secrets are only the GH_FALLBACK path.
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8  The App Store Connect API key.
+#       Read from Fleet-OPS prod /asc with INFISICAL_ASC_READ_TOKEN in
+#       asc-mode, which stages the key and exports ASC_KEY_PATH plus the
+#       APPLE_API_* aliases.  The raw PEM is not written to GITHUB_ENV.
 #   SPARKLE_ED_PRIVATE_KEY  The EdDSA key that signs each update archive,
-#       same-named repository secret (fresh keypair generated 2026-10-15;
-#       the public half is committed in scripts/mac-release-build.sh).
+#       in the ContactLogo project (prod /) via INFISICAL_CONTACTLOGO_READ_TOKEN,
+#       with the same-named repository secret as the fallback (fresh keypair
+#       generated 2026-10-15; the public half is committed in
+#       scripts/mac-release-build.sh).  SENTRY_DSN_MACOS and SENTRY_AUTH_TOKEN
+#       load from that same token.
 # With any of them missing the job still builds the bundle and verifies its
 # signature, then skips publishing with a notice that names what is missing.
 
@@ -27,7 +27,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Apps/ContactLogoMac/**'
+      - 'apps/macos/**'
       - 'Sources/**'
       - 'project.yml'
       - 'scripts/mac-release-build.sh'
@@ -37,7 +37,7 @@ on:
   # way, and never published.
   pull_request:
     paths:
-      - 'Apps/ContactLogoMac/**'
+      - 'apps/macos/**'
       - 'Sources/**'
       - 'project.yml'
       - 'scripts/mac-release-build.sh'
@@ -60,11 +60,12 @@ concurrency:
 jobs:
   release:
     if: github.event.repository.fork == false
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
-    # ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 are loaded by the
-    # "Load App Store Connect key" step below (Fleet Secrets, Fleet-OPS
-    # prod /asc) into $GITHUB_ENV; they are deliberately not set here.
+    # ASC credentials are loaded by the "Load ASC credentials" step below
+    # (Fleet-OPS prod /asc, asc-mode).  That step exports ASC_KEY_ID,
+    # ASC_ISSUER_ID, the APPLE_API_* aliases, and ASC_KEY_PATH.  The raw
+    # PEM is not written to $GITHUB_ENV.  They are deliberately not set here.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -79,26 +80,25 @@ jobs:
           names: MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /mac-certs
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+          service-token: ${{ secrets.INFISICAL_MAC_CERTS_READ_TOKEN }}
         env:
           GH_FALLBACK_MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
           GH_FALLBACK_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
 
-      - name: Load App Store Connect key (Fleet Secrets via Infisical)
+      - name: Load ASC credentials (Fleet-OPS prod /asc)
         if: github.event_name != 'pull_request'
         uses: ./.github/actions/infisical-secrets
+        # Missing INFISICAL_ASC_READ_TOKEN or a failed /asc read must not abort
+        # the run: the gate below sees missing ASC_* and skips publishing while
+        # the bundle is still built and verified.
+        continue-on-error: true
         with:
           names: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
           required: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8
           project-id: ${{ secrets.INFISICAL_FLEET_OPS_PROJECT_ID }}
           secret-path: /asc
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
-        env:
-          GH_FALLBACK_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          GH_FALLBACK_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          GH_FALLBACK_ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          service-token: ${{ secrets.INFISICAL_ASC_READ_TOKEN }}
+          asc-mode: "true"
 
       - name: Load signing secrets (Infisical, then repository secrets)
         if: github.event_name != 'pull_request'
@@ -106,8 +106,7 @@ jobs:
         with:
           names: SPARKLE_ED_PRIVATE_KEY SENTRY_DSN_MACOS SENTRY_AUTH_TOKEN
           project-id: ${{ secrets.INFISICAL_PROJECT_ID }}
-          client-id: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID || secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET || secrets.INFISICAL_CLIENT_SECRET }}
+          service-token: ${{ secrets.INFISICAL_CONTACTLOGO_READ_TOKEN }}
         env:
           GH_FALLBACK_SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
           GH_FALLBACK_SENTRY_DSN_MACOS: ${{ secrets.SENTRY_DSN_MACOS }}
@@ -126,7 +125,7 @@ jobs:
             echo "SENTRY_DSN=$SENTRY_DSN_MACOS" >> "$GITHUB_ENV"
           fi
           missing=()
-          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 SPARKLE_ED_PRIVATE_KEY; do
+          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD ASC_KEY_ID ASC_ISSUER_ID APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_KEY_P8_BASE64 ASC_KEY_PATH SPARKLE_ED_PRIVATE_KEY; do
             [ -n "${!name:-}" ] || missing+=("$name")
           done
           if [ "${#missing[@]}" -eq 0 ]; then
@@ -195,16 +194,16 @@ jobs:
           echo "CONTACTLOGO_CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
           echo "imported: $identity"
 
-      - name: Write the notarization key
+      - name: Check the staged notarization key
         if: steps.gate.outputs.publish == 'true'
         run: |
-          umask 077
-          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          test -n "${ASC_KEY_PATH:-}"
+          test -s "$ASC_KEY_PATH"
 
       - name: Build, sign, notarize and staple
         if: steps.gate.outputs.publish == 'true'
         env:
-          NOTARY_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          NOTARY_KEY_PATH: ${{ env.ASC_KEY_PATH }}
           NOTARY_KEY_ID: ${{ env.ASC_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ env.ASC_ISSUER_ID }}
         run: scripts/mac-release-build.sh --release
@@ -301,4 +300,6 @@ jobs:
         if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/contactlogo-signing.keychain-db" >/dev/null 2>&1 || true
-          rm -f "$RUNNER_TEMP/AuthKey.p8"
+          if [ -n "${ASC_KEY_PATH:-}" ]; then
+            rm -f "$ASC_KEY_PATH"
+          fi
