@@ -1,5 +1,6 @@
 package com.contactlogo.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -16,32 +17,34 @@ val Green500 = Color(0xFF22C55E)
 val Amber500 = Color(0xFFF59E0B)
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Sky400,
-    secondary = Green500,
-    tertiary = Amber500,
+    primary = Color(0xFF7DD3FC),
+    onPrimary = Color(0xFF082F49),
+    secondary = Color(0xFF86EFAC),
+    onSecondary = Color(0xFF052E16),
+    tertiary = Color(0xFFFDBA74),
+    onTertiary = Color(0xFF431407),
     background = Color(0xFF0C0A09),
     surface = Color(0xFF1C1917),
-    onPrimary = Color.Black,
-    onSecondary = Color.Black,
     onBackground = Color(0xFFF2F2F7),
     onSurface = Color(0xFFF2F2F7)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Sky500,
-    secondary = Green500,
-    tertiary = Amber500,
+    primary = Color(0xFF075985),
+    onPrimary = Color.White,
+    secondary = Color(0xFF166534),
+    onSecondary = Color.White,
+    tertiary = Color(0xFF92400E),
+    onTertiary = Color.White,
     background = Color(0xFFF8FAFC),
     surface = Color.White,
-    onPrimary = Color.White,
-    onSecondary = Color.White,
     onBackground = Slate900,
     onSurface = Slate900
 )
 
 @Composable
 fun ContactLogoTheme(
-    darkTheme: Boolean = false,
+    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme

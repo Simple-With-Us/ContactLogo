@@ -39,7 +39,7 @@ struct SettingsView: View {
                     Text("Logo.dev")
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Optional.  High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, Clearbit, Apple Touch Icons, Unavatar, and favicons.")
+                        Text("Optional.\u{00A0} Sharper Brandfetch and Logo.dev logos need a key.\u{00A0} Without one, ContactLogo uses built-in icons and website icons.")
                         if settings.credentialStorageFailed {
                             Text("The keychain would not save that credential.  High-resolution sources will stay off until it can.")
                                 .foregroundStyle(.red)
@@ -47,24 +47,24 @@ struct SettingsView: View {
                     }
                 }
                 Section {
-                    Toggle("Rescue split-name business contacts", isOn: $settings.rescueSplitNameBusinesses)
+                    Toggle("Find businesses saved as a person's name", isOn: $settings.rescueSplitNameBusinesses)
                         .onChange(of: settings.rescueSplitNameBusinesses) { settings.save() }
                     Toggle("Include single-name contacts", isOn: $settings.includeSingleNameContacts)
                         .onChange(of: settings.includeSingleNameContacts) { settings.save() }
                     Toggle("Skip contacts that already have a photo", isOn: $settings.skipContactsWithExistingPhoto)
                         .onChange(of: settings.skipContactsWithExistingPhoto) { settings.save() }
                 } header: {
-                    Text("Pre-scan Discovery Options")
+                    Text("What to Include")
                 } footer: {
-                    Text("Rescue contacts where business names were typed into First and Last Name fields (e.g. \"Best Buy\", \"Trader Joe's\") or lone name fields.")
+                    Text("Use this when a company was typed into the first and last name, such as Best Buy, or when the contact has only one name.")
                 }
                 Section {
-                    Toggle("Find personal avatars (via Unavatar)", isOn: $settings.fetchPersonalAvatars)
+                    Toggle("Look up profile photos for people", isOn: $settings.fetchPersonalAvatars)
                         .onChange(of: settings.fetchPersonalAvatars) { settings.save() }
                 } header: {
-                    Text("Personal Contacts (Optional)")
+                    Text("People")
                 } footer: {
-                    Text("When enabled, searches public profile avatars for personal contacts via their email addresses. Personal contacts are never overwritten automatically.")
+                    Text("When this is on, ContactLogo can search public profile photos from an email address.\u{00A0} It never replaces a personal photo on its own.")
                 }
                 // 2026-09-21 follow-up audit — direct route to the "Why am I only
                 // seeing X contacts?" diagnostic so a user can verify whether
@@ -73,12 +73,12 @@ struct SettingsView: View {
                     Button {
                         showDiagnostic = true
                     } label: {
-                        Label("Diagnostic: Why am I only seeing X?", systemImage: "stethoscope")
+                        Label("Why So Few Contacts?", systemImage: "stethoscope")
                     }
                 } header: {
                     Text("Scan coverage")
                 } footer: {
-                    Text("Shows the authorization state, the scan breakdown, and a sample of dropped contacts so you can verify whether Limited contacts access is hiding part of your address book.")
+                    Text("Shows whether Contacts access or syncing is hiding part of your address book.")
                 }
             }
             .navigationTitle("Settings")

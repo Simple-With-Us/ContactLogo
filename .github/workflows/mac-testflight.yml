@@ -136,6 +136,7 @@ jobs:
           path: ~/.cache/ios-fleet
           key: ios-fleet-mac-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ios-fleet-mac-contactlogo-${{ github.run_id }}-
             ios-fleet-mac-contactlogo-
 
       # The release workflow's full on.push.paths list, entry for entry (the
@@ -201,6 +202,7 @@ jobs:
           path: ~/.cache/ios-fleet
           key: ios-fleet-mac-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ios-fleet-mac-contactlogo-${{ github.run_id }}-
             ios-fleet-mac-contactlogo-
 
       - name: Verify the in-repo ship tooling pin
