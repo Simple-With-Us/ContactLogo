@@ -111,6 +111,7 @@ jobs:
           path: ~/.cache/ios-fleet
           key: ios-fleet-contactlogo-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ios-fleet-contactlogo-${{ github.run_id }}-
             ios-fleet-contactlogo-
 
       # A hosted runner is a fresh VM, so nothing else can be holding a ship lock.
