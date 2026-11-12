@@ -7,7 +7,7 @@ Remote: https://github.com/jaywedgeworth22/BadgeBook.git
 Branch at snapshot: main (local clone /Users/jay/Code/BadgeBook)
 
 Live product as of 2026-08-21: folder `/Users/jay/Code/ContactLogo`, GitHub
-`jaywedgeworth22/ContactLogo` (old BadgeBook slug redirects).  This snapshot
+`Simple-With-Us/ContactLogo` (old `jaywedgeworth22/BadgeBook` slug redirects).  This snapshot
 directory name stays `backups/badgebook/`.
 
 This tree is the last BadgeBook-named source before Crest was combined
