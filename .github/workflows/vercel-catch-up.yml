@@ -26,9 +26,12 @@ permissions:
 # CI/E2E-driven workflow_run completions queued ahead of the hourly cron and
 # GitHub dropped most schedule ticks (~4/day vs 24).  sentry-ci-report only
 # sends Crons check-ins for schedule-triggered completions, so Sentry raised
-# hourly missed-check-in alerts (FLEET-INFRA-F6).  Deploy still serializes via
-# vercel-catch-up.mjs cooldown/in-flight gates if schedule and workflow_run
-# overlap.
+# hourly missed-check-in alerts (FLEET-INFRA-F6).  The deploy job's "Yield to
+# an overlapping production run" step keeps the two groups from deploying at
+# the same time: a scheduled run steps aside when a workflow_run/dispatch run
+# is active, and a workflow_run/dispatch run waits for an active scheduled run.
+# The Vercel-record gates in vercel-catch-up.mjs cannot do this alone, because
+# a deployment record only exists once the prebuilt upload finishes.
 concurrency:
   group: vercel-production-catch-up${{ github.event_name == 'pull_request' && format('-pr-{0}', github.event.pull_request.number) || (github.event_name == 'schedule' && '-schedule' || '') }}
   cancel-in-progress: false
@@ -87,7 +90,42 @@ jobs:
             exit 1
           fi
           node scripts/infisical-fetch.mjs
+      - name: Yield to an overlapping production run
+        id: yield
+        env:
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # Other active production runs of this workflow, as "event" lines.
+          active() {
+            for status in queued in_progress; do
+              gh api "repos/$REPO/actions/workflows/vercel-catch-up.yml/runs?status=$status&per_page=50" \
+                --jq ".workflow_runs[] | select(.id != $RUN_ID and .event != \"pull_request\") | .event"
+            done
+          }
+          if [ "$EVENT" = "schedule" ]; then
+            events="$(active)"
+            if grep -qxE "workflow_run|workflow_dispatch" <<< "$events"; then
+              echo "A workflow_run/dispatch run is active and will publish main; this scheduled run skips deploy."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          else
+            deadline=$(( $(date +%s) + 40 * 60 ))
+            while events="$(active)"; grep -qx schedule <<< "$events"; do
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::A scheduled catch-up run stayed active for 40 minutes; not deploying alongside it."
+                exit 1
+              fi
+              echo "Waiting for the active scheduled catch-up run to finish..."
+              sleep 30
+            done
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
       - name: Check binding, deployed SHA, cooldown and exact-main CI
+        if: steps.yield.outputs.skip != 'true'
         id: gate
         run: node scripts/deploy/vercel-catch-up.mjs prepare
       - name: Install pinned Vercel CLI
