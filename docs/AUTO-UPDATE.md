@@ -4,7 +4,7 @@ Owner ruling, Tue, Sep 29, 2026: every fleet Mac app updates itself seamlessly, 
 
 ## What Happens
 
-1. A PR merges to `main` and changes the Mac app (`Apps/ContactLogoMac/`, `Sources/`, `project.yml`, or the build scripts).
+1. A PR merges to `main` and changes the Mac app (`apps/macos/`, `Sources/`, `project.yml`, or the build scripts).
 2. `.github/workflows/mac-release.yml` builds a universal Release bundle with `xcodegen` + `xcodebuild`, signs it with the Developer ID Application certificate (hardened runtime, secure timestamp, nested code signed inside-out), notarizes and staples the app and the DMG, and writes an appcast whose one item is the new ZIP, signed with ContactLogo's EdDSA key.
 3. The workflow publishes a GitHub release tagged `v<VERSION>-build.<N>`, marked latest, carrying `ContactLogo.zip`, `ContactLogo.dmg`, their `.sha256` files, and `appcast.xml`, then confirms the live feed names build N.
 4. Every installed copy checks `https://github.com/Simple-With-Us/ContactLogo/releases/latest/download/appcast.xml` once an hour, downloads the new ZIP in the background, verifies its EdDSA signature before unpacking it, and checks that it is signed by the same Developer ID team.
@@ -12,20 +12,20 @@ Owner ruling, Tue, Sep 29, 2026: every fleet Mac app updates itself seamlessly, 
 
 Settings shows an "Automatic updates: On/Off" line and a **Check For Updates…** button.  The same command is in the app menu after About.
 
-The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.yml` archives and uploads to TestFlight on every merge to `main` that touches the iOS app (`Apps/ContactLogoiOS/**`, `Sources/ContactLogoKit/**`, `project.yml`, the ship tooling under `scripts/ios-fleet/`).  It needs no repository variable.  A scheduled catch-up (twice an hour, behind a path gate) ships a merge that landed inside the rate window.  See [iOS TestFlight](#ios-testflight).
+The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.yml` archives and uploads to TestFlight on every merge to `main` that touches the iOS app (`apps/ios/**`, `Sources/ContactLogoKit/**`, `project.yml`, the ship tooling under `scripts/ios-fleet/`).  It needs no repository variable.  A scheduled catch-up (twice an hour, behind a path gate) ships a merge that landed inside the rate window.  See [iOS TestFlight](#ios-testflight).
 
 ## The Pieces
 
 | Piece | Role |
 |---|---|
 | `project.yml` | Sparkle 2 (`https://github.com/sparkle-project/Sparkle`, from 2.10.0) as an xcodegen package dependency of the `ContactLogoMac` target only. |
-| `Apps/ContactLogoMac/AutoUpdate.swift` | `AutoUpdateAvailability` (should this build run Sparkle at all) and `AppUpdater` (owns `SPUStandardUpdaterController`, installs as soon as the app is idle). |
-| `Apps/ContactLogoMac/ContactLogoMacApp.swift` | Starts the updater first thing, adds **Check For Updates…** to the app menu. |
-| `Apps/ContactLogoMac/SettingsView.swift` | Settings shows the update status line and the check button. |
+| `apps/macos/AutoUpdate.swift` | `AutoUpdateAvailability` (should this build run Sparkle at all) and `AppUpdater` (owns `SPUStandardUpdaterController`, installs as soon as the app is idle). |
+| `apps/macos/ContactLogoMacApp.swift` | Starts the updater first thing, adds **Check For Updates…** to the app menu. |
+| `apps/macos/SettingsView.swift` | Settings shows the update status line and the check button. |
 | `scripts/mac-release-build.sh` | xcodegen + xcodebuild a universal Release, embed and assert `Sparkle.framework`, write the Sparkle Info.plist keys, sign inside-out, run `codesign --verify --deep --strict`, notarize with an App Store Connect API key when `NOTARY_KEY_*` are set, and run `spctl --assess` on the stapled app and DMG. |
 | `scripts/make_appcast.sh` | Runs Sparkle's `generate_appcast` over one archive and checks the result: one item, EdDSA-signed, pointing at the right URL. |
 | `.github/workflows/mac-release.yml` | The release job.  Also builds and verifies (never publishes) on PRs that touch the bundle. |
-| `.github/actions/infisical-secrets`, `scripts/infisical-fetch.mjs` | Reads the signing certificate and the Sparkle private key from Infisical (universal-auth), with same-named repository secrets as the fallback. |
+| `.github/actions/infisical-secrets`, `scripts/infisical-fetch.mjs` | Reads the signing certificate and the Sparkle private key from Infisical with scoped read-only service tokens, with same-named repository secrets as the fallback. |
 
 ## Info.plist Keys
 
@@ -45,10 +45,10 @@ The iOS companion ships on the same trigger: `.github/workflows/ios-testflight.y
 
 Names only; no value is ever printed:
 
-- `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD` — the Developer ID Application certificate for team `CC8UTF7ATG`.  Read at runtime from Fleet Secrets (Fleet-OPS Infisical project, `prod`, `/mac-certs`) by the dedicated `mac-release.yml` step, via the org secrets `INFISICAL_FLEET_OPS_PROJECT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`; same-named GitHub repository secrets are only the `GH_FALLBACK_` path.
-- `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` — the App Store Connect API key; `notarytool` signs in with it, and `ios-testflight.yml` uses it for the TestFlight upload.  Canonical home is Fleet Secrets (Fleet-OPS, `prod`, `/asc`); same-named repository secrets as the copies.
-- `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD` — the Apple Distribution certificate for the iOS archive.  Canonical home is Fleet Secrets (Fleet-OPS, `prod`, `/mac-certs`); same-named repository secrets as the copies.
-- `SPARKLE_ED_PRIVATE_KEY` — the EdDSA private key (base64 of the 32-byte seed) that signs each update archive; repository secret, synced from the fleet key store.  Generated 2026-10-15 for ContactLogo; the matching public key is committed above.
+- `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD` — the Developer ID Application certificate for team `CC8UTF7ATG`.  Read at runtime from Fleet Secrets (Fleet-OPS Infisical project, `prod`, `/mac-certs`) by the dedicated `mac-release.yml` step, with the scoped read-only token `INFISICAL_MAC_CERTS_READ_TOKEN` and `INFISICAL_FLEET_OPS_PROJECT_ID`.  Same-named GitHub repository secrets are only the `GH_FALLBACK_` path.
+- `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` — the App Store Connect API key.  `mac-release.yml` loads Fleet-OPS `prod` `/asc` with `INFISICAL_ASC_READ_TOKEN` in asc-mode, which stages `ASC_KEY_PATH` and does not put the raw PEM in `GITHUB_ENV`.  The TestFlight workflows load that same folder with the same token in plain mode, because `ship-testflight.sh` reads `ASC_KEY_P8` from the environment and does not treat `ASC_KEY_PATH` as a credential.  Those lanes keep same-named repository secrets as `GH_FALLBACK_`.
+- `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD` — the Apple Distribution certificate for the iOS archive.  Canonical home is Fleet Secrets (Fleet-OPS, `prod`, `/mac-certs`), read with `INFISICAL_MAC_CERTS_READ_TOKEN`.  Same-named repository secrets are the `GH_FALLBACK_` path.
+- `SPARKLE_ED_PRIVATE_KEY` — the EdDSA private key (base64 of the 32-byte seed) that signs each update archive.  Read from the ContactLogo project (`prod`, `/`) with `INFISICAL_CONTACTLOGO_READ_TOKEN`, with the same-named repository secret as the fallback.  Generated 2026-10-15 for ContactLogo; the matching public key is committed above.
 
 With any of them missing the Mac job still builds the bundle and verifies its signature, then skips publishing with a notice that names what is missing.
 
@@ -63,7 +63,7 @@ Every release is a GitHub release with its own appcast; rolling back is publishi
 - **Version.**  The marketing version and the build number are independent (owner directive 2026-10-24, AFC-517).  `MARKETING_VERSION` is the next patch on the app's train -- `<prefix>.<P+1>`, where `P` is the highest patch App Store Connect already holds on that train for the app's platform, counting both the App Store versions and the TestFlight trains and ignoring the retired `1.0.N (N)` drift trains.  `CFBundleVersion` is the repo's commit count, raised when needed so it stays above every build already in that train and above the app's own builds.  The two numbers never name each other, so App Store Connect no longer shows `1.0.N (N)`.  The committed `project.yml` value is not a source of truth:  the ship script overrides both on the `xcodebuild` line, and the project file is only read to report a disagreement.  UTC `YYYYMMDDHHmm` build stamps are retired.
 - **Rate gate.**  One successful ship per app per interval (`DEFAULT_MIN_INTERVAL_SEC` in the script) and a skip when `HEAD` already shipped.  Both stay at the defaults;  never set `IOS_TF_MIN_INTERVAL_SEC` as a standing value.  The last-ship state lives in `~/.cache/ios-fleet` and is carried between hosted runs by `actions/cache`.
 - **Ready to install.**  After the upload it runs `ensure-tf-ready`, which declares export compliance on the build that run uploaded, and publishes the mandatory What to Test notes (`IOS_TF_RELEASE_NOTES=1`).
-- **Catch-up.**  `scripts/ios-fleet/scheduled-ship-gate.sh` lets the cron ship only when `Apps/ContactLogoiOS/`, `Sources/ContactLogoKit/` or `project.yml` changed since the last successful ship.
+- **Catch-up.**  `scripts/ios-fleet/scheduled-ship-gate.sh` takes the release workflow's full `on.push.paths` list and lets the cron ship when anything in it changed since the last successful ship, so a tooling-only merge a missed push never shipped still goes out.
 - **Manual run.**  `workflow_dispatch` ships the current `main`;  its `export_only` input archives and exports without uploading, as a signing check.
 
 The ASC key is read at runtime from Fleet Secrets (Fleet-OPS, `prod`, `/asc`) and the Apple Distribution certificate from `/mac-certs`.  The signing identity is cleared on the archive (`CODE_SIGN_IDENTITY=`), so Automatic signing picks Apple Distribution on the hosted runner.  The in-app update manifest is not published from the hosted runner (`publish-ios-versions.sh` is a stand-in);  refresh it from the Mac if the update prompt should name the new build.
@@ -74,13 +74,13 @@ Owner ask, Sat, Oct 17, 2026 (CL-203): a merge to `main` that changes the Mac ap
 
 ### What Happens
 
-1. A PR merges to `main` and touches `Apps/ContactLogoMac/`, `Apps/ContactLogoMacAppStore/`, `Sources/`, `project.yml`, or the ship tooling.
+1. A PR merges to `main` and touches `apps/macos/`, `apps/macos-app-store/`, `Sources/`, `project.yml`, or the ship tooling.
 2. `.github/workflows/mac-testflight.yml` starts.  A cheap Linux job runs `scripts/ios-fleet/scheduled-ship-gate.sh`;  a push or a manual dispatch always passes it.
 3. The macOS job loads the App Store Connect key, the Apple Distribution certificate and the Mac installer certificate from Fleet Secrets (Fleet-OPS, `prod`, `/asc` and `/mac-certs`), imports the certificates into a throwaway keychain, and runs `scripts/ios-fleet/ship-testflight.sh contactlogo-mac`.
 4. The ship script regenerates the project with XcodeGen, installs the `ContactLogo for Mac AppStore` profile (`scripts/mac-install-appstore-profiles.sh`), archives the `ContactLogoMacAppStore` scheme, wraps the archive into a signed installer package (`scripts/mac-export-appstore-pkg.sh`), uploads it with `altool`, declares export compliance, and publishes the What to Test note.
 5. Marketing version and build number are independent:  the marketing version is the next patch on the app's train (`<prefix>.<P+1>`) and the build number is the repo's commit count, raised above the App Store Connect floor -- so the pair never reads `1.0.N (N)`.
 
-The ship script keeps its own limits: one TestFlight build per app per hour, and a skip when `HEAD` was already shipped.  No workflow sets `IOS_TF_MIN_INTERVAL_SEC`; the `force_ship` dispatch input is a per-run choice that defaults to off.  An hourly `schedule:` tick catches a merge that landed inside the hour of the previous ship, and a bot merge, which GitHub does not turn into a push event.  The tick ships only when a Mac source path changed since the last successful ship, so a web, Android or iOS-only commit never produces a Mac build.
+The ship script keeps its own limits: one TestFlight build per app per hour, and a skip when `HEAD` was already shipped.  No workflow sets `IOS_TF_MIN_INTERVAL_SEC`; the `force_ship` dispatch input is a per-run choice that defaults to off.  An hourly `schedule:` tick catches a merge that landed inside the hour of the previous ship, and a bot merge, which GitHub does not turn into a push event.  The tick ships when anything in the release workflow's push filter changed since the last successful ship, so a tooling-only merge still goes out, while a web, Android or docs-only commit never produces a build.
 
 A run on any ref other than `main`, or a dispatch with `validate_only`, builds the signed package and has App Store Connect validate it (`altool --validate-app`) without uploading.
 
@@ -88,7 +88,7 @@ A run on any ref other than `main`, or a dispatch with `validate_only`, builds t
 
 `ContactLogoMacAppStore` compiles the same sources and uses the same bundle id, Info.plist and assets as `ContactLogoMac`, with two differences:
 
-- It does not link Sparkle.  The Mac App Store forbids a self-updating app, and Sparkle's `Autoupdate` and `Updater.app` executables are not sandboxed, which App Store Connect rejects.  `Apps/ContactLogoMacAppStore/AutoUpdateStub.swift` replaces `AutoUpdate.swift` and defines the same two names (`AppUpdater`, `AutoUpdateAvailability`), so no call site changes.  Settings shows "Automatic updates: Off" and "Check For Updates…" stays greyed out.
+- It does not link Sparkle.  The Mac App Store forbids a self-updating app, and Sparkle's `Autoupdate` and `Updater.app` executables are not sandboxed, which App Store Connect rejects.  `apps/macos-app-store/AutoUpdateStub.swift` replaces `AutoUpdate.swift` and defines the same two names (`AppUpdater`, `AutoUpdateAvailability`), so no call site changes.  Settings shows "Automatic updates: Off" and "Check For Updates…" stays greyed out.
 - Its entitlements (`ContactLogoMacAppStore.entitlements`) drop the Sparkle InstallerLauncher mach-lookup exceptions.  Keep the two entitlement files in step for everything else.
 
 Developer ID releases still ship the `ContactLogoMac` target from `mac-release.yml`.

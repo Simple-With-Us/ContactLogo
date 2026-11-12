@@ -48,12 +48,12 @@ an admin adds it in the Infisical dashboard/CLI and syncs it to Vercel.  No
 secret values are ever invented, guessed, or committed.
 
 Out of scope for this project (deliberately not migrated):
-- `web/server.mjs` (`PORT`, `DD_API_KEY`, …) is a local/dev leftover — not
+- `apps/web/server.mjs` (`PORT`, `DD_API_KEY`, …) is a local/dev leftover — not
   production, documented in AGENTS.md.  If it is ever promoted, its keys
   move into this project first.
 - Vercel's own build settings (`vercel.json`) are deployment config, not
   app settings.
-- Cache TTLs and timeouts in `web/src/engine/logo-cache.ts`
+- Cache TTLs and timeouts in `apps/web/src/engine/logo-cache.ts`
   (`FETCH_TIMEOUT_MS`, `MISS_TTL_MS`, …) are build-time constants with no
   runtime/admin surface in a static SPA — changing them is a code deploy.
   If a server surface ever exists, promote them to knobs here.
@@ -65,7 +65,7 @@ scope:
 
 - **Web:** anything the user types into the web Settings page (their own
   Google client id, Brandfetch client id, Logo.dev token) lives in
-  `localStorage` (`web/src/engine/settings.ts`) — these are per-user BYO
+  `localStorage` (`apps/web/src/engine/settings.ts`) — these are per-user BYO
   keys, not app-level settings.  The web app has no accounts by design.
 - **macOS / iOS (Swift):** `SettingsStore` holds the user's Brandfetch API
   key and Logo.dev token in the Keychain plus per-user scan preferences
@@ -79,11 +79,11 @@ scope:
 ## The runtime contract (the perf line)
 
 1. **Load at startup / provisioning time.**  The vendored
-   `createInfisicalSettings` client (`web/scripts/infisical-settings.ts`)
+   `createInfisicalSettings` client (`apps/web/scripts/infisical-settings.ts`)
    loads the full settings set for the project+environment into an
    in-memory Map.  Because the web app is a static SPA, this runs at
    build/dev provisioning time via `npm run settings:pull`
-   (`web/scripts/sync-infisical-env.ts`), which writes `.env.local`
+   (`apps/web/scripts/sync-infisical-env.ts`), which writes `.env.local`
    (gitignored).  Startup fails fast naming the missing key and pointing
    here.
 2. **Never fetch per-request.**  All runtime reads come from memory (or
@@ -109,13 +109,13 @@ scope:
 
 1. Change the value in the Infisical `ContactLogo` project (dashboard or
    CLI), in the `prod` environment.
-2. Local dev: re-run `npm run settings:pull` in `web/` (needs
+2. Local dev: re-run `npm run settings:pull` in `apps/web/` (needs
    `INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` in the environment —
    from the operator's secret store, never committed).
 3. Production: sync the changed key into the Vercel project's environment
    variables (same value as Infisical prod), then redeploy.  Vercel env is
    a synced copy — Infisical stays the source of truth.
-4. Verify: `npm test` in `web/`; the settings tests assert the
+4. Verify: `npm test` in `apps/web/`; the settings tests assert the
    cache/refresh/write-through contract with mocked fetch.
 
 ## Why the client is vendored, not depended on
@@ -124,5 +124,5 @@ The fleet-shared reference is `createInfisicalSettings` in
 `Simple-With-Us/congress-trading-shared`.  Adding that whole package as a
 dependency of `contactlogo-web` just for this one module would drag an
 unrelated congress-trading dependency tree into a brand-logo web app, so
-the module is vendored at `web/scripts/infisical-settings.ts` under the
+the module is vendored at `apps/web/scripts/infisical-settings.ts` under the
 identical contract.  If the reference contract changes, re-vendor it.

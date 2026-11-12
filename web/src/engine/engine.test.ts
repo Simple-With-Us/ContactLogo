@@ -282,6 +282,20 @@ test("candidateUrls provides high-res sources and avoids unknown simpleicons", a
   assert.equal(unknown.some((c) => c.source === "google"), true);
 });
 
+test("low-res raster detection and user-pinned sources", async () => {
+  const { isLowResRaster, isUserPinnedLogoSource } = await import("./logos.ts");
+  assert.equal(isLowResRaster(16, 16, false), true);
+  assert.equal(isLowResRaster(48, 48, false), false);
+  assert.equal(isLowResRaster(0, 0, false), false);
+  assert.equal(isLowResRaster(200, 0, false), true);
+  assert.equal(isLowResRaster(16, 16, true), false);
+  assert.equal(isUserPinnedLogoSource("upload"), true);
+  assert.equal(isUserPinnedLogoSource("crop"), true);
+  assert.equal(isUserPinnedLogoSource("url"), true);
+  assert.equal(isUserPinnedLogoSource("favicon"), false);
+  assert.equal(isUserPinnedLogoSource("brandfetch"), false);
+});
+
 test("email and guessed domains stay in review", async () => {
   const emailItem = matchContact({
     id: "101",

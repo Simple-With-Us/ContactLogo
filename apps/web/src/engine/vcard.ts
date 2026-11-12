@@ -1,0 +1,639 @@
+import { classifyContact, type BookContact } from "./classify.ts";
+
+/**
+ * One content line of a source vCard, kept verbatim so export can re-emit it.
+ * VISION.md: the address book is the user's, not ours — anything we do not
+ * model is still written back exactly as it arrived.
+ */
+export type VcardProperty = {
+  /** Upper-case property name with any `item1.` group prefix removed. */
+  name: string;
+  /** Everything left of the value colon, exactly as written (group, name, parameters). */
+  prefix: string;
+  /** Parameter text after the property name, e.g. `;TYPE=WORK,VOICE` (may be empty). */
+  params: string;
+  /** Value exactly as written on the wire: unfolded, still escaped. */
+  value: string;
+};
+
+/** The card a contact was parsed from, retained so nothing is lost on export. */
+export type VcardRecord = {
+  /** VERSION value of the source card, e.g. "3.0". */
+  version: string;
+  /** Every content line between BEGIN and END, in source order, including VERSION. */
+  properties: VcardProperty[];
+};
+
+/** A BookContact that still carries the vCard it came from. */
+export type VcardContact = BookContact & { vcard?: VcardRecord };
+
+const RASTER_PHOTO_TYPE: Record<string, string> = {
+  jpeg: "JPEG",
+  jpg: "JPEG",
+  png: "PNG",
+  gif: "GIF",
+  webp: "WEBP",
+  tiff: "TIFF",
+  bmp: "BMP",
+};
+
+const encoder = new TextEncoder();
+
+function octets(text: string): number {
+  return encoder.encode(text).length;
+}
+
+function isAscii(text: string): boolean {
+  return !/[^\x00-\x7F]/.test(text);
+}
+
+/** Single pass so `\\n` stays a literal backslash followed by an `n`. */
+function unescapeVcard(value: string): string {
+  return value.replace(/\\([\s\S])/g, (_match, ch: string) => (ch === "n" || ch === "N" ? "\n" : ch));
+}
+
+function escapeVcard(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+/** Split a structured value on separators the producer did not escape. */
+function splitComponents(value: string): string[] {
+  const parts: string[] = [];
+  let buffer = "";
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i]!;
+    if (ch === "\\" && i + 1 < value.length) {
+      buffer += ch + value[i + 1];
+      i += 1;
+    } else if (ch === ";") {
+      parts.push(buffer);
+      buffer = "";
+    } else {
+      buffer += ch;
+    }
+  }
+  parts.push(buffer);
+  return parts;
+}
+
+/**
+ * vCard 2.1 §2.1.3 — a QUOTED-PRINTABLE value continues on the next *physical*
+ * line when the current one ends in a bare `=`, with no leading whitespace and
+ * no property colon.  Such a line therefore has no prefix, `splitLine` rejects
+ * it, and the parse loop dropped it: "Download backup" truncated the property
+ * and left the `=` behind, exporting malformed QP as well as losing data.
+ *
+ * Gated on the property actually declaring QUOTED-PRINTABLE.  A bare trailing
+ * `=` is not rare — base64 padding ends with one — so joining on the character
+ * alone would splice the line after a PHOTO into the photo itself.
+ */
+// Matches a full property line ("NOTE;ENCODING=QUOTED-PRINTABLE:...") and a
+// bare prefix ("NOTE;ENCODING=QUOTED-PRINTABLE"), which is what the serializer
+// has in hand.
+const QUOTED_PRINTABLE = /(^|;)ENCODING=QUOTED-PRINTABLE(;|:|$)/i;
+const CARD_BOUNDARY = /^(BEGIN|END):VCARD$/i;
+
+function unfold(text: string): string[] {
+  const raw = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const lines: string[] = [];
+  for (const line of raw) {
+    const prev = lines.length ? lines[lines.length - 1] : undefined;
+
+    // Checked before RFC 6350 folding: in QUOTED-PRINTABLE a leading space is
+    // content, so the continuation is taken whole rather than losing a space to
+    // the unfold.  The boundary guard stops a card whose last QP line ends in a
+    // stray `=` — which is exactly what the old export produced — from
+    // swallowing its own END:VCARD.
+    if (prev !== undefined && prev.endsWith("=") && QUOTED_PRINTABLE.test(prev)
+        && !CARD_BOUNDARY.test(line.trim())) {
+      lines[lines.length - 1] = prev.slice(0, -1) + line;
+      continue;
+    }
+
+    // RFC 6350 §3.2 folding.
+    if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length) {
+      lines[lines.length - 1] += line.slice(1);
+      continue;
+    }
+
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** First colon that is not inside a quoted parameter value. */
+function splitLine(line: string): { prefix: string; value: string } | null {
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') quoted = !quoted;
+    else if (ch === ":" && !quoted) return { prefix: line.slice(0, i), value: line.slice(i + 1) };
+  }
+  return null;
+}
+
+function splitPrefix(prefix: string): { name: string; params: string } {
+  let quoted = false;
+  let semi = -1;
+  for (let i = 0; i < prefix.length; i += 1) {
+    const ch = prefix[i];
+    if (ch === '"') quoted = !quoted;
+    else if (ch === ";" && !quoted) {
+      semi = i;
+      break;
+    }
+  }
+  const head = semi < 0 ? prefix : prefix.slice(0, semi);
+  const params = semi < 0 ? "" : prefix.slice(semi);
+  const dot = head.indexOf(".");
+  const name = (dot > 0 ? head.slice(dot + 1) : head).trim().toUpperCase();
+  return { name, params };
+}
+
+function property(prefix: string, value: string): VcardProperty {
+  const { name, params } = splitPrefix(prefix);
+  return { name, prefix, params, value };
+}
+
+function parsePhoto(params: string, value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("data:image/")) return trimmed;
+  const typeMatch = /TYPE=([A-Za-z0-9+-]+)/i.exec(params);
+  const rawType = (typeMatch?.[1] ?? "jpeg").toLowerCase();
+  const mime =
+    rawType === "jpg" || rawType === "jpeg"
+      ? "jpeg"
+      : rawType === "png"
+        ? "png"
+        : rawType === "webp"
+          ? "webp"
+          : rawType.includes("svg")
+            ? "svg+xml"
+            : "jpeg";
+  const data = trimmed.replace(/\s+/g, "");
+  if (data.length < 40) return undefined;
+  return `data:image/${mime};base64,${data}`;
+}
+
+function newId(): string {
+  return crypto.randomUUID();
+}
+
+function firstValued(properties: VcardProperty[], name: string): VcardProperty | undefined {
+  return properties.find((p) => p.name === name && p.value.trim() !== "");
+}
+
+/**
+ * 2026-09-20 audit — prefer work/business labels over home/personal so the
+ * brand-relevant inbox or URL is the one the engine sees.  vCard TYPE
+ * parameters can be a single token (`TYPE=WORK`), comma-separated
+ * (`TYPE=INTERNET,WORK`), or repeated on adjacent lines
+ * (`;TYPE=WORK;TYPE=HOME`).  vCard 2.1 also accepts bare type keywords
+ * (`EMAIL;WORK:`) which we have to detect as well — split each TYPE=
+ * value into tokens, and also collect bare labels between `;` separators.
+ * Each token may be double-quoted (RFC 6350 §3.3); strip surrounding
+ * quotes before comparison.
+ */
+function labelScore(params: string): number {
+  const upper = params.toUpperCase();
+  const typeTokens = new Set<string>();
+  const unwrap = (s: string) => s.replace(/^"+|"+$/g, "").trim();
+  for (const match of upper.matchAll(/TYPE\s*=\s*([^;]+)/g)) {
+    for (const token of match[1].split(",").map(unwrap).filter(Boolean)) {
+      typeTokens.add(token);
+    }
+  }
+  // Bare vCard 2.1 labels (e.g. `EMAIL;WORK:`) sit as `;WORK` segments
+  // without a `TYPE=` prefix.  Split on `;` and ignore empty / TYPE= pieces.
+  for (const segment of upper.split(";")) {
+    const trimmed = segment.trim();
+    if (!trimmed || trimmed.startsWith("TYPE=")) continue;
+    typeTokens.add(unwrap(trimmed.split(",")[0]));
+  }
+  // Lower wins.  Work/business beats school; home/iCloud lose.
+  if (typeTokens.has("WORK") || typeTokens.has("BUSINESS")) return 0;
+  if (typeTokens.has("SCHOOL") || typeTokens.has("EDU")) return 2;
+  if (typeTokens.has("HOME")) return 3;
+  // Unlabeled: assume personal but only as a last resort.
+  return 4;
+}
+
+function firstPreferred(properties: VcardProperty[], name: string): VcardProperty | undefined {
+  const matches = properties.filter((p) => p.name === name && p.value.trim() !== "");
+  if (matches.length === 0) return undefined;
+  const scored = [...matches].sort(
+    (a, b) => labelScore(a.params) - labelScore(b.params),
+  );
+  return scored[0];
+}
+
+function plain(properties: VcardProperty[], name: string): string | undefined {
+  const found = firstValued(properties, name);
+  if (!found) return undefined;
+  const text = unescapeVcard(found.value).trim();
+  return text || undefined;
+}
+
+function allPlain(properties: VcardProperty[], name: string): string[] {
+  const values: string[] = [];
+  for (const p of properties) {
+    if (p.name === name && p.value.trim() !== "") {
+      const text = unescapeVcard(p.value).trim();
+      if (text) values.push(text);
+    }
+  }
+  return values;
+}
+
+/** All plain values, ordered work → school → home → unlabeled (ties keep
+ *  declaration order so unlabeled cards round-trip the user's input).
+ */
+function allPlainPreferred(properties: VcardProperty[], name: string): string[] {
+  const matched = properties.filter((p) => p.name === name && p.value.trim() !== "");
+  const indexed = matched.map((p, idx) => ({
+    value: unescapeVcard(p.value).trim(),
+    score: labelScore(p.params),
+    idx,
+  }));
+  return indexed
+    .filter((row): row is { value: string; score: number; idx: number } => Boolean(row.value))
+    .sort((a, b) => a.score - b.score || a.idx - b.idx)
+    .map((row) => row.value);
+}
+
+function component(properties: VcardProperty[], name: string, index: number): string | undefined {
+  const found = firstValued(properties, name);
+  if (!found) return undefined;
+  const text = unescapeVcard(splitComponents(found.value)[index] ?? "").trim();
+  return text || undefined;
+}
+
+function buildContact(properties: VcardProperty[]): VcardContact | null {
+  const version = plain(properties, "VERSION") ?? "3.0";
+  const displayName = plain(properties, "FN");
+  const familyName = component(properties, "N", 0);
+  const givenName = component(properties, "N", 1);
+  const organization = component(properties, "ORG", 0);
+  const emails = allPlainPreferred(properties, "EMAIL");
+  const phones = allPlain(properties, "TEL");
+  const websites = allPlainPreferred(properties, "URL");
+  const email = emails[0];
+  const phone = phones[0];
+  const website = websites[0];
+  const photoLines = properties.filter((p) => p.name === "PHOTO");
+  let photoDataUrl: string | undefined;
+  for (const line of photoLines) {
+    photoDataUrl = parsePhoto(line.params, line.value);
+    if (photoDataUrl) break;
+  }
+
+  const assembled = [givenName, familyName].filter(Boolean).join(" ").trim();
+  const name = displayName || assembled || organization || email || phone;
+  if (!name) return null;
+
+  return {
+    id: newId(),
+    displayName: name,
+    givenName,
+    familyName,
+    organization,
+    email,
+    phone,
+    website,
+    emails: emails.length > 0 ? emails : undefined,
+    phones: phones.length > 0 ? phones : undefined,
+    websites: websites.length > 0 ? websites : undefined,
+    photoDataUrl,
+    hadExistingPhoto: photoLines.length > 0,
+    vcard: { version, properties },
+  };
+}
+
+export function parseVcard(text: string): VcardContact[] {
+  const contacts: VcardContact[] = [];
+  let properties: VcardProperty[] | null = null;
+
+  for (const line of unfold(text)) {
+    if (!line.trim()) continue;
+    const upper = line.trim().toUpperCase();
+    if (upper === "BEGIN:VCARD") {
+      properties = [];
+      continue;
+    }
+    if (upper === "END:VCARD") {
+      if (properties) {
+        const contact = buildContact(properties);
+        if (contact) contacts.push(contact);
+      }
+      properties = null;
+      continue;
+    }
+    if (!properties) continue;
+    const split = splitLine(line);
+    if (!split) continue;
+    const { name, params } = splitPrefix(split.prefix);
+    if (!name) continue;
+    properties.push({ name, prefix: split.prefix, params, value: split.value });
+  }
+
+  return contacts;
+}
+
+/**
+ * RFC 6350 §3.2: fold at 75 octets, never inside a character.  Continuation
+ * lines spend one octet on their leading space.
+ */
+function foldLine(line: string): string {
+  if (isAscii(line)) {
+    if (line.length <= 75) return line;
+    const chunks = [line.slice(0, 75)];
+    let rest = line.slice(75);
+    while (rest.length > 74) {
+      chunks.push(rest.slice(0, 74));
+      rest = rest.slice(74);
+    }
+    if (rest) chunks.push(rest);
+    return chunks.join("\r\n ");
+  }
+  const chunks: string[] = [];
+  let current = "";
+  let used = 0;
+  let limit = 75;
+  for (const ch of line) {
+    const size = ch.codePointAt(0)! < 0x80 ? 1 : octets(ch);
+    if (used + size > limit) {
+      chunks.push(current);
+      current = "";
+      used = 0;
+      limit = 74;
+    }
+    current += ch;
+    used += size;
+  }
+  if (current) chunks.push(current);
+  return chunks.join("\r\n ");
+}
+
+function photoProperty(dataUrl: string, version: string): VcardProperty | null {
+  const match = /^data:image\/([a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(dataUrl.trim());
+  if (!match) return null;
+  const subtype = match[1]!.toLowerCase();
+  const data = match[2]!.replace(/\s+/g, "");
+  if (!data) return null;
+  if (version.startsWith("4")) return property("PHOTO", `data:image/${subtype};base64,${data}`);
+  const type = RASTER_PHOTO_TYPE[subtype];
+  // vCard 3.0 TYPE is a raster image subtype.  SVG has no honest TYPE here, so
+  // it goes out as a URI rather than being mislabelled as PNG.
+  if (!type) return property("PHOTO;VALUE=URI", `data:image/${subtype};base64,${data}`);
+  return property(`PHOTO;ENCODING=b;TYPE=${type}`, data);
+}
+
+function sameName(a: string | undefined, b: string | undefined): boolean {
+  const left = (a ?? "").trim().toLowerCase();
+  const right = (b ?? "").trim().toLowerCase();
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+/**
+ * CL-02 / VISION.md: a person with an employer is still a person.  Only a card
+ * that is the company — no personal name, and a display name that is the
+ * organization — may be shown as a company in Apple Contacts.
+ */
+function showsAsCompany(contact: BookContact): boolean {
+  if (!contact.organization?.trim()) return false;
+  if (contact.givenName?.trim() || contact.familyName?.trim()) return false;
+  if (classifyContact(contact) !== "businessCard") return false;
+  return sameName(contact.displayName, contact.organization);
+}
+
+function normalizedWebsite(website: string): string {
+  return website.includes("://") ? website : `https://${website}`;
+}
+
+/**
+ * The URL to write back onto a card that already carries one.  A card saying
+ * `URL:acme.example` must come back out saying `URL:acme.example`: the backup
+ * download re-emits every card untouched, and a backup that silently rewrites a
+ * field nobody approved is not a backup.  Only a genuinely different website —
+ * one the app changed — gets the scheme normalization that synthesized cards
+ * need to stay clickable in Apple Contacts.
+ */
+/**
+ * Compare the new website against the SAME property line that the
+ * rewrite will update, so a scheme-less preferred value isn't normalised
+ * (silently adding `https://`) when the first line already matches.
+ *
+ * 2026-09-20 audit: rewriteProperties now passes "WORK" through
+ * updateFlat's preferredLabel path; websiteForRewrite must mirror that
+ * label preference when deciding whether the value already exists.
+ */
+function websiteForRewrite(properties: VcardProperty[], website: string | undefined): string | undefined {
+  const wanted = website?.trim();
+  if (!wanted) return undefined;
+  const labelOf = (p: VcardProperty) => p.params.toUpperCase();
+  const isWork = (p: VcardProperty) =>
+    p.name === "URL" && /\bWORK\b/.test(labelOf(p)) || /\bBUSINESS\b/.test(labelOf(p));
+  const hasValue = (p: VcardProperty) => p.name === "URL" && p.value.trim() !== "";
+  const preferredIndex = properties.findIndex((p) => hasValue(p) && isWork(p));
+  const fallbackIndex = properties.findIndex(hasValue);
+  const index = preferredIndex >= 0 ? preferredIndex : fallbackIndex;
+  if (index >= 0) {
+    const current = unescapeVcard(properties[index]!.value).trim();
+    if (current && normalizedWebsite(current) === normalizedWebsite(wanted)) return current;
+  }
+  return normalizedWebsite(wanted);
+}
+
+/** Update a modelled value in place, without ever blanking a line the card had.
+ *
+ * `preferredLabel` (optional) — when set, find the property line whose
+ * params carry that label token first, instead of always overwriting the
+ * first line.  The 2026-09-20 audit introduced work-labeled selection in
+ * `allPlainPreferred`; without this fix, `contact.email` is the work email
+ * (which can be the SECOND or THIRD property on the source card) but
+ * `updateFlat` would still overwrite the FIRST property — losing the
+ * original home email and corrupting "Download Backup".
+ */
+function updateFlat(
+  properties: VcardProperty[],
+  name: string,
+  next: string | undefined,
+  template: string,
+  preferredLabel?: "WORK" | "BUSINESS",
+): void {
+  const trimmed = next?.trim();
+  if (!trimmed) return;
+  const labelOf = (p: VcardProperty) => p.params.toUpperCase();
+  const isPreferred = (p: VcardProperty) => {
+    if (!preferredLabel) return false;
+    const params = labelOf(p);
+    return new RegExp(`\\b${preferredLabel}\\b`).test(params)
+      || (preferredLabel === "WORK" && /\bBUSINESS\b/.test(params));
+    // The labelScore tokenizer now strips surrounding double-quotes
+    // (RFC 6350 §3.3); isPreferred can rely on the regex above since
+    // the same comparison happens in both passes.
+  };
+  const hasValue = (p: VcardProperty) => p.name === name && p.value.trim() !== "";
+  const preferredIndex = preferredLabel
+    ? properties.findIndex((p) => hasValue(p) && isPreferred(p))
+    : -1;
+  const fallbackIndex = properties.findIndex(hasValue);
+  const index = preferredIndex >= 0 ? preferredIndex : fallbackIndex;
+  if (index < 0) {
+    properties.push(property(template, escapeVcard(trimmed)));
+    return;
+  }
+  if (unescapeVcard(properties[index]!.value).trim() === trimmed) return;
+  properties[index] = { ...properties[index]!, value: escapeVcard(trimmed) };
+}
+
+/** Same, for one component of a structured value; the other components survive. */
+function updateComponents(
+  properties: VcardProperty[],
+  name: string,
+  updates: Array<{ index: number; value: string | undefined }>,
+  template: string,
+  width: number,
+): void {
+  const wanted = updates.filter((u) => Boolean(u.value?.trim()));
+  if (wanted.length === 0) return;
+  const index = properties.findIndex((p) => p.name === name);
+  if (index < 0) {
+    const components = new Array<string>(width).fill("");
+    for (const update of wanted) components[update.index] = escapeVcard(update.value!.trim());
+    properties.push(property(template, components.join(";")));
+    return;
+  }
+  const components = splitComponents(properties[index]!.value);
+  let changed = false;
+  for (const update of wanted) {
+    while (components.length <= update.index) components.push("");
+    const current = unescapeVcard(components[update.index] ?? "").trim();
+    const next = update.value!.trim();
+    if (current === next) continue;
+    components[update.index] = escapeVcard(next);
+    changed = true;
+  }
+  if (changed) properties[index] = { ...properties[index]!, value: components.join(";") };
+}
+
+function applyPhoto(properties: VcardProperty[], contact: VcardContact, version: string): void {
+  const next = contact.photoDataUrl;
+  if (!next) return;
+  const index = properties.findIndex((p) => p.name === "PHOTO");
+  if (index >= 0) {
+    const current = parsePhoto(properties[index]!.params, properties[index]!.value);
+    if (current === next) return; // untouched: re-emit the card's own bytes
+  }
+  const line = photoProperty(next, version);
+  if (!line) return; // unrecognized source (e.g. a remote URL): keep what the card had
+  if (index < 0) {
+    properties.push(line);
+    return;
+  }
+  properties[index] = line;
+  // The applied logo replaces the card's image, so any further PHOTO lines it
+  // supersedes go with it.  Everything else on the card is left alone.
+  for (let i = properties.length - 1; i > index; i -= 1) {
+    if (properties[i]!.name === "PHOTO") properties.splice(i, 1);
+  }
+}
+
+/** Re-emit the source card, with only the fields the app can change updated. */
+function rewriteProperties(record: VcardRecord, contact: VcardContact): VcardProperty[] {
+  const properties = record.properties.map((p) => ({ ...p }));
+  updateFlat(properties, "FN", contact.displayName, "FN");
+  updateComponents(
+    properties,
+    "N",
+    [
+      { index: 0, value: contact.familyName },
+      { index: 1, value: contact.givenName },
+    ],
+    "N",
+    5,
+  );
+  updateComponents(properties, "ORG", [{ index: 0, value: contact.organization }], "ORG", 1);
+  // 2026-09-20 audit — pick the work-labeled EMAIL / URL line (if any)
+  // so the rewrite doesn't overwrite the home value and silently drop
+  // it from the round-tripped vCard.
+  updateFlat(properties, "EMAIL", contact.email, "EMAIL;TYPE=INTERNET", "WORK");
+  updateFlat(properties, "TEL", contact.phone, "TEL;TYPE=WORK,VOICE");
+  updateFlat(properties, "URL", websiteForRewrite(properties, contact.website), "URL", "WORK");
+  applyPhoto(properties, contact, record.version);
+  return properties;
+}
+
+/** Build a card for a contact that never came from a vCard (CSV, Google, device). */
+function synthesizeProperties(contact: BookContact): VcardProperty[] {
+  const properties: VcardProperty[] = [];
+  properties.push(property("FN", escapeVcard(contact.displayName)));
+  if (contact.givenName || contact.familyName) {
+    properties.push(
+      property("N", `${escapeVcard(contact.familyName ?? "")};${escapeVcard(contact.givenName ?? "")};;;`),
+    );
+  }
+  if (contact.organization) {
+    properties.push(property("ORG", escapeVcard(contact.organization)));
+    if (showsAsCompany(contact)) properties.push(property("X-ABShowAs", "COMPANY"));
+  }
+  const emails = contact.emails?.length ? contact.emails : contact.email ? [contact.email] : [];
+  for (const email of emails) {
+    properties.push(property("EMAIL;TYPE=INTERNET", escapeVcard(email)));
+  }
+  const phones = contact.phones?.length ? contact.phones : contact.phone ? [contact.phone] : [];
+  for (const phone of phones) {
+    properties.push(property("TEL;TYPE=WORK,VOICE", escapeVcard(phone)));
+  }
+  const websites = contact.websites?.length ? contact.websites : contact.website ? [contact.website] : [];
+  for (const website of websites) {
+    properties.push(property("URL", escapeVcard(normalizedWebsite(website))));
+  }
+  if (contact.photoDataUrl) {
+    const photo = photoProperty(contact.photoDataUrl, "3.0");
+    if (photo) properties.push(photo);
+  }
+  return properties;
+}
+
+export function contactToVcard(contact: VcardContact): string {
+  const record = contact.vcard;
+  const properties = record ? rewriteProperties(record, contact) : synthesizeProperties(contact);
+  const lines = ["BEGIN:VCARD"];
+  if (!properties.some((p) => p.name === "VERSION")) lines.push(`VERSION:${record?.version ?? "3.0"}`);
+  for (const p of properties) {
+    const line = `${p.prefix}:${p.value}`;
+    // A rejoined QUOTED-PRINTABLE value is long by construction — being long is
+    // why it was soft-broken.  RFC 6350 whitespace folding is not how vCard 2.1
+    // continues a QP value, so folding here would hand a 2.1 consumer a value
+    // with spaces spliced into it.  Emit it whole.
+    lines.push(QUOTED_PRINTABLE.test(p.prefix) ? line : foldLine(line));
+  }
+  lines.push("END:VCARD");
+  return lines.join("\r\n") + "\r\n";
+}
+
+export function contactsToVcard(contacts: VcardContact[]): string {
+  return contacts.map(contactToVcard).join("");
+}
+
+export function downloadText(filename: string, contents: string, type: string) {
+  const blob = new Blob([contents], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+export function backupFilename(date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `contactlogo-backup-${y}${m}${d}.vcf`;
+}

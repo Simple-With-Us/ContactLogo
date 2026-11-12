@@ -12,5 +12,5 @@ git objects already in ContactLogo (subtree import).
 
 The live subtree (same history, later ContactLogo-named docs) is vendor/crest/.
 Live product as of 2026-08-21: `/Users/jay/Code/ContactLogo`, GitHub
-`jaywedgeworth22/ContactLogo`.  GitHub `jaywedgeworth22/crest` is archived.
+`Simple-With-Us/ContactLogo`.  GitHub `jaywedgeworth22/crest` is archived.
 Restore: copy this directory, then `npm install && npm run dev`.

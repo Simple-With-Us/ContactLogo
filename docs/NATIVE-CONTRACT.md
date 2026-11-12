@@ -1,8 +1,8 @@
 # Native Kit ↔ Shell Contract
 
 This document is the API boundary between `Sources/ContactLogoKit/**` (engine +
-`ReviewSession`, owned by the kit agent) and `Apps/ContactLogoiOS/**` /
-`Apps/ContactLogoMac/**` (SwiftUI shells, owned by the shell agent). Both sides
+`ReviewSession`, owned by the kit agent) and `apps/ios/**` /
+`apps/macos/**` (SwiftUI shells, owned by the shell agent). Both sides
 implement against this literally — the kit exposes exactly these symbols, the
 shells call exactly these symbols. Anything not specified here is an
 implementation detail of whichever side owns the file.
@@ -97,7 +97,7 @@ never satisfy `isSquareish` and never reach `.high` confidence.
 ```swift
 /// Rasterizes a fetched candidate image to a padded, square PNG suitable for
 /// `CNContact.imageData` — the native equivalent of the web canvas path
-/// (`padAndSquareImage` in web/src/engine/logos.ts). Runs on iOS (CoreGraphics
+/// (`padAndSquareImage` in apps/web/src/engine/logos.ts). Runs on iOS (CoreGraphics
 /// + a system SVG-capable renderer) and macOS.
 public enum ImagePreparer {
     public enum Error: Swift.Error, Sendable {
@@ -264,8 +264,8 @@ sync by the kit, not written by shells.
 
 Shells: replace the single "Undo last batch" button with a list/menu built
 from `model.undoHistory` (id, relative `createdAt`, `contactCount`), each row
-calling `model.undo(batchID:)`. `Apps/ContactLogoMac/ContentView.swift` and
-`Apps/ContactLogoiOS/ContentView.swift` both currently gate on
+calling `model.undo(batchID:)`. `apps/macos/ContentView.swift` and
+`apps/ios/ContentView.swift` both currently gate on
 `model.lastBatchID != nil` — that condition still works unchanged
 (`undoHistory.isEmpty` is equivalent) for a minimal fix, but the multi-batch
 list is the intended UI per this contract.
@@ -282,7 +282,7 @@ progress reporting, and no cancellation path.
 ### Kit API — new file `Sources/ContactLogoKit/Store/BackgroundMatchRunner.swift`
 
 The kit exposes a *platform-agnostic* runner; `BGProcessingTask` itself is a
-`UIKit`/iOS-only type and stays in `Apps/ContactLogoiOS/**`, owned by the
+`UIKit`/iOS-only type and stays in `apps/ios/**`, owned by the
 shell agent.
 
 ```swift
@@ -363,7 +363,7 @@ Rules:
 - ENGINE-CONTRACT R11.6: `sourceErrors` round-trip with the rest of
   `MatchResult`, so a retryable row is still retryable after relaunch.
 
-### Shell responsibilities (`Apps/ContactLogoiOS/ContactLogoiOSApp.swift`)
+### Shell responsibilities (`apps/ios/ContactLogoiOSApp.swift`)
 
 The kit runner gives the shell everything it needs to implement the real
 task body; the shell still owns:

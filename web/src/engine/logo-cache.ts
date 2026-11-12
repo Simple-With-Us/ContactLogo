@@ -381,7 +381,7 @@ function queryValue(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
-/** Vercel Node `(req, res)` adapter.  Bundled from `web/api/logo/[domain].ts`. */
+/** Vercel Node `(req, res)` adapter.  Bundled from `apps/web/api/logo/[domain].ts`. */
 export async function handleVercelLogo(
   req: {
     method?: string;

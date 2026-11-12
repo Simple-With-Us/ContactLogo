@@ -25,6 +25,8 @@ import {
   trimViewCache,
   removeCandidate,
   skippedNotice,
+  nextThemeChoice,
+  themeButtonLabel,
   triageActionForKey,
   visibleSlice,
 } from "./app.ts";
@@ -192,6 +194,15 @@ test("triage keys ignore typing, modifiers, and the crop modal", () => {
   assert.equal(isTriageTypingTarget({ tagName: "BUTTON" }), false);
 });
 
+test("appearance cycles light, dark, and match device", () => {
+  assert.equal(nextThemeChoice("system"), "light");
+  assert.equal(nextThemeChoice("light"), "dark");
+  assert.equal(nextThemeChoice("dark"), "system");
+  assert.equal(themeButtonLabel("system"), "Match Device");
+  assert.equal(themeButtonLabel("light"), "Light");
+  assert.equal(themeButtonLabel("dark"), "Dark");
+});
+
 test("homepage privacy sentence scopes optional Google and logo requests", () => {
   assert.equal(
     PRIVACY_SENTENCE,
@@ -200,7 +211,7 @@ test("homepage privacy sentence scopes optional Google and logo requests", () =>
   assert.match(PRIVACY_SENTENCE, /\. {2}Logo/);
   assert.equal(
     HD_KEYS_EMPTY_COPY,
-    "High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses Simple Icons, stock tickers, and favicons.",
+    "High-resolution Brandfetch and Logo.dev marks need a key.  Without one, ContactLogo uses built-in icons and website icons.",
   );
   assert.match(HD_KEYS_EMPTY_COPY, /\. {2}Without/);
   assert.match(CREDENTIAL_STORAGE_FAILED_COPY, /\. {2}It will/);

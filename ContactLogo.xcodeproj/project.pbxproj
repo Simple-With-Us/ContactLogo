@@ -10,41 +10,62 @@
 		001568AA1D5D1562A015B3C6 /* IdentityResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50D298FD00C310D0EF60F799 /* IdentityResolver.swift */; };
 		0250D2D9C2CBCA74D98F6245 /* ContactLogoKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 31BCB449DF697F691F3899EC /* ContactLogoKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		02848CAA91730AA6A8CD9AA4 /* CandidateRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04865AB793CE93A696E583A /* CandidateRanker.swift */; };
+		03129C4A5B90E4C6249BF33D /* ManualOverrideSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C44437AD430C22F613F5FE6 /* ManualOverrideSheet.swift */; };
 		0374A33C90631926844B59A6 /* DuckDuckGoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5624D6B843022F3E83AEF39F /* DuckDuckGoSource.swift */; };
 		044A5E3E5D8C15654D298DDF /* ImagePreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D286008B1C88DA56ECD4BC34 /* ImagePreparer.swift */; };
-		0662999E9EE8C5DC290FE5CE /* AppUpdatePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 443265E102A01653A01178F2 /* AppUpdatePrompt.swift */; };
 		07111C4BA5781A90CCEA7E3B /* ClearbitSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5AF63E63B85506F7F169F9 /* ClearbitSource.swift */; };
+		078E9A90271BC9CF8245DA5C /* ScanRunReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4CA6DD4CB47528242116F16 /* ScanRunReport.swift */; };
+		0989C5FC5A9460EFCC53ADFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 916D752773738205630902DB /* Sparkle */; };
 		09B2E455FD779F007F2C0C58 /* NameNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4969E286A152FDE73909DD81 /* NameNormalizer.swift */; };
-		09DFAA4D5C8A6C472629228B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1C8FBB5F39536723C38B6A61 /* Assets.xcassets */; };
+		09BC15E4658A2D0557D55266 /* ContactLogoKitMac.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 79414AE70947DE8A49F40D48 /* ContactLogoKitMac.framework */; };
 		09E79A9F1F1ECE8DA660D31A /* CompanyCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4B4EE97BCDD22F4C6B44F7 /* CompanyCatalog.swift */; };
 		0A6AC9C36FAC07966C652473 /* SVGRasterizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ED8D6C0517E1AE6081E879C /* SVGRasterizer.swift */; };
 		0B2C4DBAFB29F40E88F2ACB4 /* FaviconSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79CC86B84746C889E1B7462 /* FaviconSource.swift */; };
+		0D130599251DD682670872F7 /* ContactLogoiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D196D5505368BEFA591B7E1 /* ContactLogoiOSApp.swift */; };
 		0E31DC19E24B4432088056AC /* BackgroundMatchRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBAD4842EA4D40654FEFC94B /* BackgroundMatchRunner.swift */; };
+		18B13A4088B3422DF289B496 /* ContactLogoCacheSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3E091ACAA445B2C25E63F8 /* ContactLogoCacheSourceTests.swift */; };
 		196E7B7647E0E00E304E62A1 /* WordLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8225B32D4FCAB226233A5B9 /* WordLists.swift */; };
+		1A6F3BDDCE54DD4E8BBEE13B /* ContactLogoMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CC89D1CBCBE59EAA4082C36 /* ContactLogoMacApp.swift */; };
+		1ADB658B3B5794D76ED33455 /* ContactLogoMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CC89D1CBCBE59EAA4082C36 /* ContactLogoMacApp.swift */; };
+		1BA30301412A1D4DEC3A53AA /* BusinessContactShapeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C709CC3311E6F89D8853B3A /* BusinessContactShapeTests.swift */; };
 		1C98B7BB5F995C29D1B31B93 /* BrandfetchSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10FE0C32FC2442090989354 /* BrandfetchSource.swift */; };
 		1E382DC49CEAC83CB8C9E3CA /* SocialAvatarSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3995CA1949ACA1B6FE3DE19E /* SocialAvatarSource.swift */; };
 		1E41FAE9CACFEFEB66CE1A4E /* CompaniesLogoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54AE3ACB7FFE84AB4A3AC6C /* CompaniesLogoSource.swift */; };
 		20D8713A71E4172F6F4AAF2D /* UndoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7391AC474DA50FB01E0BF294 /* UndoLog.swift */; };
+		20DEEEA34B6682287CF914D1 /* ContactLogoKitMac.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 79414AE70947DE8A49F40D48 /* ContactLogoKitMac.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		290B0165116D8C7B9BEE8C41 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF41B30625237952CE7D3A8 /* KeychainStore.swift */; };
 		2CE8F74A2766F2F4E0866C15 /* MatchPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22FEC6F6504CCE6E79E4CAFF /* MatchPipeline.swift */; };
+		2E098A14A12A4A2BB1A88D0B /* SentryDSN.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7D2861CC8659C7F2B30711 /* SentryDSN.swift */; };
+		308FAEEB1A6F75A6EDF2E495 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D1E8351E06AA29F3E6A24FD /* ContentView.swift */; };
 		30E08547A52BFFFA601404CA /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820656E4A3ABCD04FC49168 /* Models.swift */; };
 		3386BC5AE4329A706961FEAC /* BrandfetchSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10FE0C32FC2442090989354 /* BrandfetchSource.swift */; };
 		37DC555141505BA907E1EBDE /* ContactLogoCacheSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97E49B99E2F0F2577E6AFDD /* ContactLogoCacheSource.swift */; };
 		394F7AC53FEC7D352D09E06B /* SVGRasterizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ED8D6C0517E1AE6081E879C /* SVGRasterizer.swift */; };
 		3BC0131CA87BEA135FAC7140 /* MatchPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22FEC6F6504CCE6E79E4CAFF /* MatchPipeline.swift */; };
 		3C46C9CF19FF9F9C87269F1D /* GenericBlocklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98997F8A612379F7F3F60A43 /* GenericBlocklist.swift */; };
-		3FA84C9C9444FC7E280FB818 /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C997BCAD07D659AF1F12FCD /* NotificationScheduler.swift */; };
+		4352E21E69B6A2F85FF65B9E /* ManualOverrideSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5648A69A000163B38A9F2609 /* ManualOverrideSheet.swift */; };
 		46F369E68DCFF497DB8076DD /* ImageFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF04212A05BD18249FFCADBD /* ImageFlags.swift */; };
-		4E46ECB45FA595ECF6717D9A /* SentryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A67EDEB1599489FC142DA1 /* SentryTelemetry.swift */; };
+		472DC80D16AD4C0674009D9E /* AppUpdatePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE6630CFF62E7C0BB06EBA3 /* AppUpdatePrompt.swift */; };
+		4891D8ECB947A000F49F22D7 /* ReviewQueueStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E29EA0CC5357E60A5578C5 /* ReviewQueueStoreTests.swift */; };
+		49B739F69861FEB63119952E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D1E8351E06AA29F3E6A24FD /* ContentView.swift */; };
+		4ADC9E411E83DB2AFA40E727 /* AppUpdatePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F6A0BE06E30C9D2651F10B /* AppUpdatePrompt.swift */; };
+		4DFBF32FFAE693C6589D7950 /* LogoDevSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB507F1EE3B6EB0818B8CC9 /* LogoDevSourceTests.swift */; };
 		520A37F15A49BA33796D5723 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = D036259F798705AC543C966D /* Sentry */; };
 		522DB2D63ABA91D22F31E79F /* FaviconSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79CC86B84746C889E1B7462 /* FaviconSource.swift */; };
 		53D6C481278F96AA4D224174 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B93FC49350414117E0A9F619 /* SettingsStore.swift */; };
 		5C0BFA7FEFCD6A82F8A3C079 /* DefaultSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = E363321D372087081BC5666C /* DefaultSources.swift */; };
+		60645AC568E278884EAF16F3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D309B97E59AAA7FB5624CCF /* ContentView.swift */; };
+		614A8988F04F5B98AA6C81CA /* GoldenCorpusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB374869A1AAE7F795433ED2 /* GoldenCorpusTests.swift */; };
 		61512B58441BB2369B9525F0 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = CAF1EB74F55B256D2CED77C7 /* Sentry */; };
+		633803CFBAA7FD5AC394C0ED /* ManualOverrideSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5648A69A000163B38A9F2609 /* ManualOverrideSheet.swift */; };
+		6527004E4444B3A3E962FB2A /* AutoUpdateStub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9946EFEA7CA6142C9F3DBB91 /* AutoUpdateStub.swift */; };
 		66A6BA19C6F3EB06181C2A0E /* CandidateRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04865AB793CE93A696E583A /* CandidateRanker.swift */; };
 		67463EDB265355589444B5F3 /* SocialAvatarSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3995CA1949ACA1B6FE3DE19E /* SocialAvatarSource.swift */; };
+		69037C1AE9D8C0574CEF45DD /* SourcesExpansionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B28314B661BD282B52BAE171 /* SourcesExpansionTests.swift */; };
+		6A530601BAA8409DC0B27EF0 /* SentryDSNTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E60C56DEB7843580BC1F2D2 /* SentryDSNTests.swift */; };
 		6AE8A1498C59CB7B58305D0E /* CompaniesLogoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54AE3ACB7FFE84AB4A3AC6C /* CompaniesLogoSource.swift */; };
 		6E6960FA842960ABC310E0E9 /* PhoneDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865EC5BB0A51330E0CDC3443 /* PhoneDirectory.swift */; };
+		75CB997A77747D49AF63FF5B /* AppUpdatePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE6630CFF62E7C0BB06EBA3 /* AppUpdatePrompt.swift */; };
 		77AFE1E346632A0D879BF0C5 /* ReviewQueueStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172A9B425E61B5CBB50936DC /* ReviewQueueStore.swift */; };
 		785EABE71FF9B24DDA7B1259 /* BackgroundMatchRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBAD4842EA4D40654FEFC94B /* BackgroundMatchRunner.swift */; };
 		7A074D2261B623F209B09D35 /* ContactLogoKitMac.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 79414AE70947DE8A49F40D48 /* ContactLogoKitMac.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -54,52 +75,62 @@
 		84954D30FB86F61CE535E354 /* GoogleFaviconV2Source.swift in Sources */ = {isa = PBXBuildFile; fileRef = F76CD478E2D5D4BA13025422 /* GoogleFaviconV2Source.swift */; };
 		879E4773057DAEE3D22F1911 /* CompanyCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4B4EE97BCDD22F4C6B44F7 /* CompanyCatalog.swift */; };
 		8849D461BAD1613D6B55C368 /* HTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C98D5B3CD005C6DA5DB36B57 /* HTTPRetry.swift */; };
+		886634145F5003366DE73814 /* ScanTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE5DFB53594136925AEB35F1 /* ScanTelemetryTests.swift */; };
 		8B84083B3475B3FE01286A5B /* GenericBlocklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98997F8A612379F7F3F60A43 /* GenericBlocklist.swift */; };
-		8C89465619D6094AD3364840 /* ContactLogoiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 681346B29861440FC8ECDB60 /* ContactLogoiOSApp.swift */; };
 		96B1D9E6969B5289CF2662E0 /* GoogleFaviconV2Source.swift in Sources */ = {isa = PBXBuildFile; fileRef = F76CD478E2D5D4BA13025422 /* GoogleFaviconV2Source.swift */; };
-		98F292E356313AE5E9CCF5E8 /* SentryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A4D290499E32073943EB24 /* SentryTelemetry.swift */; };
 		9C2F9B38B1DB9B22279B3FEE /* ReviewQueueStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172A9B425E61B5CBB50936DC /* ReviewQueueStore.swift */; };
 		9CCACC73D319558D08FF812C /* UnavatarSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA4AAD7F376DCF27D490A09F /* UnavatarSource.swift */; };
-		9F7F933245B243F8E30E71FC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 25365E7DBFE88D90575DBBA4 /* Assets.xcassets */; };
 		9FAC0079606A5E0B0CFEF5E0 /* ContactLogoKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 31BCB449DF697F691F3899EC /* ContactLogoKit.framework */; };
 		A11808266B0D9CDD5E977B89 /* ContactsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74683030E2B730DA8ECA66E2 /* ContactsProvider.swift */; };
 		A2486D13C48FAAC2EF0C4AAC /* NameNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4969E286A152FDE73909DD81 /* NameNormalizer.swift */; };
+		A3B9F635CCFB3DEA9EB42869 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 095B53563C2E9A6D2BDAC803 /* Assets.xcassets */; };
 		A4346F7C0A2AA4ABF7A1540B /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B93FC49350414117E0A9F619 /* SettingsStore.swift */; };
 		A965E0E97A8B9CD17293BC0D /* DomainDeriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE7B747DFFEB1E11CFF70A34 /* DomainDeriver.swift */; };
-		AA7EE8259BAB62E85343B2C1 /* AppUpdatePrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C95E9161210A4E38C45148E /* AppUpdatePrompt.swift */; };
 		AE8B9779BA31A084B3007032 /* DomainDeriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE7B747DFFEB1E11CFF70A34 /* DomainDeriver.swift */; };
-		AF21F526EEBF2C188B8380AB /* ManualOverrideSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52EDB8D876C3D24B6B18B8E /* ManualOverrideSheet.swift */; };
 		B0134F899AFBEB466F5E7207 /* SimpleIconsSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9BD9F60D43A4D56E72EFC4F /* SimpleIconsSource.swift */; };
+		B039A072098B2C3296B61608 /* SentryDSN.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7D2861CC8659C7F2B30711 /* SentryDSN.swift */; };
+		B64E8D8D7EDE6A345482B4F8 /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111439D423DD1072E3DF73F1 /* NotificationScheduler.swift */; };
+		BA6DD58E56E3960E7B871150 /* AutoUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11B57860842BBC786D49DC0E /* AutoUpdate.swift */; };
 		BC20A6717455195B46563FB7 /* WikimediaSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061D3C49F1AFEF23ED131B95 /* WikimediaSource.swift */; };
 		BEC0119834F61C6E09A8553C /* CandidateFileName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39EEECF2529DD56CDDB234FC /* CandidateFileName.swift */; };
 		BF638B49139C82EBAB895417 /* ReviewSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8104FB0F5DF9282B24180F0 /* ReviewSession.swift */; };
-		BF8CB02FA75136D08147A3E7 /* ContactLogoMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5740648826FBF7D7003C356 /* ContactLogoMacApp.swift */; };
+		C0F11248B540882B9735CA6F /* ContactLogoKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 31BCB449DF697F691F3899EC /* ContactLogoKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C119D905FD834F5F99CFC119 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820656E4A3ABCD04FC49168 /* Models.swift */; };
 		C1E49AE49C34602963F58353 /* ContactLogoKitMac.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 79414AE70947DE8A49F40D48 /* ContactLogoKitMac.framework */; };
 		C1FCCD7148A8844104DE19AC /* DefaultSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = E363321D372087081BC5666C /* DefaultSources.swift */; };
 		C2508AE86F24A9C06767E1E9 /* UndoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7391AC474DA50FB01E0BF294 /* UndoLog.swift */; };
 		C363DBA04A219A74EF97535A /* PreferredMarksSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F9CD8E8CE34EC75A0104A85 /* PreferredMarksSource.swift */; };
+		C422D8FDD675F56DC9E35833 /* ContactEnumerationKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 076A7C558218B95AD7D9B1E7 /* ContactEnumerationKeyTests.swift */; };
+		C47A3320C866EE4FB3515890 /* SentryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5203057E5E96B6A540A16E /* SentryTelemetry.swift */; };
 		C5F588EBA62B3EA1DDC2B6B4 /* ContactLogoCacheSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97E49B99E2F0F2577E6AFDD /* ContactLogoCacheSource.swift */; };
 		C6BFAE917D3F8761478E8259 /* CandidateFileName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39EEECF2529DD56CDDB234FC /* CandidateFileName.swift */; };
-		C963AA407E3D6C2CA3819674 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B063D75543B34805CD5F1C /* SettingsView.swift */; };
+		C7959E71BB9213A582AD3D36 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 59F9A1F5FB34B8F5C3D228D4 /* Sentry */; };
 		CA91FC9CFC2D73B6A9E770E7 /* LogoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F13C914BB55CC5108C409D4 /* LogoSource.swift */; };
+		CB7952624DDA1A92862860B0 /* SentryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E18721FFA5EC8ED7C2C42F /* SentryTelemetry.swift */; };
 		CD0E7DCE7500AB2379551539 /* ReviewSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8104FB0F5DF9282B24180F0 /* ReviewSession.swift */; };
 		CDF33F84CAD918D43C0E80C6 /* DuckDuckGoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5624D6B843022F3E83AEF39F /* DuckDuckGoSource.swift */; };
+		D0BF34264A6C1072980EEB06 /* ScanRunReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4CA6DD4CB47528242116F16 /* ScanRunReport.swift */; };
 		D0D47FEB698B1C1D6FEE35F9 /* WordLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8225B32D4FCAB226233A5B9 /* WordLists.swift */; };
-		D233291A0988401AC9AEC626 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B57A945885E5C85324DE0C5A /* SettingsView.swift */; };
-		D4CAA2941479A80366213C46 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475C47C21BB6C48B687167A /* ContentView.swift */; };
+		D30545AE488649F037A43205 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28651793CE3B39F210348520 /* SettingsView.swift */; };
 		D557996B008217B89F137B4F /* PreferredMarksSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F9CD8E8CE34EC75A0104A85 /* PreferredMarksSource.swift */; };
 		D584CD0120917D473184324D /* ClearbitSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5AF63E63B85506F7F169F9 /* ClearbitSource.swift */; };
 		D6DBC704AE63CBA3589F1C94 /* ImageFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF04212A05BD18249FFCADBD /* ImageFlags.swift */; };
 		D81AEBB5319FBFC1C22FF26A /* SimpleIconsSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9BD9F60D43A4D56E72EFC4F /* SimpleIconsSource.swift */; };
+		D8809218DCA2E601584755F3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6999CCE7138FE769FE2B1F76 /* SettingsView.swift */; };
 		DAAC72DCED1F31E88687814C /* HTTPRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C98D5B3CD005C6DA5DB36B57 /* HTTPRetry.swift */; };
+		DD47C6673B07B9FAB026072D /* ContactLogoKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6554BBA2E5D0D5D80CDCD93E /* ContactLogoKitTests.swift */; };
+		E16B3FDE75039BCB04BF6769 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 095B53563C2E9A6D2BDAC803 /* Assets.xcassets */; };
 		E587ADB8F30EA5AAC9C72934 /* AppleTouchIconSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4610ABE2F43D6B42E045517 /* AppleTouchIconSource.swift */; };
 		E85E9844A8255B7CF6827FD3 /* WikimediaSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061D3C49F1AFEF23ED131B95 /* WikimediaSource.swift */; };
-		E9FFB36BD4D88F42DE084600 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56605D3FFDA7F1FA949DABF3 /* ContentView.swift */; };
 		EF12A1BDA6B4A55952F6FB44 /* UnavatarSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA4AAD7F376DCF27D490A09F /* UnavatarSource.swift */; };
 		EF2A8E1FD2D9F99492AF72A1 /* AppleTouchIconSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4610ABE2F43D6B42E045517 /* AppleTouchIconSource.swift */; };
-		F35330A13FBDC551DF76936B /* ManualOverrideSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 257BEC55D3F30E12E865F73F /* ManualOverrideSheet.swift */; };
+		F12A2A60D0262B8D1CE71BCD /* CandidateRankerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0129269A4B7B700D75370BDA /* CandidateRankerTests.swift */; };
+		F157C30F7E89E4DD372EBC72 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 47A3B5B01311452849A6A1B0 /* Assets.xcassets */; };
+		F2EFED97C6D2783BF64F1DF3 /* ScanCoverageRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCFE1B3BF012A595C59E7EA /* ScanCoverageRegressionTests.swift */; };
+		F5E74CA935FDFE614ACB52E8 /* ContactLogoKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 31BCB449DF697F691F3899EC /* ContactLogoKit.framework */; };
+		F7EAD86BDEA36EEB59940390 /* SentryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5203057E5E96B6A540A16E /* SentryTelemetry.swift */; };
 		F8EA2C9D6F06FEDC2F89AC22 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF41B30625237952CE7D3A8 /* KeychainStore.swift */; };
+		FC1A4340332E9C00CD960956 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28651793CE3B39F210348520 /* SettingsView.swift */; };
 		FCEA914F2D6184C263662049 /* ImagePreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D286008B1C88DA56ECD4BC34 /* ImagePreparer.swift */; };
 		FE5B722094DE4FE2C89CDA56 /* LogoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F13C914BB55CC5108C409D4 /* LogoSource.swift */; };
 /* End PBXBuildFile section */
@@ -111,6 +142,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 485A91A7990FA6B691E6A264;
 			remoteInfo = ContactLogoKitMac;
+		};
+		45B46E5A619D8087352231BC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 197823AA355C6B6A05A4B886 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 485A91A7990FA6B691E6A264;
+			remoteInfo = ContactLogoKitMac;
+		};
+		8DE944761B4433AD19B7977E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 197823AA355C6B6A05A4B886 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4E419FDA816A0B5ABD7ADFD7;
+			remoteInfo = ContactLogoKit;
 		};
 		C2E45C574EC3874DDD7F7E8B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -133,6 +178,17 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1EF4D96D1D0A08AB6499DCC5 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				C0F11248B540882B9735CA6F /* ContactLogoKit.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		1FE489FF1D92A0BF3193E789 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -144,46 +200,72 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4CBFD0D7A68C91DED7559C95 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				20DEEEA34B6682287CF914D1 /* ContactLogoKitMac.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0129269A4B7B700D75370BDA /* CandidateRankerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateRankerTests.swift; sourceTree = "<group>"; };
 		061D3C49F1AFEF23ED131B95 /* WikimediaSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikimediaSource.swift; sourceTree = "<group>"; };
-		0C95E9161210A4E38C45148E /* AppUpdatePrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdatePrompt.swift; sourceTree = "<group>"; };
-		0C997BCAD07D659AF1F12FCD /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
+		076A7C558218B95AD7D9B1E7 /* ContactEnumerationKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactEnumerationKeyTests.swift; sourceTree = "<group>"; };
+		095B53563C2E9A6D2BDAC803 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		111439D423DD1072E3DF73F1 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
+		11B57860842BBC786D49DC0E /* AutoUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoUpdate.swift; sourceTree = "<group>"; };
 		172A9B425E61B5CBB50936DC /* ReviewQueueStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewQueueStore.swift; sourceTree = "<group>"; };
-		19B063D75543B34805CD5F1C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		1C8FBB5F39536723C38B6A61 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1D196D5505368BEFA591B7E1 /* ContactLogoiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoiOSApp.swift; sourceTree = "<group>"; };
 		1F48055747588374023786E1 /* ContactLogoMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ContactLogoMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		22FEC6F6504CCE6E79E4CAFF /* MatchPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchPipeline.swift; sourceTree = "<group>"; };
-		25365E7DBFE88D90575DBBA4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		257BEC55D3F30E12E865F73F /* ManualOverrideSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualOverrideSheet.swift; sourceTree = "<group>"; };
+		28651793CE3B39F210348520 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2F13C914BB55CC5108C409D4 /* LogoSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogoSource.swift; sourceTree = "<group>"; };
 		31BCB449DF697F691F3899EC /* ContactLogoKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ContactLogoKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		32A67EDEB1599489FC142DA1 /* SentryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryTelemetry.swift; sourceTree = "<group>"; };
+		394616628563C067E3D853EF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3995CA1949ACA1B6FE3DE19E /* SocialAvatarSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialAvatarSource.swift; sourceTree = "<group>"; };
 		39EEECF2529DD56CDDB234FC /* CandidateFileName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateFileName.swift; sourceTree = "<group>"; };
-		443265E102A01653A01178F2 /* AppUpdatePrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdatePrompt.swift; sourceTree = "<group>"; };
+		3A7D2861CC8659C7F2B30711 /* SentryDSN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryDSN.swift; sourceTree = "<group>"; };
+		3BCFE1B3BF012A595C59E7EA /* ScanCoverageRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCoverageRegressionTests.swift; sourceTree = "<group>"; };
+		3D1D79F04EC513FE904EB3A3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		3D1E8351E06AA29F3E6A24FD /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3D309B97E59AAA7FB5624CCF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		46F6A0BE06E30C9D2651F10B /* AppUpdatePrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdatePrompt.swift; sourceTree = "<group>"; };
+		47201F9DD905E7CB7942CF49 /* ContactLogoMacAppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ContactLogoMacAppStore.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		47A3B5B01311452849A6A1B0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		47E29EA0CC5357E60A5578C5 /* ReviewQueueStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewQueueStoreTests.swift; sourceTree = "<group>"; };
 		4969E286A152FDE73909DD81 /* NameNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameNormalizer.swift; sourceTree = "<group>"; };
 		4B5AF63E63B85506F7F169F9 /* ClearbitSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearbitSource.swift; sourceTree = "<group>"; };
 		50D298FD00C310D0EF60F799 /* IdentityResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityResolver.swift; sourceTree = "<group>"; };
 		5624D6B843022F3E83AEF39F /* DuckDuckGoSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuckDuckGoSource.swift; sourceTree = "<group>"; };
-		56605D3FFDA7F1FA949DABF3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		5648A69A000163B38A9F2609 /* ManualOverrideSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualOverrideSheet.swift; sourceTree = "<group>"; };
+		5C44437AD430C22F613F5FE6 /* ManualOverrideSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualOverrideSheet.swift; sourceTree = "<group>"; };
+		5E60C56DEB7843580BC1F2D2 /* SentryDSNTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryDSNTests.swift; sourceTree = "<group>"; };
 		5ED8D6C0517E1AE6081E879C /* SVGRasterizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SVGRasterizer.swift; sourceTree = "<group>"; };
-		681346B29861440FC8ECDB60 /* ContactLogoiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoiOSApp.swift; sourceTree = "<group>"; };
+		6554BBA2E5D0D5D80CDCD93E /* ContactLogoKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoKitTests.swift; sourceTree = "<group>"; };
+		6999CCE7138FE769FE2B1F76 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		6B3E091ACAA445B2C25E63F8 /* ContactLogoCacheSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoCacheSourceTests.swift; sourceTree = "<group>"; };
 		6C29034DBC8BE268F0F26B2B /* ContactLogoiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ContactLogoiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6FCBA1CBEA02852E9099698A /* ContactLogoMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ContactLogoMac.entitlements; sourceTree = "<group>"; };
 		7391AC474DA50FB01E0BF294 /* UndoLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoLog.swift; sourceTree = "<group>"; };
 		74683030E2B730DA8ECA66E2 /* ContactsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsProvider.swift; sourceTree = "<group>"; };
-		7475C47C21BB6C48B687167A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		79414AE70947DE8A49F40D48 /* ContactLogoKitMac.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ContactLogoKitMac.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		7F1E53FE9C778F7B0A55F79F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		80C25756B1F35C003AA3A118 /* ContactLogoMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ContactLogoMac.entitlements; sourceTree = "<group>"; };
+		7C709CC3311E6F89D8853B3A /* BusinessContactShapeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessContactShapeTests.swift; sourceTree = "<group>"; };
+		7CC89D1CBCBE59EAA4082C36 /* ContactLogoMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoMacApp.swift; sourceTree = "<group>"; };
 		865EC5BB0A51330E0CDC3443 /* PhoneDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneDirectory.swift; sourceTree = "<group>"; };
+		8E82AC5C0DF0B1C0B47BFA08 /* ContactLogoKitTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ContactLogoKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F9CD8E8CE34EC75A0104A85 /* PreferredMarksSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferredMarksSource.swift; sourceTree = "<group>"; };
-		97A4D290499E32073943EB24 /* SentryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryTelemetry.swift; sourceTree = "<group>"; };
 		98997F8A612379F7F3F60A43 /* GenericBlocklist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenericBlocklist.swift; sourceTree = "<group>"; };
-		A52EDB8D876C3D24B6B18B8E /* ManualOverrideSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualOverrideSheet.swift; sourceTree = "<group>"; };
+		9946EFEA7CA6142C9F3DBB91 /* AutoUpdateStub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoUpdateStub.swift; sourceTree = "<group>"; };
+		A4CA6DD4CB47528242116F16 /* ScanRunReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanRunReport.swift; sourceTree = "<group>"; };
 		A97E49B99E2F0F2577E6AFDD /* ContactLogoCacheSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoCacheSource.swift; sourceTree = "<group>"; };
-		B57A945885E5C85324DE0C5A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AB374869A1AAE7F795433ED2 /* GoldenCorpusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenCorpusTests.swift; sourceTree = "<group>"; };
+		B28314B661BD282B52BAE171 /* SourcesExpansionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesExpansionTests.swift; sourceTree = "<group>"; };
 		B93FC49350414117E0A9F619 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		BA4AAD7F376DCF27D490A09F /* UnavatarSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavatarSource.swift; sourceTree = "<group>"; };
 		BE7B747DFFEB1E11CFF70A34 /* DomainDeriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainDeriver.swift; sourceTree = "<group>"; };
@@ -191,22 +273,26 @@
 		C10FE0C32FC2442090989354 /* BrandfetchSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandfetchSource.swift; sourceTree = "<group>"; };
 		C8104FB0F5DF9282B24180F0 /* ReviewSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewSession.swift; sourceTree = "<group>"; };
 		C8225B32D4FCAB226233A5B9 /* WordLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordLists.swift; sourceTree = "<group>"; };
+		C8F37270B9D3FFA6A97365DD /* ContactLogoMacAppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ContactLogoMacAppStore.entitlements; sourceTree = "<group>"; };
 		C98D5B3CD005C6DA5DB36B57 /* HTTPRetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPRetry.swift; sourceTree = "<group>"; };
 		CCF41B30625237952CE7D3A8 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		CE5DFB53594136925AEB35F1 /* ScanTelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanTelemetryTests.swift; sourceTree = "<group>"; };
 		D286008B1C88DA56ECD4BC34 /* ImagePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreparer.swift; sourceTree = "<group>"; };
 		D79CC86B84746C889E1B7462 /* FaviconSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconSource.swift; sourceTree = "<group>"; };
+		D9E18721FFA5EC8ED7C2C42F /* SentryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryTelemetry.swift; sourceTree = "<group>"; };
 		E04865AB793CE93A696E583A /* CandidateRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateRanker.swift; sourceTree = "<group>"; };
 		E363321D372087081BC5666C /* DefaultSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultSources.swift; sourceTree = "<group>"; };
-		E367D12C2FBC4FB53F09631F /* ContactLogoiOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ContactLogoiOS.entitlements; sourceTree = "<group>"; };
-		E5740648826FBF7D7003C356 /* ContactLogoMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLogoMacApp.swift; sourceTree = "<group>"; };
-		E7387A0CA93D250803C638E8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		EA4B4EE97BCDD22F4C6B44F7 /* CompanyCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanyCatalog.swift; sourceTree = "<group>"; };
+		EAB507F1EE3B6EB0818B8CC9 /* LogoDevSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogoDevSourceTests.swift; sourceTree = "<group>"; };
 		EBAD4842EA4D40654FEFC94B /* BackgroundMatchRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundMatchRunner.swift; sourceTree = "<group>"; };
+		EF5203057E5E96B6A540A16E /* SentryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryTelemetry.swift; sourceTree = "<group>"; };
 		F4610ABE2F43D6B42E045517 /* AppleTouchIconSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleTouchIconSource.swift; sourceTree = "<group>"; };
+		F5470D63699AF8C9247677B1 /* ContactLogoiOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ContactLogoiOS.entitlements; sourceTree = "<group>"; };
 		F54AE3ACB7FFE84AB4A3AC6C /* CompaniesLogoSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompaniesLogoSource.swift; sourceTree = "<group>"; };
 		F76CD478E2D5D4BA13025422 /* GoogleFaviconV2Source.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleFaviconV2Source.swift; sourceTree = "<group>"; };
 		F820656E4A3ABCD04FC49168 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		F9BD9F60D43A4D56E72EFC4F /* SimpleIconsSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleIconsSource.swift; sourceTree = "<group>"; };
+		FEE6630CFF62E7C0BB06EBA3 /* AppUpdatePrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdatePrompt.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -216,6 +302,24 @@
 			files = (
 				C1E49AE49C34602963F58353 /* ContactLogoKitMac.framework in Frameworks */,
 				520A37F15A49BA33796D5723 /* Sentry in Frameworks */,
+				0989C5FC5A9460EFCC53ADFA /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		63A55707115C337F01C6C6D3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F5E74CA935FDFE614ACB52E8 /* ContactLogoKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D37DE241C0455F4A97026AD4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09BC15E4658A2D0557D55266 /* ContactLogoKitMac.framework in Frameworks */,
+				C7959E71BB9213A582AD3D36 /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -231,6 +335,44 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1C9C5938D267035476B06AE2 /* ContactLogoKitTests */ = {
+			isa = PBXGroup;
+			children = (
+				7C709CC3311E6F89D8853B3A /* BusinessContactShapeTests.swift */,
+				0129269A4B7B700D75370BDA /* CandidateRankerTests.swift */,
+				076A7C558218B95AD7D9B1E7 /* ContactEnumerationKeyTests.swift */,
+				6B3E091ACAA445B2C25E63F8 /* ContactLogoCacheSourceTests.swift */,
+				6554BBA2E5D0D5D80CDCD93E /* ContactLogoKitTests.swift */,
+				AB374869A1AAE7F795433ED2 /* GoldenCorpusTests.swift */,
+				EAB507F1EE3B6EB0818B8CC9 /* LogoDevSourceTests.swift */,
+				47E29EA0CC5357E60A5578C5 /* ReviewQueueStoreTests.swift */,
+				3BCFE1B3BF012A595C59E7EA /* ScanCoverageRegressionTests.swift */,
+				CE5DFB53594136925AEB35F1 /* ScanTelemetryTests.swift */,
+				5E60C56DEB7843580BC1F2D2 /* SentryDSNTests.swift */,
+				B28314B661BD282B52BAE171 /* SourcesExpansionTests.swift */,
+			);
+			name = ContactLogoKitTests;
+			path = Tests/ContactLogoKitTests;
+			sourceTree = "<group>";
+		};
+		2C30C8482858778637E555AB /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				46F6A0BE06E30C9D2651F10B /* AppUpdatePrompt.swift */,
+				47A3B5B01311452849A6A1B0 /* Assets.xcassets */,
+				F5470D63699AF8C9247677B1 /* ContactLogoiOS.entitlements */,
+				1D196D5505368BEFA591B7E1 /* ContactLogoiOSApp.swift */,
+				3D309B97E59AAA7FB5624CCF /* ContentView.swift */,
+				3D1D79F04EC513FE904EB3A3 /* Info.plist */,
+				5C44437AD430C22F613F5FE6 /* ManualOverrideSheet.swift */,
+				111439D423DD1072E3DF73F1 /* NotificationScheduler.swift */,
+				D9E18721FFA5EC8ED7C2C42F /* SentryTelemetry.swift */,
+				6999CCE7138FE769FE2B1F76 /* SettingsView.swift */,
+			);
+			name = ios;
+			path = apps/ios;
+			sourceTree = "<group>";
+		};
 		4EA01F27D6CDE3BDFE2D8797 /* Contacts */ = {
 			isa = PBXGroup;
 			children = (
@@ -245,6 +387,7 @@
 				4EA01F27D6CDE3BDFE2D8797 /* Contacts */,
 				F0B722BF7CA21CDD051F9509 /* Identity */,
 				FD96AD36762E04CD9D1CDD6E /* Normalize */,
+				87FD8CDC3F760913427D80E6 /* Observability */,
 				6C1DA3B288B05022BFEDB8CF /* Pipeline */,
 				68FE394A7D01D48BAFBBF0F5 /* Rank */,
 				EBF814245F3FD0B7A13324C9 /* Sources */,
@@ -282,9 +425,11 @@
 		6A96699AA509054512BAE678 = {
 			isa = PBXGroup;
 			children = (
-				9315E9F395073F20371A955A /* ContactLogoiOS */,
 				4F5E99DCD41D478203FA9516 /* ContactLogoKit */,
-				A81995BEEECDA2A3EBBEA443 /* ContactLogoMac */,
+				1C9C5938D267035476B06AE2 /* ContactLogoKitTests */,
+				2C30C8482858778637E555AB /* ios */,
+				84ABEBC9995B4BCCA1B30C5E /* macos */,
+				F6549F3D76B172D044F7EEDF /* macos-app-store */,
 				994642C717A1CAC159D09A37 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -298,22 +443,31 @@
 			path = Pipeline;
 			sourceTree = "<group>";
 		};
-		9315E9F395073F20371A955A /* ContactLogoiOS */ = {
+		84ABEBC9995B4BCCA1B30C5E /* macos */ = {
 			isa = PBXGroup;
 			children = (
-				0C95E9161210A4E38C45148E /* AppUpdatePrompt.swift */,
-				25365E7DBFE88D90575DBBA4 /* Assets.xcassets */,
-				E367D12C2FBC4FB53F09631F /* ContactLogoiOS.entitlements */,
-				681346B29861440FC8ECDB60 /* ContactLogoiOSApp.swift */,
-				56605D3FFDA7F1FA949DABF3 /* ContentView.swift */,
-				7F1E53FE9C778F7B0A55F79F /* Info.plist */,
-				257BEC55D3F30E12E865F73F /* ManualOverrideSheet.swift */,
-				0C997BCAD07D659AF1F12FCD /* NotificationScheduler.swift */,
-				97A4D290499E32073943EB24 /* SentryTelemetry.swift */,
-				B57A945885E5C85324DE0C5A /* SettingsView.swift */,
+				FEE6630CFF62E7C0BB06EBA3 /* AppUpdatePrompt.swift */,
+				095B53563C2E9A6D2BDAC803 /* Assets.xcassets */,
+				11B57860842BBC786D49DC0E /* AutoUpdate.swift */,
+				6FCBA1CBEA02852E9099698A /* ContactLogoMac.entitlements */,
+				7CC89D1CBCBE59EAA4082C36 /* ContactLogoMacApp.swift */,
+				3D1E8351E06AA29F3E6A24FD /* ContentView.swift */,
+				394616628563C067E3D853EF /* Info.plist */,
+				5648A69A000163B38A9F2609 /* ManualOverrideSheet.swift */,
+				EF5203057E5E96B6A540A16E /* SentryTelemetry.swift */,
+				28651793CE3B39F210348520 /* SettingsView.swift */,
 			);
-			name = ContactLogoiOS;
-			path = Apps/ContactLogoiOS;
+			name = macos;
+			path = apps/macos;
+			sourceTree = "<group>";
+		};
+		87FD8CDC3F760913427D80E6 /* Observability */ = {
+			isa = PBXGroup;
+			children = (
+				A4CA6DD4CB47528242116F16 /* ScanRunReport.swift */,
+				3A7D2861CC8659C7F2B30711 /* SentryDSN.swift */,
+			);
+			path = Observability;
 			sourceTree = "<group>";
 		};
 		994642C717A1CAC159D09A37 /* Products */ = {
@@ -322,26 +476,11 @@
 				6C29034DBC8BE268F0F26B2B /* ContactLogoiOS.app */,
 				31BCB449DF697F691F3899EC /* ContactLogoKit.framework */,
 				79414AE70947DE8A49F40D48 /* ContactLogoKitMac.framework */,
+				8E82AC5C0DF0B1C0B47BFA08 /* ContactLogoKitTests.xctest */,
 				1F48055747588374023786E1 /* ContactLogoMac.app */,
+				47201F9DD905E7CB7942CF49 /* ContactLogoMacAppStore.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		A81995BEEECDA2A3EBBEA443 /* ContactLogoMac */ = {
-			isa = PBXGroup;
-			children = (
-				443265E102A01653A01178F2 /* AppUpdatePrompt.swift */,
-				1C8FBB5F39536723C38B6A61 /* Assets.xcassets */,
-				80C25756B1F35C003AA3A118 /* ContactLogoMac.entitlements */,
-				E5740648826FBF7D7003C356 /* ContactLogoMacApp.swift */,
-				7475C47C21BB6C48B687167A /* ContentView.swift */,
-				E7387A0CA93D250803C638E8 /* Info.plist */,
-				A52EDB8D876C3D24B6B18B8E /* ManualOverrideSheet.swift */,
-				32A67EDEB1599489FC142DA1 /* SentryTelemetry.swift */,
-				19B063D75543B34805CD5F1C /* SettingsView.swift */,
-			);
-			name = ContactLogoMac;
-			path = Apps/ContactLogoMac;
 			sourceTree = "<group>";
 		};
 		EBF814245F3FD0B7A13324C9 /* Sources */ = {
@@ -375,6 +514,16 @@
 			path = Identity;
 			sourceTree = "<group>";
 		};
+		F6549F3D76B172D044F7EEDF /* macos-app-store */ = {
+			isa = PBXGroup;
+			children = (
+				9946EFEA7CA6142C9F3DBB91 /* AutoUpdateStub.swift */,
+				C8F37270B9D3FFA6A97365DD /* ContactLogoMacAppStore.entitlements */,
+			);
+			name = "macos-app-store";
+			path = "apps/macos-app-store";
+			sourceTree = "<group>";
+		};
 		FD96AD36762E04CD9D1CDD6E /* Normalize */ = {
 			isa = PBXGroup;
 			children = (
@@ -391,6 +540,26 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		4562F610D6045CF3565B282B /* ContactLogoKitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C7D67066B0FCE887ECF162AC /* Build configuration list for PBXNativeTarget "ContactLogoKitTests" */;
+			buildPhases = (
+				0F0A99D59062D995501D02F6 /* Sources */,
+				63A55707115C337F01C6C6D3 /* Frameworks */,
+				1EF4D96D1D0A08AB6499DCC5 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1B44D6C76C3138B2C93342CD /* PBXTargetDependency */,
+			);
+			name = ContactLogoKitTests;
+			packageProductDependencies = (
+			);
+			productName = ContactLogoKitTests;
+			productReference = 8E82AC5C0DF0B1C0B47BFA08 /* ContactLogoKitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		485A91A7990FA6B691E6A264 /* ContactLogoKitMac */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CC4592983FC2A61AF833D482 /* Build configuration list for PBXNativeTarget "ContactLogoKitMac" */;
@@ -424,6 +593,28 @@
 			productName = ContactLogoKit;
 			productReference = 31BCB449DF697F691F3899EC /* ContactLogoKit.framework */;
 			productType = "com.apple.product-type.framework";
+		};
+		66AB836E62C00A7A6E011B6B /* ContactLogoMacAppStore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3AA74F07E4E2B40EAC248063 /* Build configuration list for PBXNativeTarget "ContactLogoMacAppStore" */;
+			buildPhases = (
+				29B699743A26986833E8C7ED /* Sources */,
+				3AAFED53278171EEA1693CDE /* Resources */,
+				D37DE241C0455F4A97026AD4 /* Frameworks */,
+				4CBFD0D7A68C91DED7559C95 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C34C298DE2C9DAB2FF9931BD /* PBXTargetDependency */,
+			);
+			name = ContactLogoMacAppStore;
+			packageProductDependencies = (
+				59F9A1F5FB34B8F5C3D228D4 /* Sentry */,
+			);
+			productName = ContactLogoMacAppStore;
+			productReference = 47201F9DD905E7CB7942CF49 /* ContactLogoMacAppStore.app */;
+			productType = "com.apple.product-type.application";
 		};
 		69CD4A10224C2A454281594D /* ContactLogoiOS */ = {
 			isa = PBXNativeTarget;
@@ -464,6 +655,7 @@
 			name = ContactLogoMac;
 			packageProductDependencies = (
 				D036259F798705AC543C966D /* Sentry */,
+				916D752773738205630902DB /* Sparkle */,
 			);
 			productName = ContactLogoMac;
 			productReference = 1F48055747588374023786E1 /* ContactLogoMac.app */;
@@ -478,13 +670,19 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
-					485A91A7990FA6B691E6A264 = {
+					4562F610D6045CF3565B282B = {
 						DevelopmentTeam = "${CONTACTLOGO_DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
+					};
+					485A91A7990FA6B691E6A264 = {
+						DevelopmentTeam = "${CONTACTLOGO_DEVELOPMENT_TEAM}";
 					};
 					4E419FDA816A0B5ABD7ADFD7 = {
 						DevelopmentTeam = "${CONTACTLOGO_DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
+					};
+					66AB836E62C00A7A6E011B6B = {
+						DevelopmentTeam = "${CONTACTLOGO_DEVELOPMENT_TEAM}";
 					};
 					69CD4A10224C2A454281594D = {
 						DevelopmentTeam = "${CONTACTLOGO_DEVELOPMENT_TEAM}";
@@ -507,6 +705,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				71CF6F66D4D0DCBF97F42019 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				8F68328716A2E66D9318A078 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 994642C717A1CAC159D09A37 /* Products */;
@@ -517,6 +716,8 @@
 				485A91A7990FA6B691E6A264 /* ContactLogoKitMac */,
 				69CD4A10224C2A454281594D /* ContactLogoiOS */,
 				8DFF1C07DF46CCEEAACD1DF6 /* ContactLogoMac */,
+				66AB836E62C00A7A6E011B6B /* ContactLogoMacAppStore */,
+				4562F610D6045CF3565B282B /* ContactLogoKitTests */,
 			);
 		};
 /* End PBXProject section */
@@ -526,7 +727,15 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				09DFAA4D5C8A6C472629228B /* Assets.xcassets in Resources */,
+				A3B9F635CCFB3DEA9EB42869 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3AAFED53278171EEA1693CDE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E16B3FDE75039BCB04BF6769 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -534,23 +743,57 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9F7F933245B243F8E30E71FC /* Assets.xcassets in Resources */,
+				F157C30F7E89E4DD372EBC72 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0F0A99D59062D995501D02F6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1BA30301412A1D4DEC3A53AA /* BusinessContactShapeTests.swift in Sources */,
+				F12A2A60D0262B8D1CE71BCD /* CandidateRankerTests.swift in Sources */,
+				C422D8FDD675F56DC9E35833 /* ContactEnumerationKeyTests.swift in Sources */,
+				18B13A4088B3422DF289B496 /* ContactLogoCacheSourceTests.swift in Sources */,
+				DD47C6673B07B9FAB026072D /* ContactLogoKitTests.swift in Sources */,
+				614A8988F04F5B98AA6C81CA /* GoldenCorpusTests.swift in Sources */,
+				4DFBF32FFAE693C6589D7950 /* LogoDevSourceTests.swift in Sources */,
+				4891D8ECB947A000F49F22D7 /* ReviewQueueStoreTests.swift in Sources */,
+				F2EFED97C6D2783BF64F1DF3 /* ScanCoverageRegressionTests.swift in Sources */,
+				886634145F5003366DE73814 /* ScanTelemetryTests.swift in Sources */,
+				6A530601BAA8409DC0B27EF0 /* SentryDSNTests.swift in Sources */,
+				69037C1AE9D8C0574CEF45DD /* SourcesExpansionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		29B699743A26986833E8C7ED /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				472DC80D16AD4C0674009D9E /* AppUpdatePrompt.swift in Sources */,
+				6527004E4444B3A3E962FB2A /* AutoUpdateStub.swift in Sources */,
+				1ADB658B3B5794D76ED33455 /* ContactLogoMacApp.swift in Sources */,
+				308FAEEB1A6F75A6EDF2E495 /* ContentView.swift in Sources */,
+				633803CFBAA7FD5AC394C0ED /* ManualOverrideSheet.swift in Sources */,
+				F7EAD86BDEA36EEB59940390 /* SentryTelemetry.swift in Sources */,
+				D30545AE488649F037A43205 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2B048F2CBD393329612F8922 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0662999E9EE8C5DC290FE5CE /* AppUpdatePrompt.swift in Sources */,
-				BF8CB02FA75136D08147A3E7 /* ContactLogoMacApp.swift in Sources */,
-				D4CAA2941479A80366213C46 /* ContentView.swift in Sources */,
-				AF21F526EEBF2C188B8380AB /* ManualOverrideSheet.swift in Sources */,
-				4E46ECB45FA595ECF6717D9A /* SentryTelemetry.swift in Sources */,
-				C963AA407E3D6C2CA3819674 /* SettingsView.swift in Sources */,
+				75CB997A77747D49AF63FF5B /* AppUpdatePrompt.swift in Sources */,
+				BA6DD58E56E3960E7B871150 /* AutoUpdate.swift in Sources */,
+				1A6F3BDDCE54DD4E8BBEE13B /* ContactLogoMacApp.swift in Sources */,
+				49B739F69861FEB63119952E /* ContentView.swift in Sources */,
+				4352E21E69B6A2F85FF65B9E /* ManualOverrideSheet.swift in Sources */,
+				C47A3320C866EE4FB3515890 /* SentryTelemetry.swift in Sources */,
+				FC1A4340332E9C00CD960956 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -588,6 +831,8 @@
 				77AFE1E346632A0D879BF0C5 /* ReviewQueueStore.swift in Sources */,
 				BF638B49139C82EBAB895417 /* ReviewSession.swift in Sources */,
 				394F7AC53FEC7D352D09E06B /* SVGRasterizer.swift in Sources */,
+				D0BF34264A6C1072980EEB06 /* ScanRunReport.swift in Sources */,
+				B039A072098B2C3296B61608 /* SentryDSN.swift in Sources */,
 				A4346F7C0A2AA4ABF7A1540B /* SettingsStore.swift in Sources */,
 				D81AEBB5319FBFC1C22FF26A /* SimpleIconsSource.swift in Sources */,
 				1E382DC49CEAC83CB8C9E3CA /* SocialAvatarSource.swift in Sources */,
@@ -632,6 +877,8 @@
 				9C2F9B38B1DB9B22279B3FEE /* ReviewQueueStore.swift in Sources */,
 				CD0E7DCE7500AB2379551539 /* ReviewSession.swift in Sources */,
 				0A6AC9C36FAC07966C652473 /* SVGRasterizer.swift in Sources */,
+				078E9A90271BC9CF8245DA5C /* ScanRunReport.swift in Sources */,
+				2E098A14A12A4A2BB1A88D0B /* SentryDSN.swift in Sources */,
 				53D6C481278F96AA4D224174 /* SettingsStore.swift in Sources */,
 				B0134F899AFBEB466F5E7207 /* SimpleIconsSource.swift in Sources */,
 				67463EDB265355589444B5F3 /* SocialAvatarSource.swift in Sources */,
@@ -646,23 +893,33 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA7EE8259BAB62E85343B2C1 /* AppUpdatePrompt.swift in Sources */,
-				8C89465619D6094AD3364840 /* ContactLogoiOSApp.swift in Sources */,
-				E9FFB36BD4D88F42DE084600 /* ContentView.swift in Sources */,
-				F35330A13FBDC551DF76936B /* ManualOverrideSheet.swift in Sources */,
-				3FA84C9C9444FC7E280FB818 /* NotificationScheduler.swift in Sources */,
-				98F292E356313AE5E9CCF5E8 /* SentryTelemetry.swift in Sources */,
-				D233291A0988401AC9AEC626 /* SettingsView.swift in Sources */,
+				4ADC9E411E83DB2AFA40E727 /* AppUpdatePrompt.swift in Sources */,
+				0D130599251DD682670872F7 /* ContactLogoiOSApp.swift in Sources */,
+				60645AC568E278884EAF16F3 /* ContentView.swift in Sources */,
+				03129C4A5B90E4C6249BF33D /* ManualOverrideSheet.swift in Sources */,
+				B64E8D8D7EDE6A345482B4F8 /* NotificationScheduler.swift in Sources */,
+				CB7952624DDA1A92862860B0 /* SentryTelemetry.swift in Sources */,
+				D8809218DCA2E601584755F3 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		1B44D6C76C3138B2C93342CD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4E419FDA816A0B5ABD7ADFD7 /* ContactLogoKit */;
+			targetProxy = 8DE944761B4433AD19B7977E /* PBXContainerItemProxy */;
+		};
 		3CDBE13E865B6E93C6593465 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 4E419FDA816A0B5ABD7ADFD7 /* ContactLogoKit */;
 			targetProxy = C2E45C574EC3874DDD7F7E8B /* PBXContainerItemProxy */;
+		};
+		C34C298DE2C9DAB2FF9931BD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 485A91A7990FA6B691E6A264 /* ContactLogoKitMac */;
+			targetProxy = 45B46E5A619D8087352231BC /* PBXContainerItemProxy */;
 		};
 		FDD6F0BB30B2B7D6213FD9CD /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -678,7 +935,7 @@
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 206;
+				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -703,11 +960,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Apps/ContactLogoMac/ContactLogoMac.entitlements;
+				CODE_SIGN_ENTITLEMENTS = apps/macos/ContactLogoMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoMac/Info.plist;
+				INFOPLIST_FILE = apps/macos/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -723,12 +980,38 @@
 			};
 			name = Debug;
 		};
+		13DD89E33ED77AF7BD73532B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "apps/macos-app-store/ContactLogoMacAppStore.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = apps/macos/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSContactsUsageDescription = "ContactLogo scans your contacts to find company logos for businesses in your address book.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.contactlogo.macos;
+				PRODUCT_NAME = ContactLogo;
+				PROVISIONING_PROFILE_SPECIFIER = "ContactLogo for Mac AppStore";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 		1E1904A1C5F05B4C6494D7FE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 206;
+				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -748,13 +1031,55 @@
 			};
 			name = Release;
 		};
+		38E9194CA7EE3B57E1697AD0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "apps/macos-app-store/ContactLogoMacAppStore.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = apps/macos/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSContactsUsageDescription = "ContactLogo scans your contacts to find company logos for businesses in your address book.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.contactlogo.macos;
+				PRODUCT_NAME = ContactLogo;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		47935F11CA1D11E87E0F797C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.contactlogo.kit.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		4BFD16D9CF5B3E0FBB51AF8A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 206;
+				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -810,7 +1135,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 206;
+				CURRENT_PROJECT_VERSION = 202610290000;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "${CONTACTLOGO_DEVELOPMENT_TEAM}";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -834,12 +1159,12 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.206;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SENTRY_DSN = "";
+				SENTRY_DSN = "${SENTRY_DSN}";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -853,7 +1178,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoiOS/Info.plist;
+				INFOPLIST_FILE = apps/ios/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -879,7 +1204,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 206;
+				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -906,7 +1231,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoiOS/Info.plist;
+				INFOPLIST_FILE = apps/ios/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -931,11 +1256,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Apps/ContactLogoMac/ContactLogoMac.entitlements;
+				CODE_SIGN_ENTITLEMENTS = apps/macos/ContactLogoMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Apps/ContactLogoMac/Info.plist;
+				INFOPLIST_FILE = apps/macos/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ContactLogo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -950,6 +1275,24 @@
 				SDKROOT = macosx;
 			};
 			name = Release;
+		};
+		E4F97CF738A98FD98CA54607 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.contactlogo.kit.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		F3CCEEAD03B810755162843E /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -986,7 +1329,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 206;
+				CURRENT_PROJECT_VERSION = 202610290000;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "${CONTACTLOGO_DEVELOPMENT_TEAM}";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1004,11 +1347,11 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.206;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SENTRY_DSN = "";
+				SENTRY_DSN = "${SENTRY_DSN}";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -1018,6 +1361,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3AA74F07E4E2B40EAC248063 /* Build configuration list for PBXNativeTarget "ContactLogoMacAppStore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38E9194CA7EE3B57E1697AD0 /* Debug */,
+				13DD89E33ED77AF7BD73532B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		56C49C8B56372832F8F92778 /* Build configuration list for PBXNativeTarget "ContactLogoiOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1032,6 +1384,15 @@
 			buildConfigurations = (
 				A878A3EBCE05788F0ABE4483 /* Debug */,
 				1E1904A1C5F05B4C6494D7FE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C7D67066B0FCE887ECF162AC /* Build configuration list for PBXNativeTarget "ContactLogoKitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4F97CF738A98FD98CA54607 /* Debug */,
+				47935F11CA1D11E87E0F797C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -1074,9 +1435,27 @@
 				revision = b539e098293067be54fa5cf1f11d9e16cdbba94a;
 			};
 		};
+		8F68328716A2E66D9318A078 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		59F9A1F5FB34B8F5C3D228D4 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 71CF6F66D4D0DCBF97F42019 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+		916D752773738205630902DB /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8F68328716A2E66D9318A078 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
 		CAF1EB74F55B256D2CED77C7 /* Sentry */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 71CF6F66D4D0DCBF97F42019 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;

@@ -1,7 +1,7 @@
 # Web review UI contract
 
-This is the boundary between `web/src/app.ts` (DOM construction and behaviour) and
-`web/src/styles.css` + `web/index.html` (presentation).  app.ts owns which elements
+This is the boundary between `apps/web/src/app.ts` (DOM construction and behaviour) and
+`apps/web/src/styles.css` + `apps/web/index.html` (presentation).  app.ts owns which elements
 exist, their class names, their ARIA attributes, and their text content.  styles.css
 owns how those class names look.  Neither side may invent a class name, data
 attribute, or copy string the other side doesn't already expect — this document is
@@ -302,7 +302,7 @@ text; `.btn` must read `color: var(--accent-ink)`, not a literal. Any color
 literal styles.css introduces for the new elements below must resolve through
 one of these tokens — no new bare hex values outside this table.
 
-`web/index.html`'s `<meta name="theme-color" content="#1c1917">` stays as the
+`apps/web/index.html`'s `<meta name="theme-color" content="#1c1917">` stays as the
 static light-mode value (browsers don't evaluate CSS custom properties for
 this meta tag); add a second, dark-variant tag so the browser chrome matches
 the manifest's dark `theme_color`:

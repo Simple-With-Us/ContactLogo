@@ -28,8 +28,10 @@
 #
 # Options:
 #   --repo-root PATH   Repo root (default: cwd)
-#   --build N          Force CURRENT_PROJECT_VERSION (exact; default: the repo
-#                      commit count, raised above the App Store Connect floor)
+#   --build N          Force CURRENT_PROJECT_VERSION (exact; default: planned
+#                      automatically -- the shared merge-timestamp build in
+#                      fixed mode, else the repo commit count raised above the
+#                      App Store Connect floor)
 #   --version X.Y.Z    Force MARKETING_VERSION (exact; default: the next patch
 #                      on the app's train)
 #   --export-only      Build IPA only; do not upload
@@ -39,6 +41,12 @@
 #   --allow-dirty      Allow shipping from a dirty git worktree
 #   --force-ship       Bypass min-interval + same-HEAD skip (emergency / owner)
 #   --sync-project-version  Write the resolved version into project.pbxproj
+#   --plan-build-only  Print the fixed-mode release build and exit (the release
+#                      workflow runs this once per release and hands the value
+#                      to every platform ship job via --build; stdout is exactly
+#                      the build)
+#   --verify-tf-ready-only  Re-run ensure-tf-ready for an uploaded build (needs
+#                      --build; used by CI after standing-tester sync)
 #   --allow-unverified-seq  Ship even if App Store Connect cannot be consulted
 #                           (dangerous: the marketing version and the build
 #                           number are then planned from unverified state)
@@ -98,12 +106,16 @@
 # first minutes after an upload is the PREVIOUS ship -- so compliance was
 # declared on the wrong build and the "testers can install this" line described
 # a build it had never looked at.
-#   IOS_TF_READY_TIMEOUT_SEC   discovery + readiness budget (default 900s)
+#   IOS_TF_READY_TIMEOUT_SEC   discovery + readiness budget (default 900s; 90s
+#                              when IOS_TF_READY_RECHECK=1 unless overridden)
+#   IOS_TF_READY_RECHECK=1     post-sync recheck: short poll, skip compliance
+#                              patch and What to Test (set by --verify-tf-ready-only)
+#   IOS_TF_READY_POST_SYNC_TIMEOUT_SEC  optional override for post-sync budget
 #   exit 4 from asc-api.mjs    uploaded build never surfaced; warn, do NOT fail
 #                              (record_successful_ship must still run or the rate
 #                              gate never advances)
 #
-# It also renders the mandatory AGENT-SYNC "What to Test" release note from the
+# It also renders the mandatory handbook "What to Test" release note from the
 # commit range since the last successful ship. THIS IS OPT-IN, because it writes
 # copy every TestFlight tester reads:
 #   IOS_TF_RELEASE_NOTES=1     publish to App Store Connect
@@ -187,9 +199,16 @@ ALLOW_DIRTY=0
 FORCE_SHIP=0
 ALLOW_UNVERIFIED_SEQ=0
 SYNC_PROJECT_VERSION=0
+FIXED_MODE=0
+PLAN_BUILD_ONLY=0
+VERIFY_TF_READY_ONLY=0
 
 die() { echo "error: $*" >&2; exit 1; }
-log() { echo "[ios-ship] $*"; }
+log() {
+  # --plan-build-only prints exactly the build on stdout, so its progress
+  # lines go to stderr like every other diagnostic.
+  if [[ "${PLAN_BUILD_ONLY:-0}" -eq 1 ]]; then echo "[ios-ship] $*" >&2; else echo "[ios-ship] $*"; fi
+}
 # Same prefix, but on stderr -- for use inside $(...) helpers whose stdout is
 # the return value and must stay clean.
 logerr() { echo "[ios-ship] $*" >&2; }
@@ -219,6 +238,48 @@ elif isinstance(val, list):
     print(",".join(val), end="")
 else:
     print(val, end="")
+PY
+}
+
+json_paired_referrer() {
+  # json_paired_referrer <bundle_id>: the bundle id of the apps.json entry
+  # whose pairedBundleId or macBundleId equals <bundle_id>.  Lets a macOS
+  # entry with no paired key find the iOS entry that names it, so iOS builds
+  # join the counter.  First match in sorted key order wins, so the answer
+  # is deterministic.
+  # Exit contract:  "no entry points at it" prints nothing and exits 0 (the
+  # caller ships unpaired); a broken registry (unreadable or unparsable
+  # apps.json, a missing apps object, a malformed entry, or a referrer with
+  # no bundleId) prints the reason on stderr and exits 1, so the caller can
+  # fail closed instead of shipping unpaired off a lower counter.
+  /usr/bin/python3 - "$APPS_JSON" "$1" <<'PY'
+import json, sys
+path, want = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except OSError as e:
+    print("json_paired_referrer: cannot read %s: %s" % (path, e), file=sys.stderr)
+    sys.exit(1)
+except ValueError as e:
+    print("json_paired_referrer: cannot parse %s: %s" % (path, e), file=sys.stderr)
+    sys.exit(1)
+apps = data.get("apps") if isinstance(data, dict) else None
+if not isinstance(apps, dict):
+    print("json_paired_referrer: %s has no apps object" % path, file=sys.stderr)
+    sys.exit(1)
+for key in sorted(apps):
+    app = apps[key]
+    if not isinstance(app, dict):
+        print("json_paired_referrer: entry %s in %s is malformed" % (key, path), file=sys.stderr)
+        sys.exit(1)
+    if app.get("pairedBundleId") == want or app.get("macBundleId") == want:
+        referrer = app.get("bundleId")
+        if not referrer or not isinstance(referrer, str):
+            print("json_paired_referrer: entry %s in %s has no bundleId" % (key, path), file=sys.stderr)
+            sys.exit(1)
+        print(referrer, end="")
+        break
 PY
 }
 
@@ -342,6 +403,83 @@ load_secrets() {
 # and the offline tests point IOS_FLEET_NODE at a stub.
 asc_client() {
   "$ASC_NODE" "${FLEET_DIR}/asc-api.mjs" "$@"
+}
+
+# After a successful upload, declare export compliance if the IPA omitted
+# ITSAppUsesNonExemptEncryption. Otherwise TestFlight stays
+# MISSING_EXPORT_COMPLIANCE and the phone never sees the build (ST 1.0.1/2
+# on 2026-08-12).
+ensure_tf_ready() {
+  local _tf_errexit=0
+  case $- in
+    *e*) _tf_errexit=1 ;;
+  esac
+  log "verifying TestFlight ready-to-install for ${BUNDLE_ID} build ${BUILD_NUM}"
+  set +e
+  # BUILD_NUM (CFBundleVersion) is REQUIRED. Without it asc-api.mjs would have to
+  # guess "the newest build", which for the first minutes after an upload is the
+  # PREVIOUS ship -- so compliance got declared on the wrong build and readiness
+  # was reported for a build never inspected (2026-08-13). MARKETING is a second
+  # predicate, not a substitute: it identifies a train, not a build.
+  IOS_TF_NOTES_REPO="$REPO_ROOT" \
+  IOS_TF_NOTES_PREV_SHA="$PREV_SHIP_SHA" \
+  IOS_TF_NOTES_APP="$DISPLAY_NAME" \
+  IOS_TF_NOTES_IOS_PREFIX="$IOS_PATH_PREFIX" \
+  asc_client ensure-tf-ready "$BUNDLE_ID" "$BUILD_NUM" "$MARKETING" \
+    >"${LOG_DIR}/ensure-tf-ready.json" 2>"${LOG_DIR}/ensure-tf-ready.err"
+  local rc=$?
+  if [[ -s "${LOG_DIR}/ensure-tf-ready.err" ]]; then
+    while IFS= read -r line; do log "tf-ready: $line"; done <"${LOG_DIR}/ensure-tf-ready.err"
+  fi
+  if [[ $rc -eq 0 ]]; then
+    log "TestFlight internal testers can install this build"
+  elif [[ $rc -eq 5 ]]; then
+    # asc-api.mjs: the build reached IN_BETA_TESTING / READY_FOR_BETA_TESTING and
+    # countInternalTesters read zero testers in internal all-builds groups.
+    # Not a failed upload; warn instead of the rc=0 success line (GH #1018).
+    log "warning: build ${BUILD_NUM} is processed but ${BUNDLE_ID} has no internal TestFlight testers with access to all builds; nobody can install it yet"
+    log "warning: the Sync standing TestFlight testers step creates or refills the internal all-builds group; otherwise add internal testers in App Store Connect"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning title=TestFlight has no reachable internal tester::${BUNDLE_ID} build ${BUILD_NUM} is processed but no internal tester with access to all builds can install it.  Check the Sync standing TestFlight testers step."
+    fi
+  elif [[ $rc -eq 6 ]]; then
+    # asc-api.mjs: processed, but countInternalTesters returned ok:false, so we
+    # cannot say anyone can install it.  Say so instead of the success line.
+    log "warning: build ${BUILD_NUM} is processed but the internal TestFlight tester count could not be read for ${BUNDLE_ID}; installability is unverified"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning title=TestFlight internal installability unverified::${BUNDLE_ID} build ${BUILD_NUM} is processed but the internal tester count could not be read.  Check TestFlight."
+    fi
+  elif [[ $rc -eq 3 ]]; then
+    log "warning: upload succeeded but ASC has not reached IN_BETA_TESTING yet; watch TestFlight"
+  elif [[ $rc -eq 4 ]]; then
+    # The upload itself succeeded; ASC simply never surfaced the build in time.
+    # Warn loudly but do NOT fail: the caller must still record_successful_ship,
+    # or the rate gate never advances and the next scheduled run re-ships the
+    # same HEAD. A red job after a successful upload also mislabels the outcome.
+    log "warning: ASC never surfaced build ${BUILD_NUM}; export compliance NOT declared on it"
+    log "warning: if the phone never gets this build, declare compliance by hand in App Store Connect"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning::ensure-tf-ready could not find uploaded build ${BUILD_NUM} for ${BUNDLE_ID}; export compliance not declared"
+    fi
+  else
+  # rc=2 is a usage error or an ASC API error. Compliance was NOT declared, so
+  # this deserves the same CI annotation rc=4 gets -- otherwise the only trace
+  # is one log line inside a green job, which is how ST 1.0.1/2 stayed
+  # VALID-but-uninstallable without anyone noticing.
+  log "warning: ensure-tf-ready failed (rc=$rc); build may be stuck on export compliance"
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    echo "::warning::ensure-tf-ready failed (rc=${rc}) for ${BUNDLE_ID} build ${BUILD_NUM}; export compliance not declared"
+  fi
+  fi
+  if [[ $_tf_errexit -eq 1 ]]; then
+    set -e
+  else
+    set +e
+  fi
+  if [[ "${ENSURE_TF_READY_PROPAGATE_RC:-0}" -eq 1 ]]; then
+    return "$rc"
+  fi
+  return 0
 }
 
 # Map ship APP_KEY to Sentry project slug in org simple-with-us.
@@ -618,6 +756,213 @@ asc_build_floor() {
   printf '%s %s %s' "$out" "${train:-$out}" "${app:-$out}"
 }
 
+# S: the committer date of the commit being built (HEAD) in America/Chicago as
+# YYYYMMDDHHMM.  Prints the 12-digit stamp on stdout.  Returns 1 (and prints
+# nothing) when HEAD has no readable committer date.
+merge_stamp() {
+  local stamp
+  stamp="$(cd "${REPO_ROOT:-.}" && TZ=America/Chicago git show -s --format=%cd --date=format-local:%Y%m%d%H%M HEAD 2>/dev/null)" || {
+    logerr "merge stamp: cannot read the committer date of HEAD in ${REPO_ROOT:-.}"
+    return 1
+  }
+  [[ "$stamp" =~ ^[1-9][0-9]{11}$ ]] || {
+    logerr "merge stamp: HEAD committer date did not parse as ^[1-9][0-9]{11}$ (got '${stamp}')"
+    return 1
+  }
+  printf '%s' "$stamp"
+}
+
+# int_gt A B: true when the non-negative integer A exceeds B.  The compare is
+# on digit strings (length, then lexicographic), so values past 2^63 compare
+# exactly instead of overflowing bash arithmetic.  False on non-integers.
+int_gt() {
+  local a="${1#"${1%%[!0]*}"}" b="${2#"${2%%[!0]*}"}"
+  [[ -n "$a" ]] || a="0"
+  [[ -n "$b" ]] || b="0"
+  [[ "$a" =~ ^[0-9]+$ && "$b" =~ ^[0-9]+$ ]] || return 1
+  if [[ "${#a}" -ne "${#b}" ]]; then
+    [[ "${#a}" -gt "${#b}" ]]
+    return $?
+  fi
+  [[ "$a" > "$b" ]]
+}
+
+# The shared merge-timestamp build for a fixed marketing version (owner, Oct 29 2026):
+# build = max(S, M + 1), a plain 12-digit integer, where S is the HEAD
+# committer date in America/Chicago as YYYYMMDDHHMM (see merge_stamp) and M is
+# the highest first numeric component among every build of this app and its
+# paired app (all trains, expired included, old timestamp-style builds
+# included) plus every extra floor.  Prints the build on stdout.  Returns 1
+# (and prints nothing) when it cannot be worked out.
+#
+# This helper runs inside $(...), so it must not call load_secrets:  the temp
+# key dir would be created in the subshell and the EXIT trap that removes it
+# runs in the main shell.  The main shell resolves the credential once before
+# the first call (see the FIXED_MODE block below); here a missing credential
+# fails closed.
+#
+# The pairedBuildFeed must be an https URL, is fetched time- and size-bounded
+# over https only, and its max numeric <sparkle:version> (whitespace around
+# the digits is allowed) must be a positive integer of at most 18 digits:  it
+# joins the inventory as an extra floor.  Every feed failure fails closed with
+# the feed URL and the reason on stderr; a feed with no numeric version is
+# never "no floor".
+asc_next_shared_build() {
+  local out rc paired_id feed feed_xml max floor curl_err curl_msg ios_key paired_err paired_msg stamp
+  command -v "$ASC_NODE" >/dev/null 2>&1 || return 1
+  if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" || -z "${ASC_KEY_P8:-}" ]] \
+    && [[ -z "${APPLE_API_KEY_ID:-}" || -z "${APPLE_API_ISSUER_ID:-}" || -z "${APPLE_API_KEY_P8_BASE64:-}" ]]; then
+    logerr "shared build: no App Store Connect credential in the environment; cannot verify the inventory"
+    return 1
+  fi
+  stamp="$(merge_stamp)" || return 1
+  paired_id="$(json_get "$APP_KEY" pairedBundleId 2>/dev/null || true)"
+  [[ "$paired_id" == "null" ]] && paired_id=""
+  if [[ -z "$paired_id" ]]; then
+    paired_id="$(json_get "$APP_KEY" macBundleId 2>/dev/null || true)"
+    [[ "$paired_id" == "null" ]] && paired_id=""
+  fi
+  if [[ -z "$paired_id" && "${PLATFORM:-}" == "macOS" && "$APP_KEY" == *-mac ]]; then
+    ios_key="${APP_KEY%-mac}"
+    paired_id="$(json_get "$ios_key" bundleId 2>/dev/null || true)"
+    [[ "$paired_id" == "null" ]] && paired_id=""
+    [[ "$paired_id" == "$BUNDLE_ID" ]] && paired_id=""
+  fi
+  if [[ -z "$paired_id" && "${PLATFORM:-}" == "macOS" ]]; then
+    # A broken registry fails closed here:  shipping unpaired off it would
+    # plan a lower counter.  "No referrer" (exit 0, empty) still ships
+    # unpaired.  The lookup's stderr is kept, never discarded, and logged.
+    paired_err="$(mktemp "${TMPDIR:-/tmp}/paired-referrer-err.XXXXXX")" || {
+      logerr "paired lookup: cannot make a temp file to read the registry"
+      return 1
+    }
+    set +e
+    paired_id="$(json_paired_referrer "$BUNDLE_ID" 2>"$paired_err")"
+    rc=$?
+    set -e
+    paired_msg="$(tr '\n' ' ' <"$paired_err" 2>/dev/null || true)"
+    rm -f "$paired_err" >/dev/null 2>&1 || true
+    if [[ $rc -ne 0 ]]; then
+      logerr "paired lookup: cannot find the iOS entry for ${BUNDLE_ID}${paired_msg:+: ${paired_msg}}"
+      return 1
+    fi
+    [[ "$paired_id" == "null" ]] && paired_id=""
+    [[ "$paired_id" == "$BUNDLE_ID" ]] && paired_id=""
+  fi
+  feed="$(json_get "$APP_KEY" pairedBuildFeed 2>/dev/null || true)"
+  [[ "$feed" == "null" ]] && feed=""
+  floor=""
+  if [[ -n "$feed" ]]; then
+    case "$feed" in
+      https://*) ;;
+      *)
+        logerr "paired feed: refusing non-https feed $feed"
+        return 1
+        ;;
+    esac
+    if ! command -v curl >/dev/null 2>&1; then
+      logerr "paired feed: curl is missing; cannot read $feed"
+      return 1
+    fi
+    curl_err="$(mktemp "${TMPDIR:-/tmp}/asc-feed-err.XXXXXX")" || {
+      logerr "paired feed: cannot make a temp file to read $feed"
+      return 1
+    }
+    set +e
+    feed_xml="$(curl -fsSL --proto =https --proto-redir =https --connect-timeout 10 --max-time 30 --max-filesize 5000000 "$feed" 2>"$curl_err")"
+    rc=$?
+    set -e
+    curl_msg="$(tr '\n' ' ' <"$curl_err" 2>/dev/null || true)"
+    rm -f "$curl_err" >/dev/null 2>&1 || true
+    if [[ $rc -ne 0 ]]; then
+      logerr "paired feed: could not fetch $feed (curl rc=$rc)${curl_msg:+: $curl_msg}"
+      return 1
+    fi
+    if [[ -z "$feed_xml" ]]; then
+      logerr "paired feed: no numeric <sparkle:version> in $feed (empty response)"
+      return 1
+    fi
+    max="$(printf '%s' "$feed_xml" | grep -o -E '<sparkle:version>[[:space:]]*[0-9]+[[:space:]]*</sparkle:version>' 2>/dev/null | grep -o -E '[0-9]+' 2>/dev/null | sort -n 2>/dev/null | tail -n 1 2>/dev/null || true)"
+    if [[ ! "$max" =~ ^[0-9]+$ ]]; then
+      logerr "paired feed: no numeric <sparkle:version> in $feed"
+      return 1
+    fi
+    # The floor is a positive integer of at most 18 digits.  The length guard
+    # keeps absurd values out of the planner; the zero check is a string
+    # match, not arithmetic, so values past 2^63 never overflow bash.
+    if [[ "${#max}" -gt 18 || "$max" =~ ^0+$ ]]; then
+      logerr "paired feed: floor $max from $feed is not a positive integer of at most 18 digits"
+      return 1
+    fi
+    floor="$max"
+  fi
+  set +e
+  if [[ -n "$paired_id" && -n "$floor" ]]; then
+    out=$(asc_client plan-release-build "$BUNDLE_ID" "$paired_id" "$floor" --merge-stamp "$stamp")
+    rc=$?
+  elif [[ -n "$paired_id" ]]; then
+    out=$(asc_client plan-release-build "$BUNDLE_ID" "$paired_id" --merge-stamp "$stamp")
+    rc=$?
+  elif [[ -n "$floor" ]]; then
+    out=$(asc_client plan-release-build "$BUNDLE_ID" "$floor" --merge-stamp "$stamp")
+    rc=$?
+  else
+    out=$(asc_client plan-release-build "$BUNDLE_ID" --merge-stamp "$stamp")
+    rc=$?
+  fi
+  set -e
+  [[ $rc -eq 0 && "$out" =~ ^[1-9][0-9]{11}$ ]] || return 1
+  printf '%s' "$out"
+}
+
+# The highest first numeric component among the builds of THIS app record on
+# THIS platform (all trains, expired included).  Fixed-mode --build
+# validation:  the planned value may equal the paired platform's build, but it
+# must exceed this platform's max.  Prints the max, or 0 when the platform has
+# no build yet.  Returns 1 (and prints nothing) when it cannot be verified.
+# Same $(...) discipline as asc_next_shared_build:  no load_secrets here.
+asc_platform_max_build() {
+  local out rc
+  command -v "$ASC_NODE" >/dev/null 2>&1 || {
+    logerr "platform max: node not on PATH; cannot verify against App Store Connect"
+    return 1
+  }
+  if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" || -z "${ASC_KEY_P8:-}" ]] \
+    && [[ -z "${APPLE_API_KEY_ID:-}" || -z "${APPLE_API_ISSUER_ID:-}" || -z "${APPLE_API_KEY_P8_BASE64:-}" ]]; then
+    logerr "platform max: no App Store Connect credential in the environment; cannot verify the max"
+    return 1
+  fi
+  set +e
+  out=$(asc_client max-build "$BUNDLE_ID" "$ASC_PLATFORM")
+  rc=$?
+  set -e
+  [[ $rc -eq 0 && "$out" =~ ^[0-9]+$ ]] || {
+    logerr "platform max: cannot verify the max build of ${BUNDLE_ID} on ${ASC_PLATFORM:-?} (rc=${rc})"
+    return 1
+  }
+  printf '%s' "$out"
+}
+
+# Fixed-mode --build validation:  the value must be a 12-digit
+# merge-timestamp build, and it must exceed every existing build of THIS app
+# record on THIS platform.  The paired platform may reuse the same value (the
+# release plans one build for both), so the paired inventory is deliberately
+# not consulted.  Returns 0 when the value ships, 1 with the reason on stderr
+# otherwise.
+fixed_build_override_ok() {
+  local want="$1" max
+  [[ "$want" =~ ^[1-9][0-9]{11}$ ]] || {
+    logerr "fixed mode requires a 12-digit merge-timestamp build ^[1-9][0-9]{11}$ (got '${want}')"
+    return 1
+  }
+  max="$(asc_platform_max_build)" || return 1
+  int_gt "$want" "$max" || {
+    logerr "requested build ${want} is not above this platform's max ${max} for ${BUNDLE_ID}"
+    return 1
+  }
+  return 0
+}
+
 # The major.minor train a marketing version belongs to: "2.0.123" -> "2.0",
 # "3" -> "3.0".  The floor is per-train, so the train has to come from the
 # version actually being shipped rather than always from the default.
@@ -759,6 +1104,8 @@ while [[ $# -gt 0 ]]; do
     --force-ship) FORCE_SHIP=1; shift ;;
     --allow-unverified-seq) ALLOW_UNVERIFIED_SEQ=1; shift ;;
     --sync-project-version) SYNC_PROJECT_VERSION=1; shift ;;
+    --plan-build-only) PLAN_BUILD_ONLY=1; shift ;;
+    --verify-tf-ready-only) VERIFY_TF_READY_ONLY=1; shift ;;
     -h|--help) usage ;;
     -*) die "unknown option: $1 (try --help)" ;;
     *)
@@ -793,10 +1140,11 @@ if [[ -z "${DEVELOPER_DIR:-}" ]]; then
   fi
 fi
 if [[ -n "${DEVELOPER_DIR:-}" ]]; then
-  echo "[ios-ship] DEVELOPER_DIR=${DEVELOPER_DIR}"
+  log "DEVELOPER_DIR=${DEVELOPER_DIR}"
 fi
 
-need_cmd xcodebuild
+# xcodebuild is required for a ship but not for --plan-build-only (the release
+# workflow plans on Linux), so its check sits after the plan-build exit below.
 need_cmd /usr/bin/python3
 
 # Owner 2026-08-11: always use stable Xcode.app for archive/export/upload.
@@ -809,7 +1157,13 @@ if [[ -z "${DEVELOPER_DIR:-}" || "$DEVELOPER_DIR" == *Xcode-beta* ]]; then
 fi
 if [[ -n "${DEVELOPER_DIR:-}" ]]; then
   log "using DEVELOPER_DIR=${DEVELOPER_DIR}"
-  xcodebuild -version || die "xcodebuild broken under DEVELOPER_DIR=${DEVELOPER_DIR}"
+  # --plan-build-only prints exactly the build on stdout, so skip the
+  # xcodebuild sanity check here: its version banner would pollute stdout
+  # (and xcodebuild is not needed to plan).  The hard requirement lives
+  # after the plan-build exit below (need_cmd xcodebuild).
+  if [[ "$PLAN_BUILD_ONLY" -eq 0 ]]; then
+    xcodebuild -version || die "xcodebuild broken under DEVELOPER_DIR=${DEVELOPER_DIR}"
+  fi
 fi
 
 
@@ -835,6 +1189,25 @@ PROJECT_REL="$(json_get "$APP_KEY" projectRel)"
 PROJECT_REL_ALT="$(json_get "$APP_KEY" projectRelAlt)"
 XCODEGEN_DIR="$(json_get "$APP_KEY" xcodegenDir)"
 DEFAULT_MARKETING="$(json_get "$APP_KEY" marketingVersionDefault)"
+# Optional fixed-version policy (owner, Oct 29 2026): the marketing version does
+# not count up per ship; the build is one shared merge-timestamp value per app
+# across iOS and macOS (see asc-api.mjs plan-release-build and
+# shared-build.mjs): max(S, M + 1), where S is the HEAD committer date in
+# America/Chicago as YYYYMMDDHHMM and M is the highest first numeric component
+# among every build of the app and its paired app plus every extra floor.
+# apps.json keys: fixedMarketingVersion ("0.1.0"), optional pairedBundleId (the
+# paired app whose builds join the inventory: the Mac bundle id on an iOS entry,
+# the iOS bundle id on a macOS entry; macBundleId is an accepted alias),
+# optional pairedBuildFeed (an https Sparkle appcast URL whose max numeric
+# <sparkle:version>, a positive integer of at most 18 digits, joins as an extra
+# floor).  A macOS entry with neither key pairs with the iOS entry its key
+# names ("wl-mac" pairs with "wl"), or with the entry whose
+# pairedBundleId/macBundleId names this entry's bundle id.  Absent
+# fixedMarketingVersion keeps the next-patch behaviour.  Fixed mode works on
+# both platforms: the value sits above every build on either one, which is what
+# macOS needs.  The release workflow plans it once (plan-build) and hands it to
+# every ship job via --build; a local run without --build plans it the same way.
+FIXED_MARKETING="$(json_get "$APP_KEY" fixedMarketingVersion)"
 
 if [[ -z "$PLATFORM" ]]; then
   if [[ "$APP_KEY" == *-mac || "$SCHEME" == *[Mm]ac* ]]; then
@@ -851,6 +1224,52 @@ fi
 if [[ "$APP_KEY" == "dealdex" && "$BUNDLE_ID" != "net.dealdex" ]]; then
   die "DealDex live bundle is net.dealdex, not ${BUNDLE_ID}"
 fi
+
+# --plan-build-only prints the fixed-mode release build and exits.  The release
+# workflow runs this ONCE per release (the plan-build job, on Linux:  no Xcode
+# tool is touched) and hands the one value to every platform ship job via
+# --build.  It exits before the dirty-worktree check and the ship gate:  it
+# plans a number, it ships nothing.  Stdout is exactly the build; every other
+# line, log() included, goes to stderr.
+if [[ "$PLAN_BUILD_ONLY" -eq 1 ]]; then
+  if [[ -n "$FORCE_BUILD" || -n "$FORCE_VERSION" || -n "$UPLOAD_ONLY_IPA" || "$EXPORT_ONLY" -eq 1 || "$DRY_RUN" -eq 1 || "$SYNC_PROJECT_VERSION" -eq 1 || "$VERIFY_TF_READY_ONLY" -eq 1 ]]; then
+    die "--plan-build-only plans the fixed-mode build and takes no ship options (no --build, --version, --upload-only, --export-only, --dry-run, --sync-project-version or --verify-tf-ready-only)"
+  fi
+  [[ -n "$FIXED_MARKETING" ]] || die "--plan-build-only needs an app with fixedMarketingVersion in apps.json (got ${APP_KEY}); nothing planned"
+  [[ "$FIXED_MARKETING" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "fixedMarketingVersion '${FIXED_MARKETING}' for ${APP_KEY} in apps.json is not M.m.p (three dot-separated integers); nothing planned"
+  load_secrets
+  [[ "${AUTH_MODE:-none}" == "api_key" ]] || die "--plan-build-only: no App Store Connect credential (ASC_* in env or Infisical /asc); nothing planned"
+  _planned="$(asc_next_shared_build)" || die "--plan-build-only: cannot plan the release build: incomplete inventory or unreadable merge stamp; nothing planned"
+  printf '%s\n' "$_planned"
+  exit 0
+fi
+
+# The hosted workflow re-runs readiness after standing-tester sync (see
+# ios-testflight.yml).  Exits before the ship gate and never touches Xcode.
+if [[ "$VERIFY_TF_READY_ONLY" -eq 1 ]]; then
+  if [[ -n "$FORCE_VERSION" || -n "$UPLOAD_ONLY_IPA" || "$EXPORT_ONLY" -eq 1 || "$DRY_RUN" -eq 1 || "$SYNC_PROJECT_VERSION" -eq 1 || "$FORCE_SHIP" -eq 1 ]]; then
+    die "--verify-tf-ready-only only takes --build and --repo-root (no ship options)"
+  fi
+  [[ -n "$FORCE_BUILD" ]] || die "--verify-tf-ready-only needs --build"
+  [[ -n "$FIXED_MARKETING" ]] || die "--verify-tf-ready-only needs fixedMarketingVersion in apps.json for ${APP_KEY}"
+  load_secrets
+  [[ "${AUTH_MODE:-none}" == "api_key" ]] || die "--verify-tf-ready-only: no App Store Connect credential (ASC_* in env or Infisical /asc)"
+  MARKETING="$FIXED_MARKETING"
+  BUILD_NUM="$FORCE_BUILD"
+  LOG_DIR="${IOS_TF_VERIFY_LOG_DIR:-${RUNNER_TEMP:-/tmp}/ios-fleet-verify-tf-ready}"
+  mkdir -p "$LOG_DIR"
+  PREV_SHIP_SHA=""
+  IOS_PATH_PREFIX="$(dirname "$PROJECT_REL")"
+  export IOS_TF_READY_RECHECK=1
+  : "${IOS_TF_READY_TIMEOUT_SEC:=${IOS_TF_READY_POST_SYNC_TIMEOUT_SEC:-90}}"
+  export IOS_TF_READY_TIMEOUT_SEC
+  ENSURE_TF_READY_PROPAGATE_RC=1
+  ensure_tf_ready
+  exit $?
+fi
+
+need_cmd xcodebuild
 
 if [[ -z "$UPLOAD_ONLY_IPA" && "$DRY_RUN" -eq 0 ]]; then
   if [[ "$ALLOW_DIRTY" -eq 0 ]]; then
@@ -947,6 +1366,22 @@ if [[ -n "$UPLOAD_ONLY_IPA" ]]; then
 else
   PLAN_READY=1
 
+  if [[ -n "$FIXED_MARKETING" && ( -z "$FORCE_VERSION" || "$FORCE_VERSION" == "$FIXED_MARKETING" ) ]]; then
+    [[ "$FIXED_MARKETING" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+      || die "fixedMarketingVersion '${FIXED_MARKETING}' for ${APP_KEY} in apps.json is not M.m.p (three dot-separated integers).  Nothing was shipped."
+    FORCE_VERSION="$FIXED_MARKETING"
+    FIXED_MODE=1
+    log "version: fixed marketing version ${FIXED_MARKETING} from apps.json; it does not count up per ship"
+  fi
+
+  # Fixed mode resolves the build inside $(asc_next_shared_build), where a
+  # load_secrets call would leak its temp key dir (created in the subshell,
+  # removed by the main shell's EXIT trap), so the credential is resolved
+  # once here in the main shell instead.
+  if [[ "$FIXED_MODE" -eq 1 && "${AUTH_MODE:-none}" != "api_key" ]]; then
+    load_secrets
+  fi
+
   # The repo commit count:  the build number names the exact commit a build
   # came from, so it is the starting point for CFBundleVersion.  It is not
   # enough on its own -- the App Store Connect floor below raises it when it
@@ -1004,6 +1439,9 @@ else
 
   # ---- the build number ---------------------------------------------------
   if [[ -n "$FORCE_BUILD" ]]; then
+    if [[ "$FIXED_MODE" -eq 1 ]]; then
+      fixed_build_override_ok "$FORCE_BUILD" || die "rejected fixed-mode --build ${FORCE_BUILD}; nothing shipped"
+    fi
     # An explicit --build is honoured exactly, and it does NOT move the
     # marketing version:  the two numbers are independent.
     BUILD_NUM="$FORCE_BUILD"
@@ -1013,6 +1451,9 @@ else
       die "--build ${BUILD_NUM} equals the patch of ${MARKETING}, which would ship ${MARKETING} (${BUILD_NUM}): the 1.0.N (N) form the owner retired (AFC-517).  Pass a different --build."
     fi
     log "version: operator override (--build/--version); the local build-seq counter is not consulted"
+  elif [[ "$FIXED_MODE" -eq 1 ]]; then
+    BUILD_NUM="$(asc_next_shared_build)" || die "cannot work out the shared merge-timestamp build: incomplete inventory or unreadable merge stamp; nothing shipped"
+    log "build: shared merge-timestamp build ${BUILD_NUM} for fixed version ${MARKETING}"
   else
     [[ "$PLAN_COMMIT_COUNT" =~ ^[0-9]+$ ]] || die "could not read the commit count from ${REPO_ROOT}; CFBundleVersion is the repo commit count and UTC timestamps are retired"
 
@@ -1069,7 +1510,9 @@ else
     fi
     # A ship must never look like "1.0.N (N)":  if the build number happens
     # to be the patch number of the marketing version, move it one up.
-    if [[ -n "$PLAN_TARGET_PATCH" && "$BUILD_NUM" -eq "$PLAN_TARGET_PATCH" ]]; then
+    # Not in fixed mode:  the shared value is its own sequence and stays
+    # exactly as planned.
+    if [[ "$FIXED_MODE" -ne 1 && -n "$PLAN_TARGET_PATCH" && "$BUILD_NUM" -eq "$PLAN_TARGET_PATCH" ]]; then
       _bumped="$((BUILD_NUM + 1))"
       log "build: ${BUILD_NUM} equals the patch number; using ${_bumped} so the ship does not read ${MARKETING} (${BUILD_NUM})"
       BUILD_NUM="$_bumped"
@@ -1115,8 +1558,12 @@ if [[ "$SYNC_PROJECT_VERSION" -eq 1 ]]; then
   log "synced project.pbxproj -> MARKETING_VERSION=${MARKETING} CURRENT_PROJECT_VERSION=${BUILD_NUM}"
   log "commit that change; it is the repo's record of this version"
 fi
-AUTH_MODE="none"
-load_secrets
+# Fixed mode already resolved the credential above; resolving it twice would
+# ask Infisical twice for the same key.
+if [[ "${AUTH_MODE:-none}" != "api_key" ]]; then
+  AUTH_MODE="none"
+  load_secrets
+fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT_ROOT="${TMPDIR:-/tmp}/ios-ship-${APP_KEY}-${STAMP}"
@@ -1274,60 +1721,6 @@ acquire_archive_lock() {
 }
 release_archive_lock() {
   rmdir "$ARCHIVE_LOCK_DIR" 2>/dev/null || true
-}
-
-# After a successful upload, declare export compliance if the IPA omitted
-# ITSAppUsesNonExemptEncryption. Otherwise TestFlight stays
-# MISSING_EXPORT_COMPLIANCE and the phone never sees the build (ST 1.0.1/2
-# on 2026-08-12).
-ensure_tf_ready() {
-  log "verifying TestFlight ready-to-install for ${BUNDLE_ID} build ${BUILD_NUM}"
-  set +e
-  # BUILD_NUM (CFBundleVersion) is REQUIRED. Without it asc-api.mjs would have to
-  # guess "the newest build", which for the first minutes after an upload is the
-  # PREVIOUS ship -- so compliance got declared on the wrong build and readiness
-  # was reported for a build never inspected (2026-08-13). MARKETING is a second
-  # predicate, not a substitute: it identifies a train, not a build.
-  IOS_TF_NOTES_REPO="$REPO_ROOT" \
-  IOS_TF_NOTES_PREV_SHA="$PREV_SHIP_SHA" \
-  IOS_TF_NOTES_APP="$DISPLAY_NAME" \
-  IOS_TF_NOTES_IOS_PREFIX="$IOS_PATH_PREFIX" \
-  asc_client ensure-tf-ready "$BUNDLE_ID" "$BUILD_NUM" "$MARKETING" \
-    >"${LOG_DIR}/ensure-tf-ready.json" 2>"${LOG_DIR}/ensure-tf-ready.err"
-  local rc=$?
-  set -e
-  if [[ -s "${LOG_DIR}/ensure-tf-ready.err" ]]; then
-    while IFS= read -r line; do log "tf-ready: $line"; done <"${LOG_DIR}/ensure-tf-ready.err"
-  fi
-  if [[ $rc -eq 0 ]]; then
-    log "TestFlight internal testers can install this build"
-    return 0
-  fi
-  if [[ $rc -eq 3 ]]; then
-    log "warning: upload succeeded but ASC has not reached IN_BETA_TESTING yet; watch TestFlight"
-    return 0
-  fi
-  if [[ $rc -eq 4 ]]; then
-    # The upload itself succeeded; ASC simply never surfaced the build in time.
-    # Warn loudly but do NOT fail: the caller must still record_successful_ship,
-    # or the rate gate never advances and the next scheduled run re-ships the
-    # same HEAD. A red job after a successful upload also mislabels the outcome.
-    log "warning: ASC never surfaced build ${BUILD_NUM}; export compliance NOT declared on it"
-    log "warning: if the phone never gets this build, declare compliance by hand in App Store Connect"
-    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-      echo "::warning::ensure-tf-ready could not find uploaded build ${BUILD_NUM} for ${BUNDLE_ID}; export compliance not declared"
-    fi
-    return 0
-  fi
-  # rc=2 is a usage error or an ASC API error. Compliance was NOT declared, so
-  # this deserves the same CI annotation rc=4 gets -- otherwise the only trace
-  # is one log line inside a green job, which is how ST 1.0.1/2 stayed
-  # VALID-but-uninstallable without anyone noticing.
-  log "warning: ensure-tf-ready failed (rc=$rc); build may be stuck on export compliance"
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::warning::ensure-tf-ready failed (rc=${rc}) for ${BUNDLE_ID} build ${BUILD_NUM}; export compliance not declared"
-  fi
-  return 0
 }
 
 acquire_archive_lock

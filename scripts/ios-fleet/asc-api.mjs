@@ -27,6 +27,9 @@
  *   node asc-api.mjs latest-build-seq <bundleId> <prefix> [platform] [appleId]
  *   node asc-api.mjs latest-marketing-patch <bundleId> <prefix> [platform] [appleId]
  *   node asc-api.mjs build-floor <bundleId> <version> [platform] [appleId]
+ *   node asc-api.mjs next-shared-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>
+ *   node asc-api.mjs plan-release-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>
+ *   node asc-api.mjs max-build <bundleId> [platform]
  *
  * The version-numbering rules live in ./version-plan.mjs (pure, no I/O); this
  * client only fetches the App Store Connect state they need.
@@ -42,6 +45,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { normalizePrivateKey } from "./asc-key.mjs";
+import { nextSharedBuild } from "./shared-build.mjs";
 import {
   buildFloor,
   isDriftTrain,
@@ -210,8 +214,9 @@ function signJwt({ keyId, issuerId, privateKeyPem }) {
 // Every build of every fleet app shipped with this EMPTY (24 builds checked
 // 2026-08-13; `GET /v1/builds/<id>/betaBuildLocalizations` returns `data: []`,
 // i.e. the en-US row is ABSENT, not blank -- so this must CREATE, not only
-// PATCH). /Users/jay/apps/AGENT-SYNC.md "App Versioning & TestFlight Build
-// Policy" defines a mandatory template that nothing implemented.
+// PATCH). The Fleet-OPS handbook's "App Version and Build Numbers"
+// (handbook/ops/app-versioning.md) defines a mandatory template that
+// nothing implemented.
 //
 // PUBLISHING SAFETY. This is the only step in the ship pipeline that writes
 // owner-facing copy every TestFlight tester reads, generated from commit
@@ -225,7 +230,7 @@ function signJwt({ keyId, issuerId, privateKeyPem }) {
 //
 // A hard deny-list assertion runs on the FULLY RENDERED body: if any internal
 // agent name survives, the upload is skipped entirely rather than publishing a
-// violation (AGENT-SYNC forbids agent names in release notes). Offending
+// violation (the fleet policy forbids agent names in release notes). Offending
 // bullets are dropped whole -- never word-deleted in place, which yields
 // mangled copy like "Fix:  lane".
 const AGENT_NAMES = "grok|claude|monet|codex|antigravity|cursor|kimi|fable|gemini|deepseek|opus|sonnet|haiku";
@@ -237,7 +242,7 @@ const AGENT_NAMES = "grok|claude|monet|codex|antigravity|cursor|kimi|fable|gemin
 // stripped only /^\[[A-Za-z]+\]/ and left "AG" out of the deny-list below on
 // the stated assumption that the strip covered it. It did not: every one of
 // those 48 subjects would have published "[AG]" straight to TestFlight, which
-// AGENT-SYNC's STRICT no-agent-names rule names explicitly.
+// policy's STRICT no-agent-names rule names explicitly.
 const AGENT_MARKER = new RegExp(`\\[\\s*(?:ag|${AGENT_NAMES})\\s*\\]`, "gi");
 // Bare "AG" stays OUT of the word-boundary deny-list -- as a naked token it
 // fires on ordinary English and on tickers. The bracketed form is unambiguous,
@@ -245,7 +250,7 @@ const AGENT_MARKER = new RegExp(`\\[\\s*(?:ag|${AGENT_NAMES})\\s*\\]`, "gi");
 const AGENT_NAME_DENY = new RegExp(`(?:\\b(?:${AGENT_NAMES})\\b|\\[\\s*ag\\s*\\])`, "i");
 
 function centralTimestamp(now = new Date()) {
-  // AGENT-SYNC template: "Wed, Aug 12, 2026 at 1:15am" -- the owner's clock
+  // Handbook template: "Wed, Aug 12, 2026 at 1:15am" -- the owner's clock
   // (America/Chicago, so DST is automatic), 12-hour, lower-case am or pm, and
   // NO timezone abbreviation.  Intl yields "1:15 PM" with a space or a narrow
   // no-break space (U+202F) before the meridiem, so fold both into "1:15pm".
@@ -739,6 +744,9 @@ async function main() {
     console.error("       node asc-api.mjs latest-build-seq <bundleId> <prefix> [platform] [appleId]");
     console.error("       node asc-api.mjs latest-marketing-patch <bundleId> <prefix> [platform] [appleId]");
     console.error("       node asc-api.mjs build-floor <bundleId> <version> [platform] [appleId]");
+    console.error("       node asc-api.mjs next-shared-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>");
+    console.error("       node asc-api.mjs plan-release-build <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>");
+    console.error("       node asc-api.mjs max-build <bundleId> [platform]");
     process.exit(1);
   }
 
@@ -1320,6 +1328,190 @@ async function main() {
     process.exit(0);
   }
 
+  // Every build of one app on one platform, fully paged (expired builds are
+  // still builds:  the endpoint returns them and they join the inventory).
+  // Shared by the release planner below and by max-build.  Never returns a
+  // partial list as if it were whole:  a failed page, a malformed pager, or
+  // more than 100 pages fails the query, never truncates the inventory into
+  // a low build.
+  async function allBuilds(forAppId, platform, command) {
+    const out = [];
+    let url = `/v1/builds?filter[app]=${forAppId}&filter[preReleaseVersion.platform]=${platform}&limit=200`;
+    for (let page = 0; page < 100 && url; page++) {
+      const res = await ascGet(url);
+      if (!res.ok || !Array.isArray(res.parsed?.data)) {
+        console.error(`${command}: inventory unavailable`);
+        failExit(res.status);
+      }
+      for (const b of res.parsed.data) out.push(b?.attributes?.version);
+      // The pager shape is checked before links.next is read:  a malformed
+      // page must fail the query, never truncate the inventory into a low
+      // build.
+      const parsed = res.parsed;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        console.error(`${command}: malformed pagination`);
+        process.exit(2);
+      }
+      let next = "";
+      if (parsed.links !== undefined) {
+        if (!parsed.links || typeof parsed.links !== "object" || Array.isArray(parsed.links)) {
+          console.error(`${command}: malformed pagination`);
+          process.exit(2);
+        }
+        const rawNext = parsed.links.next;
+        if (rawNext !== undefined && rawNext !== null && typeof rawNext !== "string") {
+          console.error(`${command}: malformed pagination`);
+          process.exit(2);
+        }
+        next = rawNext || "";
+      }
+      url = next;
+    }
+    if (url) {
+      console.error(`${command}: incomplete pagination`);
+      process.exit(2);
+    }
+    return out;
+  }
+
+  // Read-only, fully paged shared merge-timestamp build (owner, Oct 29 2026):
+  // build = max(S, M + 1), where S is the --merge-stamp (the HEAD committer
+  // date in America/Chicago as YYYYMMDDHHMM) and M is the highest first
+  // numeric component among EVERY build of the app on iOS and of its paired
+  // macOS app (all trains, expired included, old timestamp-style builds
+  // included) plus every extra floor.  The rule lives in ./shared-build.mjs;
+  // this client only reads the App Store Connect state it needs.
+  //
+  // plan-release-build is the release planner:  the release workflow runs it
+  // ONCE per release (the plan-build job) and hands the one value to every
+  // platform ship job.  next-shared-build is the same command under its
+  // original name.
+  if (method === "next-shared-build" || method === "plan-release-build") {
+    const rawArgs = process.argv.slice(3);
+    let mergeStamp = "";
+    const positional = [];
+    for (let i = 0; i < rawArgs.length; i++) {
+      if (rawArgs[i] === "--merge-stamp") {
+        mergeStamp = rawArgs[i + 1] || "";
+        i++;
+      } else {
+        positional.push(rawArgs[i]);
+      }
+    }
+    const bundleId = positional[0] || "";
+    const rest = positional.slice(1);
+    if (!bundleId) {
+      console.error(`Usage: node asc-api.mjs ${method} <bundleId> [pairedBundleId] [floor...] --merge-stamp <S>`);
+      process.exit(2);
+    }
+    if (!/^[1-9][0-9]{11}$/.test(mergeStamp)) {
+      console.error(`${method}: --merge-stamp <S> is required (12 digits ^[1-9][0-9]{11}$: the HEAD committer date in America/Chicago as %Y%m%d%H%M)`);
+      process.exit(2);
+    }
+    // A pure-integer second arg is a floor, not a bundle id (bundle ids are
+    // never bare integers), so a caller with no paired app passes only floors.
+    let macBundleId = "";
+    let floorArgs = [];
+    if (rest.length > 0) {
+      if (/^[0-9]+$/.test(rest[0])) floorArgs = rest;
+      else { macBundleId = rest[0] || ""; floorArgs = rest.slice(1); }
+    }
+    const extraFloors = [];
+    for (const f of floorArgs) {
+      if (!/^[0-9]+$/.test(f) || !Number.isSafeInteger(Number(f))) {
+        console.error(`${method}: floor ${JSON.stringify(f)} is not a non-negative safe integer`);
+        process.exit(2);
+      }
+      extraFloors.push(Number(f));
+    }
+    const resolved = await resolveAscAppId(bundleId, "", method);
+    if (!resolved.appId) {
+      console.error(`${method}: app not found`);
+      process.exit(2);
+    }
+    let macAppId = "";
+    if (macBundleId && macBundleId !== bundleId) {
+      const macResolved = await resolveAscAppId(macBundleId, "", method);
+      if (!macResolved.appId) {
+        console.error(`${method}: paired app not found`);
+        process.exit(2);
+      }
+      macAppId = macResolved.appId;
+    }
+    // One build per app across iOS and macOS:  when the paired bundle id
+    // resolves to a different app, both platforms of both apps join it
+    // (iosBuilds = IOS(app)+IOS(paired), macBuilds = MAC_OS(app)+
+    // MAC_OS(paired)).  The inventories are independent, so they are fetched
+    // concurrently; each keeps the 100-page cap and fails closed past it
+    // (see allBuilds), never truncates.
+    let iosBuilds;
+    let macBuilds;
+    if (macAppId) {
+      const [appIos, appMac, pairedIos, pairedMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS", method),
+        allBuilds(resolved.appId, "MAC_OS", method),
+        allBuilds(macAppId, "IOS", method),
+        allBuilds(macAppId, "MAC_OS", method)
+      ]);
+      iosBuilds = appIos.concat(pairedIos);
+      macBuilds = appMac.concat(pairedMac);
+    } else {
+      const [appIos, appMac] = await Promise.all([
+        allBuilds(resolved.appId, "IOS", method),
+        allBuilds(resolved.appId, "MAC_OS", method)
+      ]);
+      iosBuilds = appIos;
+      macBuilds = appMac;
+    }
+    try {
+      const planned = nextSharedBuild({ iosBuilds, macBuilds, extraFloors, complete: true, mergeStamp });
+      console.error(`${method}: ${iosBuilds.length} iOS build(s) + ${macBuilds.length} macOS build(s) inspected; merge stamp ${mergeStamp}; next is ${planned.build}`);
+      console.log(planned.build);
+    } catch (error) {
+      console.error(`${method}: ${error.message}`);
+      process.exit(3);
+    }
+    process.exit(0);
+  }
+
+  // The highest first numeric component among the builds of ONE app record on
+  // ONE platform (all trains, expired included).  Fixed-mode --build
+  // validation:  the planned value may equal the paired platform's build, but
+  // it must exceed this platform's max.  Prints the max, or 0 when the app
+  // has no build on the platform yet.  stdout is the answer; exit 0 is
+  // authoritative, anything else is "unverified", never zero.
+  if (method === "max-build") {
+    const bundleId = path;
+    const platform = ascPlatform(body);
+    if (!bundleId) {
+      console.error("Usage: node asc-api.mjs max-build <bundleId> [platform=IOS]");
+      process.exit(2);
+    }
+    if (!platform) {
+      console.error(`max-build: unknown platform "${body}" (want IOS or MACOS)`);
+      process.exit(2);
+    }
+    const resolved = await resolveAscAppId(bundleId, "", "max-build");
+    if (!resolved.appId) {
+      console.error("max-build: app not found");
+      process.exit(2);
+    }
+    const builds = await allBuilds(resolved.appId, platform, "max-build");
+    let max = -1n;
+    for (const value of builds) {
+      if (!validVersion(value)) {
+        console.error(`max-build: malformed build ${JSON.stringify(value ?? null)}; cannot verify the max`);
+        process.exit(2);
+      }
+      const first = BigInt(String(value).split(".")[0]);
+      if (first > max) max = first;
+    }
+    const out = max < 0n ? "0" : String(max);
+    console.error(`max-build: ${builds.length} ${platform} build(s) inspected; max is ${out}`);
+    console.log(out);
+    process.exit(0);
+  }
+
   // After upload: find THE BUILD THIS RUN JUST UPLOADED, declare export
   // compliance on it, set its TestFlight "What to Test" notes, and wait until
   // internal testers can actually install it.
@@ -1683,13 +1875,20 @@ async function main() {
       process.exit(2);
     }
 
+    const recheck = String(process.env.IOS_TF_READY_RECHECK || "").trim() === "1";
     const totalTimeoutSec = (() => {
       const raw = process.env.IOS_TF_READY_TIMEOUT_SEC;
       const n = raw ? parseInt(raw, 10) : NaN;
-      return Number.isFinite(n) && n > 0 ? n : 900;
+      if (Number.isFinite(n) && n > 0) return n;
+      return recheck ? 90 : 900;
     })();
     const deadline = Date.now() + totalTimeoutSec * 1000;
-    const POLL_MS = 15000;
+    const POLL_MS = recheck ? 5000 : 15000;
+    if (recheck) {
+      console.error(
+        `ensure-tf-ready: recheck mode (short budget ${totalTimeoutSec}s, ${POLL_MS}ms poll; no compliance patch or release notes)`
+      );
+    }
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const { appId, appsStatus } = await resolveAscAppId(bundleId, appleIdHint, "ensure-tf-ready");
@@ -1765,8 +1964,8 @@ async function main() {
     const beta = (build.__included || []).find((x) => x.type === "buildBetaDetails")?.attributes || {};
     console.error(`ensure-tf-ready: build=${version} id=${buildId} enc=${enc} internal=${beta.internalBuildState || "unknown"}`);
 
-    // ---- Phase B: export compliance, on the DISCOVERED build.
-    if (enc !== false) {
+    // ---- Phase B: export compliance, on the DISCOVERED build (ship only).
+    if (!recheck && enc !== false) {
       const patch = await api("PATCH", `/v1/builds/${buildId}`, JSON.stringify({
         data: { type: "builds", id: buildId, attributes: { usesNonExemptEncryption: false } }
       }));
@@ -1778,11 +1977,14 @@ async function main() {
     }
 
     // ---- Phase B2: TestFlight "What to Test". Before the readiness wait, so a
-    // Phase C timeout cannot lose the notes. Never fails the caller.
-    try {
-      await setWhatToTest({ api, buildId, appId, marketing: wantMarketing });
-    } catch (err) {
-      console.error(`ensure-tf-ready: release-notes step failed (non-fatal): ${err && err.message ? err.message : err}`);
+    // Phase C timeout cannot lose the notes. Never fails the caller.  Skipped on
+    // post-sync recheck: the ship step already published notes.
+    if (!recheck) {
+      try {
+        await setWhatToTest({ api, buildId, appId, marketing: wantMarketing });
+      } catch (err) {
+        console.error(`ensure-tf-ready: release-notes step failed (non-fatal): ${err && err.message ? err.message : err}`);
+      }
     }
 
     // ---- Phase C: readiness, drawing from the same overall deadline. Always
