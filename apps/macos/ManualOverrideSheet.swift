@@ -21,16 +21,16 @@ struct ManualOverrideSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Choose an image")
+            Text("Choose an Image")
                 .font(.title3.bold())
 
-            Button("Choose file…") { chooseFile() }
+            Button("Choose File") { chooseFile() }
                 .disabled(isWorking)
 
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Or paste a URL").font(.subheadline.bold())
+                Text("Or Paste a URL").font(.subheadline.bold())
                 TextField("https://example.com/logo.png", text: $pastedURL)
                     .textFieldStyle(.roundedBorder)
                 Button("Use URL") { Task { await useURL() } }

@@ -3,6 +3,7 @@ package com.contactlogo.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,7 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,7 +47,7 @@ fun sessionErrorMessage(error: SessionError): String = when (error) {
         "${error.failed} of ${error.succeeded + error.failed} logos failed to apply (${error.underlying}).  You can try again."
     SessionError.NothingToApply -> "Nothing selected to apply."
     is SessionError.UndoFailed ->
-        "Couldn't undo batch ${error.batchId.take(8)} (${error.underlying}).  You can try again."
+        "Could not undo that change.\u00A0 You can try again."
     SessionError.NoBatchToUndo -> "There's no batch to undo."
 }
 
@@ -324,7 +328,7 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                 title = {
                     Column {
                         Text("ContactLogo", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text("Brand icons for your address book", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Text("Brand icons for your address book", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 actions = {
@@ -376,11 +380,11 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                                 onClick = { viewModel.undoLastBatch() },
                                 enabled = newest != null && !busy
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo", modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text(
-                                    if (newest != null) "Undo last batch (${newest.contactCount})"
-                                    else "Undo last batch"
+                                    if (newest != null) "Undo Last Change (${newest.contactCount})"
+                                    else "Undo Last Change"
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -389,7 +393,10 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                                 Button(
                                     onClick = { viewModel.applyApproved() },
                                     enabled = approvedCount > 0 && !busy,
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondary,
+                                        contentColor = MaterialTheme.colorScheme.onSecondary
+                                    )
                                 ) {
                                     if (isApplying) {
                                         CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
@@ -416,8 +423,8 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.setSearchQuery(it) },
-                    placeholder = { Text("Search contacts, brands, or domains…") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    placeholder = { Text("Search by name, company, or phone") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -434,7 +441,7 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                     MetricChip(
                         title = "Ready",
                         count = readyCount,
-                        color = Color(0xFF22C55E),
+                        color = if (isSystemInDarkTheme()) Color(0xFF86EFAC) else Color(0xFF166534),
                         selected = statusFilter == StatusFilter.READY,
                         modifier = Modifier.weight(1f),
                         onClick = { viewModel.setStatusFilter(StatusFilter.READY) }
@@ -442,7 +449,7 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                     MetricChip(
                         title = "Review",
                         count = reviewCount,
-                        color = Color(0xFFF59E0B),
+                        color = if (isSystemInDarkTheme()) Color(0xFFFDBA74) else Color(0xFF92400E),
                         selected = statusFilter == StatusFilter.REVIEW,
                         modifier = Modifier.weight(1f),
                         onClick = { viewModel.setStatusFilter(StatusFilter.REVIEW) }
@@ -450,7 +457,7 @@ fun ContactLogoApp(viewModel: ContactLogoViewModel) {
                     MetricChip(
                         title = "Skipped",
                         count = skipCount,
-                        color = Color(0xFF94A3B8),
+                        color = if (isSystemInDarkTheme()) Color(0xFFD6D3D1) else Color(0xFF44403C),
                         selected = statusFilter == StatusFilter.SKIPPED,
                         modifier = Modifier.weight(1f),
                         onClick = { viewModel.setStatusFilter(StatusFilter.SKIPPED) }
@@ -530,9 +537,10 @@ fun EmptyScanState(onScan: () -> Unit) {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Scan your device contacts to find verified corporate logos and match them with zero photo overwrites without your approval.",
+            "Scan the contacts on this phone.\u00A0 ContactLogo suggests logos for businesses, and nothing is saved until you approve it.",
+            textAlign = TextAlign.Center,
             fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
         Spacer(Modifier.height(24.dp))
@@ -560,7 +568,7 @@ fun MetricChip(
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = color.copy(alpha = if (selected) 0.28f else 0.12f),
-        modifier = modifier
+            modifier = modifier
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .then(
                 if (selected) Modifier.border(1.5.dp, color, RoundedCornerShape(10.dp))
@@ -568,12 +576,23 @@ fun MetricChip(
             )
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(title, fontSize = 12.sp, color = color, fontWeight = FontWeight.SemiBold)
-            Text("$count", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(title, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(6.dp))
+            Text("$count", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -643,7 +662,7 @@ fun ContactRow(
                     Text(
                         text = "No matching brand",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -657,19 +676,19 @@ fun ContactRow(
                     ) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = null,
+                            contentDescription = "Next logo",
                             modifier = Modifier.size(12.dp),
-                            tint = Color(0xFF38BDF8)
+                            tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
                             if (next != null) {
-                                "Candidate ${result.selectedIndex + 1} of ${result.candidates.size} (${result.selectedLogo?.source})"
+                                "Logo ${result.selectedIndex + 1} of ${result.candidates.size}"
                             } else {
-                                "Last candidate of ${result.candidates.size} (${result.selectedLogo?.source})"
+                                "Last logo of ${result.candidates.size}"
                             },
-                            fontSize = 11.sp,
-                            color = Color(0xFF38BDF8)
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -684,13 +703,13 @@ fun ContactRow(
                         Icons.Default.AddPhotoAlternate,
                         contentDescription = "Choose your own image",
                         modifier = Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "Choose your own…",
+                        "Choose Your Own",
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -699,7 +718,10 @@ fun ContactRow(
                 Checkbox(
                     checked = result.approved,
                     onCheckedChange = { onToggleApprove() },
-                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF22C55E))
+                    modifier = Modifier.semantics {
+                        contentDescription = "Apply logo to ${result.contact.displayName.ifBlank { result.contact.organization }}"
+                    },
+                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary)
                 )
             }
         }

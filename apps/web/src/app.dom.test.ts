@@ -379,6 +379,9 @@ test("filter chips narrow the sections and track aria-pressed", () => {
   assert.ok(hasClass(notFoundChip, "chip--active"));
   assert.equal(chips.filter((c) => c.getAttribute("aria-pressed") === "true").length, 1);
   assert.equal(cards().filter(visible).length, 0, "nothing should survive the Not found filter yet");
+  const empty = byClass("empty-filter").filter(visible);
+  assert.equal(empty.length, 1, "a missed filter should explain that nothing matched");
+  assert.equal(empty[0].textContent, "No contacts match this search.");
 
   const all = chips.find((c) => c.getAttribute("data-filter") === "all")!;
   fire(all, "click");

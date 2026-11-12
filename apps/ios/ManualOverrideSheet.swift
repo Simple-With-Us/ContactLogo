@@ -22,7 +22,7 @@ struct ManualOverrideSheet: View {
             Form {
                 Section {
                     PhotosPicker(selection: $photoItem, matching: .images) {
-                        Label("Choose photo…", systemImage: "photo.on.rectangle")
+                        Label("Choose Photo", systemImage: "photo.on.rectangle")
                     }
                 } header: {
                     Text("Upload")
@@ -53,7 +53,7 @@ struct ManualOverrideSheet: View {
                     }
                 }
             }
-            .navigationTitle("Choose an image")
+            .navigationTitle("Choose an Image")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

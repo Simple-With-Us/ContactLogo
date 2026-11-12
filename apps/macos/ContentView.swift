@@ -4,6 +4,34 @@ import ContactLogoKit
 import AppKit
 #endif
 
+/// Plain phrases for the flags a reviewer can act on. Internal pipeline
+/// markers stay out of the row and the detail screen.
+func plainReviewFlags(_ flags: [String]) -> [String] {
+    var seen = Set<String>()
+    var out: [String] = []
+    for flag in flags {
+        let phrase: String?
+        switch flag {
+        case "homonym-risk": phrase = "Name is also a common word"
+        case "brand-tail": phrase = "Matched a partial name"
+        case "replace-existing": phrase = "Replaces an existing photo"
+        case "email-domain-unrelated": phrase = "Email domain may not be this brand"
+        case "guessed-domain": phrase = "Website was guessed"
+        case "affiliated": phrase = "Works at this business"
+        case "employee": phrase = "Looks like an employee"
+        case "fallback-tile": phrase = "This is a letter tile, not a logo"
+        case "favicon-fallback": phrase = "Only a website icon was found"
+        case "non-brand": phrase = "Not a business"
+        case "person": phrase = "Looks like a person"
+        default: phrase = nil
+        }
+        if let phrase, seen.insert(phrase).inserted {
+            out.append(phrase)
+        }
+    }
+    return out
+}
+
 /// Three-bucket review layout (VISION: Auto / Review / Not-found).
 /// Approve / try-another / upload / skip actions live on each row.
 struct ContentView: View {
@@ -12,11 +40,11 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $model.bucket) {
-                Label("Ready to apply (\(model.autoAccepted.count))", systemImage: "checkmark.circle.fill")
+                Label("Ready to Apply (\(model.autoAccepted.count))", systemImage: "checkmark.circle.fill")
                     .tag(ReviewSession.Bucket.auto)
-                Label("Needs review (\(model.needsReview.count))", systemImage: "questionmark.circle")
+                Label("Needs Review (\(model.needsReview.count))", systemImage: "questionmark.circle")
                     .tag(ReviewSession.Bucket.review)
-                Label("Not found (\(model.notFound.count))", systemImage: "minus.circle")
+                Label("Not Found (\(model.notFound.count))", systemImage: "minus.circle")
                     .tag(ReviewSession.Bucket.notFound)
             }
             .navigationTitle("ContactLogo")
@@ -24,7 +52,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 switch model.stage {
                 case .idle:
-                    ContentUnavailableView("Scan your contacts",
+                    ContentUnavailableView("Scan Your Contacts",
                                            systemImage: "person.crop.square.filled.and.at.rectangle",
                                            description: Text("ContactLogo finds brand logos for the businesses in your address book — you approve every change."))
                     if case .definite = model.limitedAccessState {
@@ -36,7 +64,7 @@ struct ContentView: View {
                     } else if model.limitedAccessGranted {
                         LimitedAccessBanner()
                     }
-                    Button("Scan contacts") { Task { await model.scanAndMatch() } }
+                    Button("Scan Contacts") { Task { await model.scanAndMatch() } }
                         .buttonStyle(.borderedProminent)
                     if model.totalScannedCount > 0 {
                         MacScanBreakdown(
@@ -144,16 +172,16 @@ struct ReviewQueueView: View {
                 LimitedAccessBanner()
             }
             HStack {
-                Text("Review queue").font(.title2.bold())
+                Text("Review Queue").font(.title2.bold())
                 Spacer()
-                Button("Select high") { model.selectHigh(true) }
+                Button("Select High") { model.selectHigh(true) }
                     .keyboardShortcut("a", modifiers: [.command, .shift])
-                Button("Clear high") { model.selectHigh(false) }
-                Button("Apply selected (\(model.selected.count))") { Task { await model.applySelected() } }
+                Button("Clear High") { model.selectHigh(false) }
+                Button("Apply Selected (\(model.selected.count))") { Task { await model.applySelected() } }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
                 if let mostRecent = model.undoHistory.first {
-                    Button("Undo last batch") { Task { await model.undo(batchID: mostRecent.id) } }
+                    Button("Undo Last Change") { Task { await model.undo(batchID: mostRecent.id) } }
                         .keyboardShortcut("z", modifiers: .command)
                 }
                 if model.undoHistory.count > 1 {
@@ -337,7 +365,7 @@ struct ReviewRow: View {
                         }
                         Button("Details") { onInspect?() }
                             .font(.caption)
-                        Button("Choose own…") { onManualOverride?() }
+                        Button("Choose Own") { onManualOverride?() }
                             .font(.caption)
                     }
                     .padding(.top, 2)
@@ -354,7 +382,7 @@ struct ReviewRow: View {
     private var candidateStrip: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Candidates (\(result.candidates.count)):")
+                Text("Logos (\(result.candidates.count))")
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -408,17 +436,18 @@ struct ReviewRow: View {
     }
 
     private var detail: String {
-        let source = model.chosenCandidate(for: result)?.source.displayName ?? "none"
-        let flags = result.flags.isEmpty ? "" : " · " + result.flags.joined(separator: ", ")
-        return "\(label(result.confidence)) · \(source) · \(result.candidates.count) options\(flags)"
+        let source = model.chosenCandidate(for: result)?.source.displayName ?? "No logo yet"
+        let phrases = plainReviewFlags(result.flags)
+        let flags = phrases.isEmpty ? "" : " · " + phrases.joined(separator: " · ")
+        return "\(confidenceLabel(result.confidence)) · \(source) · \(result.candidates.count) options\(flags)"
     }
 
-    private func label(_ c: Confidence) -> String {
+    private func confidenceLabel(_ c: Confidence) -> String {
         switch c {
-        case .high: "high"
-        case .medium: "medium"
-        case .low: "low"
-        case .skip: "skip"
+        case .high: "High confidence"
+        case .medium: "Needs a look"
+        case .low: "Low confidence"
+        case .skip: "Skipped"
         }
     }
 }
@@ -525,7 +554,7 @@ struct ContactDetailSheet: View {
                 Label("Candidate Logos (\(result.candidates.count))", systemImage: "photo.stack")
                     .font(.headline)
                 Spacer()
-                Button("Custom image…") {
+                Button("Custom Image") {
                     showingManualOverride = true
                 }
                 .font(.caption.bold())
@@ -709,17 +738,18 @@ struct ContactDetailSheet: View {
 
     private var matchingRationaleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Match Rationale", systemImage: "sparkles")
+            Label("Why This Logo", systemImage: "sparkles")
                 .font(.headline)
 
-            if !result.flags.isEmpty {
-                Text("Engine flags: \(result.flags.joined(separator: ", "))")
+            let phrases = plainReviewFlags(result.flags)
+            if !phrases.isEmpty {
+                Text(phrases.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             if let chosen = chosenCandidate {
-                Text("Selected source: \(chosen.source.displayName) (\(chosen.source.rawValue))")
+                Text("Logo from \(chosen.source.displayName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let page = chosen.pageURL {
