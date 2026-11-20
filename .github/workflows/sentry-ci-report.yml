@@ -44,6 +44,7 @@ name: Sentry CI Report
 # run and raises a Sentry issue on drift, so a rename cannot silently kill a
 # monitor:
 #   Simple Icons liveness                   -> "17 14 * * 1"  (simpleicons-liveness.yml, Mondays)
+#   Auto-merge PRs                          -> "*/15 * * * *"  (auto-merge-prs.yml, fleet sweep)
 #
 # Secret: repo (or org) Actions secret `SENTRY_FLEET_DSN` must be set to the
 # fleet-infra project DSN.  Name only — never commit or print the value.
@@ -61,6 +62,7 @@ on:
       # a stale entry here silently disables alerting for that pipeline.
       - CI
       - Simple Icons liveness
+      - Auto-merge PRs
     types: [completed]
 
 permissions:
