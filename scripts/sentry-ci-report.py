@@ -68,6 +68,8 @@ APP = "contactlogo"
 CRON_SCHEDULES = {
     "Vercel production catch-up": "41 * * * *",
     "Simple Icons liveness": "17 14 * * 1",
+    # auto-merge-prs.yml: fleet auto-merge sweep (15 min).
+    "Auto-merge PRs": "*/15 * * * *",
 }
 
 # This map is keyed by a workflow's DISPLAY NAME, which is exactly the kind of
