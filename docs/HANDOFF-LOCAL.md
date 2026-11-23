@@ -270,7 +270,7 @@ they agree *on*:
 | --- | --- |
 | `docs/EVALUATION-2026-08.md` | The audit.  Every finding id, with its reproduction. |
 | `docs/ENGINE-CONTRACT.md` | Normative spec the Swift, TypeScript and Kotlin engines all implement.  R15 lists the known divergences. |
-| `fixtures/golden-corpus.json` | 94 language-neutral cases all three engines now test against. |
+| `fixtures/golden-corpus.json` | 100 language-neutral cases all three engines now test against. |
 | `docs/UI-CONTRACT.md` | DOM / ARIA / CSS-token contract between `app.ts` and `styles.css`. |
 | `docs/NATIVE-CONTRACT.md` | Swift API surface shared by `ContactLogoKit` and the two shells. |
 | `docs/MATCHING-ENGINE.md` | The original rulebook.  Still the reason any of this exists. |
