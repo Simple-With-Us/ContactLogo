@@ -5,7 +5,7 @@
 - [x] `ContactLogoKit` package (models, normalize, rank, sources)
 - [x] Catalog, phone directory, iconic sources, web review app
 - [x] Single product name: ContactLogo
-- [x] Golden test corpus (fixtures/golden-corpus.json with 86 conformance cases)
+- [x] Golden test corpus (fixtures/golden-corpus.json with 100 conformance cases)
 - [x] GitHub repo wiring, CI (web, kit, apple native builds, android)
 
 ## Phase 1 — macOS MVP

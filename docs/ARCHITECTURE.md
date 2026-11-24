@@ -68,7 +68,7 @@
 
 ## Testing strategy
 
-- **Golden corpus**: fixture in `fixtures/golden-corpus.json` with 86 conformance
+- **Golden corpus**: fixture in `fixtures/golden-corpus.json` with 100 conformance
   cases covering the trap examples in MATCHING-ENGINE.md §4 (nonbrand generics,
   social hosts, subdomains, homonyms, legal suffixes, brand tails, etc.).
   Language-neutral specification; all three engines (Swift, TypeScript, Kotlin)
