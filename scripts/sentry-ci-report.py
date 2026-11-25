@@ -68,9 +68,18 @@ APP = "contactlogo"
 CRON_SCHEDULES = {
     "Vercel production catch-up": "41 * * * *",
     "Simple Icons liveness": "17 14 * * 1",
-    # auto-merge-prs.yml: fleet auto-merge sweep (15 min).
-    "Auto-merge PRs": "*/15 * * * *",
 }
+
+# Scheduled workflows that deliberately send NO Crons check-in (AFC-626).
+# `auto-merge-prs.yml` asks for a 15-minute schedule, but GitHub starts it
+# about once an hour, so a `*/15` monitor recorded three misses for every real
+# run and stayed red while the sweep worked.  A missed sweep tick is harmless
+# (the next one picks the PR up), and a FAILED run still raises the error event
+# in section 1 of main(), so the cron monitor added nothing but noise.  A
+# schedule run of a name listed here skips the check-in without the
+# unmapped-schedule drift event that an unlisted name would raise.
+UNMONITORED_SCHEDULES = frozenset({"Auto-merge PRs"})
+_UNMONITORED_FOLDED = {name.casefold() for name in UNMONITORED_SCHEDULES}
 
 # This map is keyed by a workflow's DISPLAY NAME, which is exactly the kind of
 # string that drifts out from under you: shared-package-pin-check.yml was
@@ -92,6 +101,19 @@ _CRON_SCHEDULES_FOLDED = {name.casefold(): expr for name, expr in CRON_SCHEDULES
 # covers GitHub schedule delay while still alerting before the next hourly slot.
 _CRON_MONITOR_OVERRIDES: dict[str, dict[str, int]] = {
     "vercel production catch-up": {"checkin_margin": 75, "max_runtime": 45},
+}
+
+# failure_issue_threshold: consecutive failed or missed check-ins before Sentry
+# opens an incident and turns the monitor red (AFC-626).  GitHub delays or drops
+# ticks of this hourly schedule, so one miss is routine and a wider margin alone
+# still misses a dropped tick.  Three in a row is a real stop.  An `error`
+# check-in counts toward the threshold too, so a job that keeps failing still
+# alerts, and its conclusion-based error event (section 1) is unaffected.
+CRON_FAILURE_ISSUE_THRESHOLDS = {
+    "Vercel production catch-up": 3,
+}
+_CRON_FAILURE_THRESHOLD_FOLDED = {
+    name.casefold(): threshold for name, threshold in CRON_FAILURE_ISSUE_THRESHOLDS.items()
 }
 
 # Where the observed workflows live, resolved from this file rather than the
@@ -139,15 +161,46 @@ def discover_workflow_names(workflows_dir: Path = WORKFLOWS_DIR) -> set[str] | N
 
 
 def find_cron_schedule_drift(known_names: set[str] | None) -> list[str]:
-    """CRON_SCHEDULES keys that match no real workflow `name:`, case-insensitively.
+    """CRON_SCHEDULES keys and UNMONITORED_SCHEDULES names that match no real
+    workflow `name:`, case-insensitively, plus any name listed in both maps.
 
-    Empty when the workflow set is unknown (None) or empty — "I could not read
-    the workflows" must never masquerade as "every key is stale".
+    A stale UNMONITORED_SCHEDULES entry is drift too: after a rename it exempts
+    nothing, while the renamed workflow raises unmapped-schedule drift on every
+    tick.  Empty when the workflow set is unknown (None) or empty — "I could
+    not read the workflows" must never masquerade as "every key is stale".
     """
     if not known_names:
         return []
     folded = {name.casefold() for name in known_names}
-    return sorted(key for key in CRON_SCHEDULES if key.casefold() not in folded)
+    # A name in both maps, in any casing, is drift as well: UNMONITORED_SCHEDULES
+    # wins, so its CRON_SCHEDULES entry would silently never check in.  Both
+    # spellings are reported, so neither half of the duplicate is hidden.
+    overlap = {key.casefold() for key in CRON_SCHEDULES} & {
+        name.casefold() for name in UNMONITORED_SCHEDULES
+    }
+    configured = set(CRON_SCHEDULES) | set(UNMONITORED_SCHEDULES)
+    return sorted(
+        key for key in configured if key.casefold() not in folded or key.casefold() in overlap
+    )
+
+
+def monitor_config_for(workflow_name: str, cron_expr: str) -> dict:
+    """The upsert monitor_config sent with a workflow's Crons check-in."""
+    folded = workflow_name.casefold()
+    monitor_override = _CRON_MONITOR_OVERRIDES.get(folded, {})
+    config = {
+        "schedule": {"type": "crontab", "value": cron_expr},
+        "checkin_margin": monitor_override.get("checkin_margin", 15),
+        "max_runtime": monitor_override.get("max_runtime", 60),
+        "timezone": "UTC",
+    }
+    threshold = _CRON_FAILURE_THRESHOLD_FOLDED.get(folded)
+    if threshold is not None:
+        # Sentry rejects a failure_issue_threshold below 1, and alerting on the
+        # first miss is what 0 asks for anyway, so a configured 0 is sent as 1.
+        config["failure_issue_threshold"] = max(threshold, 1)
+        config["recovery_threshold"] = 1
+    return config
 
 
 def parse_dsn(dsn: str) -> tuple[str, str, str]:
@@ -255,15 +308,18 @@ def main() -> int:
     if stale_keys:
         joined = ", ".join(repr(key) for key in stale_keys)
         print(
-            f"::error::CRON_SCHEDULES key(s) {joined} match no workflow `name:` under "
-            ".github/workflows/ — those cron check-ins are not being sent.  "
-            "Re-key CRON_SCHEDULES in scripts/sentry-ci-report.py to the current name."
+            f"::error::CRON_SCHEDULES / UNMONITORED_SCHEDULES name(s) {joined} match no "
+            "workflow `name:` under .github/workflows/, or are listed in both maps — "
+            "a stale CRON_SCHEDULES key sends no cron check-in, a stale "
+            "UNMONITORED_SCHEDULES entry exempts nothing, and a name in both never "
+            "checks in.  Re-key or de-duplicate it in scripts/sentry-ci-report.py."
         )
         send_config_drift_event(
             envelope_url,
             auth_header,
             "stale-cron-key",
-            f"sentry-ci-report CRON_SCHEDULES has stale workflow name(s): {joined} [{APP}]",
+            f"sentry-ci-report CRON_SCHEDULES/UNMONITORED_SCHEDULES has stale or duplicated "
+            f"workflow name(s): {joined} [{APP}]",
             ["ci-report-config-drift", APP, "stale-cron-key"],
             {"stale_keys": stale_keys, "run_url": run_url},
         )
@@ -293,7 +349,12 @@ def main() -> int:
         # Case-folded lookup: a workflow rename that only changes capitalisation
         # must never again silently detach a job from its Crons monitor.
         cron_expr = _CRON_SCHEDULES_FOLDED.get(workflow_name.casefold())
-        if not cron_expr:
+        if workflow_name.casefold() in _UNMONITORED_FOLDED:
+            print(
+                f"Workflow '{workflow_name}' is listed in UNMONITORED_SCHEDULES; "
+                "no cron check-in sent."
+            )
+        elif not cron_expr:
             print(
                 f"::warning::Schedule-triggered run for '{workflow_name}' has no known cron "
                 "expression mapped in CRON_SCHEDULES; skipping check-in."
@@ -310,17 +371,11 @@ def main() -> int:
         else:
             checkin_status = "ok" if conclusion == "success" else "error"
             monitor_slug = f"ci-{APP}-{slugify(workflow_name)}"
-            monitor_override = _CRON_MONITOR_OVERRIDES.get(workflow_name.casefold(), {})
             checkin_payload = {
                 "check_in_id": uuid.uuid4().hex,
                 "monitor_slug": monitor_slug,
                 "status": checkin_status,
-                "monitor_config": {
-                    "schedule": {"type": "crontab", "value": cron_expr},
-                    "checkin_margin": monitor_override.get("checkin_margin", 15),
-                    "max_runtime": monitor_override.get("max_runtime", 60),
-                    "timezone": "UTC",
-                },
+                "monitor_config": monitor_config_for(workflow_name, cron_expr),
             }
             send_envelope(envelope_url, auth_header, "check_in", checkin_payload)
             print(f"Sent Sentry Crons check-in '{checkin_status}' for monitor '{monitor_slug}' (workflow '{workflow_name}').")
