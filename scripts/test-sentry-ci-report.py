@@ -96,6 +96,11 @@ class ConfigDriftTests(unittest.TestCase):
         live |= {name.casefold() for name in reporter.UNMONITORED_SCHEDULES}
         self.assertEqual(reporter.find_cron_schedule_drift(live), [])
 
+    def test_name_in_both_maps_is_reported_as_drift(self):
+        live = set(reporter.CRON_SCHEDULES) | set(reporter.UNMONITORED_SCHEDULES)
+        with mock.patch.dict(reporter.CRON_SCHEDULES, {"Auto-merge PRs": "*/15 * * * *"}):
+            self.assertEqual(reporter.find_cron_schedule_drift(live), ["Auto-merge PRs"])
+
     def test_stale_unmonitored_entry_raises_the_stale_cron_key_event(self):
         rc, sent = run_reporter(
             "CI", "success", event="push", workflow_names=set(reporter.CRON_SCHEDULES))
