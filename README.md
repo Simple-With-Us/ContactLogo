@@ -1,3 +1,5 @@
+<p><img src="apps/ios/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png" alt="ContactLogo logo" width="96" height="96"></p>
+
 # ContactLogo
 
 **Brand icons for your address book.**  ContactLogo looks for business contacts
