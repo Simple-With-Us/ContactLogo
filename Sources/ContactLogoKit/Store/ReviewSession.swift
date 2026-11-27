@@ -434,7 +434,6 @@ public final class ReviewSession: ObservableObject {
         // Stamp the store as it is *before* matching.  A token captured after
         // a long run could hide mutations that happened while we were away.
         scanDate = Date()
-        scanChangeToken = queueStore.currentChangeToken()
         let provider = contactsProviderForTesting ?? CNContactsProvider()
         do {
             guard try await provider.requestAccess() else {
@@ -448,6 +447,11 @@ public final class ReviewSession: ObservableObject {
                 stage = .idle
                 return false
             }
+            // Read the token only once access is resolved: on an undecided
+            // grant `currentHistoryToken` blocks this MainActor on its own
+            // implicit authorization request (CONTACTLOGO-Q app hang).
+            // Still captured before matching, per the comment above.
+            scanChangeToken = queueStore.currentChangeToken()
             // 2026-09-21 follow-up — finer-grained authorization view so
             // the iOS UI can render a blocking banner on pre-iOS-18 too.
             // The simpler `limitedAccessGranted` Bool is kept for callers

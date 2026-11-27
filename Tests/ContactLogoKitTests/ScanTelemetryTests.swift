@@ -79,6 +79,34 @@ final class ScanTelemetryTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(report.elapsedSeconds, 0)
     }
 
+    /// CONTACTLOGO-Q — the live change token implicitly requests Contacts
+    /// access and blocks the MainActor, so a scan must not read it until
+    /// `requestAccess()` has resolved, and never when access is refused.
+    @MainActor
+    func testChangeTokenIsNotReadBeforeOrWithoutAccess() async throws {
+        final class Counter: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = 0
+            func bump() { lock.lock(); value += 1; lock.unlock() }
+            var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+        }
+        let reads = Counter()
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = ReviewQueueStore(directory: tempDir, currentChangeToken: {
+            reads.bump()
+            return nil
+        })
+        let session = ReviewSession(queueStore: store)
+        session.contactsProviderForTesting = FixtureProvider(contacts: [], allowAccess: false)
+        session.pipelineForTesting = MatchPipeline(sources: [], fetchImage: { _ in Data() })
+
+        let completed = await session.scanAndMatch()
+
+        XCTAssertFalse(completed)
+        XCTAssertEqual(reads.count, 0, "denied scan must not touch currentHistoryToken")
+    }
+
     @MainActor
     func testThrownFetchStillEmitsAReport() async throws {
         let session = session(provider: FixtureProvider(contacts: [], state: .denied, explode: true))

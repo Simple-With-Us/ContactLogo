@@ -114,13 +114,33 @@ public struct ReviewQueueStore: Sendable {
     /// Live Contacts.framework token.  Nil when the framework is absent or
     /// the store has no history yet — `loadFresh` then treats two nils as a
     /// match (cannot prove staleness) and a nil/non-nil pair as a mismatch.
+    ///
+    /// Returns nil without touching the store unless Contacts access is
+    /// already granted: `currentHistoryToken` implicitly requests access
+    /// and blocks the calling thread until that request resolves, which hung
+    /// the main actor past the watchdog limit (CONTACTLOGO-Q).
     public static func liveChangeToken() -> Data? {
         #if canImport(Contacts)
-        CNContactStore().currentHistoryToken
+        guard contactsAccessGranted() else { return nil }
+        return CNContactStore().currentHistoryToken
         #else
-        nil
+        return nil
         #endif
     }
+
+    #if canImport(Contacts)
+    /// Non-blocking authorization check (status read only, never prompts).
+    static func contactsAccessGranted() -> Bool {
+        let status = CNContactStore.authorizationStatus(for: .contacts)
+        if status == .authorized { return true }
+        // `.limited` (iOS 18 / macOS 15) still grants read access.  Compared
+        // rather than switched so older SDKs without the case still build.
+        #if compiler(>=5.10) && os(iOS)
+        if #available(iOS 18, *), status == .limited { return true }
+        #endif
+        return false
+    }
+    #endif
 
     static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
